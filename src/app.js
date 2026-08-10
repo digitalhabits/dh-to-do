@@ -1653,22 +1653,8 @@ async function performUndo() {
                     tab.tasks.push(task);
                 }
 
-                if (item.basecampListId && basecampConfig.isConnected && task.basecampId) {
-                    createBasecampTodo(tab.id, task);
-                }
-
-                if (item.remindersListId && remindersConfig.isConnected && task.remindersId) {
-                    const newId = await createRemindersTask(item.remindersListId, task.text);
-                    if (newId) {
-                        task.remindersId = newId;
-                    }
-                }
-
-                if (item.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
-                    const newId = await createGoogleTask(item.googleTaskListId, task);
-                    if (newId) {
-                        task.googleTaskId = newId;
-                    }
+                if (item.basecampListId || item.remindersListId || item.googleTaskListId) {
+                    await recreateDeletedTaskOnRemote(item, task);
                 }
 
                 if (currentTabId !== tab.id) {
@@ -1836,21 +1822,7 @@ function addTask(text) {
 
     tabs[targetTabId].tasks.push(task);
 
-    // If this is a Basecamp list, create the todo in Basecamp
-    if (tabs[targetTabId].basecampListId && basecampConfig.isConnected) {
-        createBasecampTodo(targetTabId, task);
-    }
-
-    // If this is a Google Tasks list, create the task in Google Tasks
-    const googleListId = tabs[targetTabId].googleTaskListId;
-    if (googleListId && googleTasksConfig.isConnected) {
-        createGoogleTask(googleListId, task).then(newId => {
-            if (newId) {
-                task.googleTaskId = newId;
-                saveData();
-            }
-        });
-    }
+    pushRemoteTaskCreate(targetTabId, task);
 
     renderTasks();
     saveData();
@@ -1892,20 +1864,7 @@ function deleteTask(taskId) {
         };
         showUndoToast(`Task deleted`);
 
-        // If Basecamp connected, delete remote
-        if (tab.basecampListId && basecampConfig.isConnected && task.basecampId) {
-            deleteBasecampTodo(tabId, task.basecampId);
-        }
-
-        // If Reminders connected, delete remote
-        if (tab.remindersListId && remindersConfig.isConnected && task.remindersId) {
-            deleteRemindersTask(task.remindersId);
-        }
-
-        // If Google Tasks connected, delete remote
-        if (tab.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
-            deleteGoogleTask(tab.googleTaskListId, task.googleTaskId);
-        }
+        pushRemoteTaskDelete(tabId, tab, task);
 
         tab.tasks.splice(taskIndex, 1);
         if (typeof PlanModule !== 'undefined' && PlanModule.removeTaskFromPlanner) {
@@ -2341,20 +2300,7 @@ function toggleTask(taskId) {
     // Always track when status was last changed (for sync conflict resolution)
     task.statusChangedAt = new Date().toISOString();
 
-    // If Basecamp connected, sync status
-    if (tab.basecampListId && basecampConfig.isConnected && task.basecampId) {
-        updateBasecampCompletion(tabId, task);
-    }
-
-    // If Reminders connected, sync status
-    if (tab.remindersListId && remindersConfig.isConnected && task.remindersId) {
-        updateRemindersCompletion(task.remindersId, task.completed);
-    }
-
-    // If Google Tasks connected, sync status
-    if (tab.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
-        updateGoogleTaskStatus(tab.googleTaskListId, task.googleTaskId, task.completed);
-    }
+    pushRemoteTaskCompletion(tabId, tab, task);
 
     // Find the task element in the DOM and apply visual change immediately
     const taskElement = document.querySelector(`.task-item[data-task-id="${taskId}"]`);
@@ -3524,6 +3470,117 @@ function getTabSyncType(tabId) {
     if (tab.basecampListId) return 'basecamp';
     if (tab.googleTaskListId) return 'google';
     return 'local';
+}
+
+/** Last-writer-wins. Falls back to `preferRemote` when a timestamp is missing. */
+function remoteWins(localTime, remoteTime, preferRemote) {
+    if (localTime > 0 && remoteTime > 0) return remoteTime > localTime;
+    if (remoteTime > 0) return true;
+    if (localTime > 0) return false;
+    return !!preferRemote;
+}
+
+function toTime(value) {
+    return value ? new Date(value).getTime() : 0;
+}
+
+/** Create the task on whichever remote the tab is linked to (if connected). */
+function pushRemoteTaskCreate(tabId, task) {
+    const tab = tabs[tabId];
+    if (!tab) return;
+
+    if (tab.basecampListId && basecampConfig.isConnected) {
+        createBasecampTodo(tabId, task);
+    }
+    if (tab.googleTaskListId && googleTasksConfig.isConnected) {
+        createGoogleTask(tab.googleTaskListId, task).then(newId => {
+            if (newId) {
+                task.googleTaskId = newId;
+                saveData();
+            }
+        });
+    }
+}
+
+function pushRemoteTaskDelete(tabId, tab, task) {
+    if (tab.basecampListId && basecampConfig.isConnected && task.basecampId) {
+        deleteBasecampTodo(tabId, task.basecampId);
+    }
+    if (tab.remindersListId && remindersConfig.isConnected && task.remindersId) {
+        deleteRemindersTask(task.remindersId);
+    }
+    if (tab.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
+        deleteGoogleTask(tab.googleTaskListId, task.googleTaskId);
+    }
+}
+
+function pushRemoteTaskCompletion(tabId, tab, task) {
+    if (tab.basecampListId && basecampConfig.isConnected && task.basecampId) {
+        updateBasecampCompletion(tabId, task);
+    }
+    if (tab.remindersListId && remindersConfig.isConnected && task.remindersId) {
+        updateRemindersCompletion(task.remindersId, task.completed);
+    }
+    if (tab.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
+        updateGoogleTaskStatus(tab.googleTaskListId, task.googleTaskId, task.completed);
+    }
+}
+
+function pushRemoteTaskTitle(tabId, tab, task) {
+    if (tab.basecampListId && basecampConfig.isConnected && task.basecampId) {
+        updateBasecampTodoText(tabId, task);
+    }
+    if (tab.remindersListId && remindersConfig.isConnected && task.remindersId) {
+        updateRemindersTitle(task.remindersId, task.text);
+    }
+    if (tab.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
+        updateGoogleTaskTitle(tab.googleTaskListId, task.googleTaskId, task.text);
+    }
+}
+
+async function recreateDeletedTaskOnRemote(item, task) {
+    if (item.basecampListId && basecampConfig.isConnected && task.basecampId) {
+        createBasecampTodo(item.tabId, task);
+    }
+    if (item.remindersListId && remindersConfig.isConnected && task.remindersId) {
+        const newId = await createRemindersTask(item.remindersListId, task.text);
+        if (newId) task.remindersId = newId;
+    }
+    if (item.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
+        const newId = await createGoogleTask(item.googleTaskListId, task);
+        if (newId) task.googleTaskId = newId;
+    }
+}
+
+function deleteCompletedTasksOnRemote(tabId, tab) {
+    if (tab.basecampListId && basecampConfig.isConnected) {
+        tab.tasks
+            .filter(task => task.completed && task.basecampId)
+            .forEach(task => deleteBasecampTodo(tabId, task.basecampId));
+    }
+    if (tab.googleTaskListId && googleTasksConfig.isConnected) {
+        tab.tasks
+            .filter(task => task.completed && task.googleTaskId)
+            .forEach(task => deleteGoogleTask(tab.googleTaskListId, task.googleTaskId));
+    }
+}
+
+/** Queue sync promises for every connected remote linked to this tab. */
+function collectRemoteSyncPromises(tabId) {
+    const tab = tabs[tabId];
+    if (!tab) return [];
+
+    const promises = [];
+    if (tab.basecampListId && basecampConfig.isConnected) {
+        promises.push(syncBasecampList(tabId));
+    }
+    if (tab.remindersListId && remindersConfig.isConnected) {
+        promises.push(syncRemindersList(tabId));
+    }
+    if (tab.googleTaskListId && googleTasksConfig.isConnected) {
+        promises.push(syncGoogleList(tabId));
+    }
+    return promises;
 }
 
 // First local (non-synced) list, creating one if none exist.
@@ -5215,15 +5272,9 @@ function setupEventListeners() {
                 (async () => {
                     try {
                         for (const tabId of syncedTabsWithFavs) {
-                            const tab = tabs[tabId];
-                            if (tab.basecampListId && basecampConfig.isConnected) {
-                                await syncBasecampList(tabId);
-                            }
-                            if (tab.remindersListId && remindersConfig.isConnected) {
-                                await syncRemindersList(tabId);
-                            }
-                            if (tab.googleTaskListId && googleTasksConfig.isConnected) {
-                                await syncGoogleList(tabId);
+                            // Sequential per remote to avoid Basecamp rate-limit stampedes
+                            for (const syncPromise of collectRemoteSyncPromises(tabId)) {
+                                await syncPromise;
                             }
                         }
                     } finally {
@@ -5287,19 +5338,7 @@ function setupEventListeners() {
 
             syncBtn.classList.add('spinning');
 
-            const promises = [];
-
-            if (tab.basecampListId && basecampConfig.isConnected) {
-                promises.push(syncBasecampList(currentTabId));
-            }
-            if (tab.remindersListId && remindersConfig.isConnected) {
-                promises.push(syncRemindersList(currentTabId));
-            }
-            if (tab.googleTaskListId && googleTasksConfig.isConnected) {
-                promises.push(syncGoogleList(currentTabId));
-            }
-
-            Promise.all(promises).finally(() => {
+            Promise.all(collectRemoteSyncPromises(currentTabId)).finally(() => {
                 setTimeout(() => syncBtn.classList.remove('spinning'), 500);
             });
         });
@@ -6350,20 +6389,7 @@ function setupEventListeners() {
             };
             showUndoToast(`${completedTasksLocal.length} completed task${completedTasksLocal.length === 1 ? '' : 's'} deleted`);
 
-            // If connected to Basecamp, delete all completed tasks remotely
-            if (currentTab.basecampListId && basecampConfig.isConnected) {
-                const completedTasks = currentTab.tasks.filter(task => task.completed && task.basecampId);
-                completedTasks.forEach(task => {
-                    deleteBasecampTodo(currentTabId, task.basecampId);
-                });
-            }
-
-            // If connected to Google Tasks, delete all completed tasks remotely
-            if (currentTab.googleTaskListId && googleTasksConfig.isConnected) {
-                currentTab.tasks
-                    .filter(task => task.completed && task.googleTaskId)
-                    .forEach(task => deleteGoogleTask(currentTab.googleTaskListId, task.googleTaskId));
-            }
+            deleteCompletedTasksOnRemote(currentTabId, currentTab);
 
             // Keep only incomplete tasks
             tabs[currentTabId].tasks = tabs[currentTabId].tasks.filter(task => !task.completed);
@@ -7721,20 +7747,7 @@ function editTaskText(taskId, textElement) {
         if (newText) {
             task.text = newText;
 
-            // If connected to Basecamp and task has a remote ID, sync the change
-            if (tab.basecampListId && basecampConfig.isConnected && task.basecampId) {
-                updateBasecampTodoText(tabId, task);
-            }
-
-            // If connected to Reminders, sync text change
-            if (tab.remindersListId && remindersConfig.isConnected && task.remindersId) {
-                updateRemindersTitle(task.remindersId, task.text);
-            }
-
-            // If connected to Google Tasks, sync text change
-            if (tab.googleTaskListId && googleTasksConfig.isConnected && task.googleTaskId) {
-                updateGoogleTaskTitle(tab.googleTaskListId, task.googleTaskId, task.text);
-            }
+            pushRemoteTaskTitle(tabId, tab, task);
 
             saveData();
 
@@ -8898,40 +8911,11 @@ async function syncBasecampList(tabId) {
             if (localTask) {
                 // Timestamp-based conflict resolution for completion status
                 if (localTask.completed !== remote.completed) {
-                    // Use statusChangedAt for local (tracks any status change), fallback to completedAt
-                    const localTime = localTask.statusChangedAt ? new Date(localTask.statusChangedAt).getTime() :
-                        (localTask.completedAt ? new Date(localTask.completedAt).getTime() : 0);
-                    // Basecamp: use updated_at for any change, or completion.created_at for completion
+                    const localTime = toTime(localTask.statusChangedAt || localTask.completedAt);
                     const remoteCompletedAt = remote.completion?.created_at;
-                    const remoteTime = remote.updated_at ? new Date(remote.updated_at).getTime() :
-                        (remoteCompletedAt ? new Date(remoteCompletedAt).getTime() : 0);
+                    const remoteTime = toTime(remote.updated_at || remoteCompletedAt);
 
-                    // Debug logging
-                    console.log('Basecamp sync conflict for:', localTask.text);
-                    console.log('  Local:', localTask.completed, 'statusChangedAt:', localTask.statusChangedAt, 'time:', localTime);
-                    console.log('  Remote:', remote.completed, 'updated_at:', remote.updated_at, 'time:', remoteTime);
-
-                    // Determine which one wins based on timestamps
-                    let useRemote = false;
-
-                    if (localTime > 0 && remoteTime > 0) {
-                        // Both have timestamps - most recent wins
-                        useRemote = remoteTime > localTime;
-                    } else if (remoteTime > 0 && localTime === 0) {
-                        // Remote has timestamp, local doesn't - remote wins
-                        // (remote was actively completed at a known time)
-                        useRemote = true;
-                    } else if (localTime > 0 && remoteTime === 0) {
-                        // Local has timestamp, remote doesn't - local wins
-                        useRemote = false;
-                    } else {
-                        // Neither has timestamps - prefer completed state to avoid losing work
-                        useRemote = remote.completed && !localTask.completed;
-                    }
-
-                    console.log('  Decision: useRemote =', useRemote);
-
-                    if (useRemote) {
+                    if (remoteWins(localTime, remoteTime, remote.completed && !localTask.completed)) {
                         localTask.completed = remote.completed;
                         localTask.completedAt = remoteCompletedAt || null;
                         localTask.statusChangedAt = remote.updated_at || remoteCompletedAt || null;
@@ -8947,44 +8931,18 @@ async function syncBasecampList(tabId) {
                 }
 
                 // Timestamp-based conflict resolution for notes/description
-                // Normalize notes for comparison (empty string, null, undefined are all "no notes")
                 const localNotes = localTask.notes || '';
                 const remoteDescription = remote.description || '';
 
                 if (localNotes !== remoteDescription) {
-                    // Use notesChangedAt for local, updated_at for remote
-                    const localNotesTime = localTask.notesChangedAt ? new Date(localTask.notesChangedAt).getTime() : 0;
-                    const remoteTime = remote.updated_at ? new Date(remote.updated_at).getTime() : 0;
+                    const localNotesTime = toTime(localTask.notesChangedAt);
+                    const remoteTime = toTime(remote.updated_at);
 
-                    // Debug logging
-                    console.log('Basecamp notes sync conflict for:', localTask.text);
-                    console.log('  Local notes:', localNotes.substring(0, 50), 'notesChangedAt:', localTask.notesChangedAt, 'time:', localNotesTime);
-                    console.log('  Remote description:', remoteDescription.substring(0, 50), 'updated_at:', remote.updated_at, 'time:', remoteTime);
-
-                    let useRemoteNotes = false;
-
-                    if (localNotesTime > 0 && remoteTime > 0) {
-                        // Both have timestamps - most recent wins
-                        useRemoteNotes = remoteTime > localNotesTime;
-                    } else if (remoteTime > 0 && localNotesTime === 0) {
-                        // Remote has timestamp, local doesn't - remote wins
-                        useRemoteNotes = true;
-                    } else if (localNotesTime > 0 && remoteTime === 0) {
-                        // Local has timestamp, remote doesn't - local wins
-                        useRemoteNotes = false;
-                    } else {
-                        // Neither has timestamps - prefer having content to avoid losing work
-                        useRemoteNotes = remoteDescription && !localNotes;
-                    }
-
-                    console.log('  Decision: useRemoteNotes =', useRemoteNotes);
-
-                    if (useRemoteNotes) {
+                    if (remoteWins(localNotesTime, remoteTime, remoteDescription && !localNotes)) {
                         localTask.notes = remoteDescription;
                         localTask.notesChangedAt = remote.updated_at || null;
                         changes = true;
                     } else if (localNotes) {
-                        // Push local notes to Basecamp as description
                         updateBasecampTodoDescription(tabId, localTask);
                     }
                 }
@@ -9350,14 +9308,10 @@ async function refreshGoogleToken() {
 }
 
 // Tauri's HTTP client bypasses CORS; fall back to window.fetch elsewhere.
-function googleFetchFn() {
-    return (reddIsTauri && typeof tauriAPI !== 'undefined' && tauriAPI.fetch)
+async function googleFetch(url, options = {}) {
+    const fetchFn = (reddIsTauri && typeof tauriAPI !== 'undefined' && tauriAPI.fetch)
         ? tauriAPI.fetch.bind(tauriAPI)
         : fetch;
-}
-
-async function googleFetch(url, options = {}) {
-    const fetchFn = googleFetchFn();
     const headers = { ...(options.headers || {}) };
     headers['Authorization'] = `Bearer ${googleTasksConfig.accessToken}`;
 
@@ -9476,18 +9430,6 @@ async function deleteGoogleTask(listId, googleId) {
     } catch (e) {
         console.error('[Google Tasks] Delete error:', e);
     }
-}
-
-/** Last-writer-wins. Falls back to `preferRemote` when a timestamp is missing. */
-function remoteWins(localTime, remoteTime, preferRemote) {
-    if (localTime > 0 && remoteTime > 0) return remoteTime > localTime;
-    if (remoteTime > 0) return true;
-    if (localTime > 0) return false;
-    return !!preferRemote;
-}
-
-function toTime(value) {
-    return value ? new Date(value).getTime() : 0;
 }
 
 async function syncGoogleList(tabId) {
@@ -9642,38 +9584,11 @@ async function syncRemindersList(tabId) {
             if (existingTask) {
                 // Timestamp-based conflict resolution for completion status
                 if (existingTask.completed !== rTask.completed) {
-                    // Use statusChangedAt for local (tracks any status change)
-                    // Use lastModifiedDate for remote (tracks any modification including un-completing)
-                    const localTime = existingTask.statusChangedAt ? new Date(existingTask.statusChangedAt).getTime() :
-                        (existingTask.completedAt ? new Date(existingTask.completedAt).getTime() : 0);
-                    // lastModifiedDate is Unix timestamp in seconds, convert to ms
+                    const localTime = toTime(existingTask.statusChangedAt || existingTask.completedAt);
+                    // lastModifiedDate is Unix timestamp in seconds
                     const remoteTime = rTask.lastModifiedDate ? rTask.lastModifiedDate * 1000 : 0;
 
-                    // Debug logging
-                    console.log('Reminders sync conflict for:', existingTask.text);
-                    console.log('  Local:', existingTask.completed, 'statusChangedAt:', existingTask.statusChangedAt, 'time:', localTime);
-                    console.log('  Remote:', rTask.completed, 'lastModifiedDate:', rTask.lastModifiedDate, 'time:', remoteTime);
-
-                    // Determine which one wins based on timestamps
-                    let useRemote = false;
-
-                    if (localTime > 0 && remoteTime > 0) {
-                        // Both have timestamps - most recent wins
-                        useRemote = remoteTime > localTime;
-                    } else if (remoteTime > 0 && localTime === 0) {
-                        // Remote has timestamp, local doesn't - remote wins
-                        useRemote = true;
-                    } else if (localTime > 0 && remoteTime === 0) {
-                        // Local has timestamp, remote doesn't - local wins
-                        useRemote = false;
-                    } else {
-                        // Neither has timestamps - prefer completed state to avoid losing work
-                        useRemote = rTask.completed && !existingTask.completed;
-                    }
-
-                    console.log('  Decision: useRemote =', useRemote);
-
-                    if (useRemote) {
+                    if (remoteWins(localTime, remoteTime, rTask.completed && !existingTask.completed)) {
                         existingTask.completed = rTask.completed;
                         existingTask.completedAt = rTask.completionDate ? new Date(rTask.completionDate * 1000).toISOString() : null;
                         existingTask.statusChangedAt = rTask.lastModifiedDate ? new Date(rTask.lastModifiedDate * 1000).toISOString() : null;
@@ -9689,52 +9604,21 @@ async function syncRemindersList(tabId) {
                 }
 
                 // Timestamp-based conflict resolution for notes
-                // Normalize notes for comparison (empty string, null, undefined are all "no notes")
                 const localNotes = existingTask.notes || '';
                 const remoteNotes = rTask.notes || '';
-
-                // Extract plain text from local notes for comparison (local may have HTML from Quill)
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = localNotes;
-                const localPlainText = (tempDiv.textContent || tempDiv.innerText || '').trim();
+                const localPlainText = htmlToPlainText(localNotes);
                 const remotePlainText = remoteNotes.trim();
 
-                // Only consider it a conflict if the plain text content actually differs
-                // This preserves local HTML formatting when we push to Reminders and it comes back as plain text
+                // Compare plain text so pushing HTML notes and reading them back doesn't look like a conflict
                 if (localPlainText !== remotePlainText) {
-                    // Use notesChangedAt for local, lastModifiedDate for remote
-                    const localNotesTime = existingTask.notesChangedAt ? new Date(existingTask.notesChangedAt).getTime() : 0;
+                    const localNotesTime = toTime(existingTask.notesChangedAt);
                     const remoteTime = rTask.lastModifiedDate ? rTask.lastModifiedDate * 1000 : 0;
 
-                    // Debug logging
-                    console.log('Reminders notes sync conflict for:', existingTask.text);
-                    console.log('  Local plain text:', localPlainText.substring(0, 50), 'notesChangedAt:', existingTask.notesChangedAt, 'time:', localNotesTime);
-                    console.log('  Remote plain text:', remotePlainText.substring(0, 50), 'lastModifiedDate:', rTask.lastModifiedDate, 'time:', remoteTime);
-
-                    let useRemoteNotes = false;
-
-                    if (localNotesTime > 0 && remoteTime > 0) {
-                        // Both have timestamps - most recent wins
-                        useRemoteNotes = remoteTime > localNotesTime;
-                    } else if (remoteTime > 0 && localNotesTime === 0) {
-                        // Remote has timestamp, local doesn't - remote wins
-                        useRemoteNotes = true;
-                    } else if (localNotesTime > 0 && remoteTime === 0) {
-                        // Local has timestamp, remote doesn't - local wins
-                        useRemoteNotes = false;
-                    } else {
-                        // Neither has timestamps - prefer having content to avoid losing work
-                        useRemoteNotes = remotePlainText && !localPlainText;
-                    }
-
-                    console.log('  Decision: useRemoteNotes =', useRemoteNotes);
-
-                    if (useRemoteNotes) {
+                    if (remoteWins(localNotesTime, remoteTime, remotePlainText && !localPlainText)) {
                         existingTask.notes = remoteNotes;
                         existingTask.notesChangedAt = rTask.lastModifiedDate ? new Date(rTask.lastModifiedDate * 1000).toISOString() : null;
                         changes = true;
                     } else if (localNotes) {
-                        // Push local notes to remote
                         updateRemindersNotes(existingTask.remindersId, localNotes);
                     }
                 }
