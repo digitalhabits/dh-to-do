@@ -2,6 +2,7 @@ mod commands;
 mod opener;
 
 use commands::app::*;
+use commands::google::*;
 use commands::oauth::*;
 use commands::reminders::*;
 use commands::window::*;
@@ -309,6 +310,9 @@ pub fn run() {
             // OAuth commands
             start_basecamp_auth,
             handle_oauth_callback,
+            // Google Tasks commands
+            start_google_auth,
+            refresh_google_token,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

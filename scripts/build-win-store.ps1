@@ -8,6 +8,8 @@
 #   - Node 20+, Rust target, Windows SDK (makeappx)
 #   - WINDOWS_IDENTITY_NAME, WINDOWS_PUBLISHER, WINDOWS_PUBLISHER_DISPLAY_NAME
 #     (env or .env)
+#   - Optional until Google Tasks ships: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#     (env or .env; baked into the binary at compile time via build.rs)
 #   - assets/1024x1024.png for MSIX assets
 #
 # Output:

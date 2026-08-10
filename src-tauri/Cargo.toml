@@ -37,6 +37,10 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 tauri-plugin-http = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+# PKCE for the Google Tasks OAuth flow (commands/google.rs)
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"

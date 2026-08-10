@@ -3798,8 +3798,10 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 name = "redd-todo"
 version = "2.9.0"
 dependencies = [
+ "base64 0.22.1",
  "block2",
  "dotenvy",
+ "getrandom 0.3.4",
  "log",
  "objc2",
  "objc2-app-kit",
@@ -3809,6 +3811,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-nspanel",

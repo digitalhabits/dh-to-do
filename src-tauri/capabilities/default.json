@@ -37,6 +37,9 @@
           "url": "https://todo.digitalhabits.org/api/auth"
         },
         {
+          "url": "https://tasks.googleapis.com/*"
+        },
+        {
           "url": "https://*"
         },
         {
