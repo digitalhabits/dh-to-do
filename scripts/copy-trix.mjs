@@ -19,7 +19,7 @@
  */
 import { createRequire } from "node:module";
 import { copyFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
@@ -47,7 +47,9 @@ const TARGETS = [
 for (const dir of TARGETS) {
   mkdirSync(dir, { recursive: true });
   for (const source of SOURCES) {
-    copyFileSync(source, join(dir, source.split("/").pop()));
+    // `basename`, not a split on "/": on Windows the path has backslashes,
+    // and the whole path came back as the file name.
+    copyFileSync(source, join(dir, basename(source)));
   }
 }
 
