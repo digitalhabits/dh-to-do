@@ -36,7 +36,7 @@
   "bundle": {
     "active": true,
     "category": "Productivity",
-    "copyright": "Copyright © 2026 Centre for Digital Habits C.I.C.",
+    "copyright": "Copyright © 2026 Centre for Digital Habits CIC",
     "shortDescription": "Digital Habits: To-Do - Keep your goals in sight and get back to what you wanted to do",
     "targets": ["app", "dmg"],
     "macOS": {
