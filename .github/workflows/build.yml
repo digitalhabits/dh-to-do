@@ -304,11 +304,32 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # 2.9.0 went out as one .msixbundle, and Partner Center then demands a
+      # bundle for every later submission: two loose .msix files are refused
+      # ("Subsequent submissions must continue to contain a .msixbundle"). The
+      # submit job made its own bundle, so a package uploaded by hand had none.
+      # The bundle is made here, so every run gives the one file to upload.
+      - name: Bundle for the Store
+        shell: pwsh
+        run: |
+          $dir = 'apps/todo/for-distribution'
+          $makeappx = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makeappx.exe' |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $makeappx) { throw 'makeappx.exe not found: the Windows SDK is missing on this runner.' }
+          $stage = Join-Path $env:RUNNER_TEMP 'bundle-stage'
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item (Join-Path $dir '*.msix') $stage
+          $out = Join-Path $dir 'Digital-Habits-To-Do_${{ steps.version.outputs.version }}_store.msixbundle'
+          & $makeappx.FullName bundle /d $stage /p $out /o
+          if ($LASTEXITCODE -ne 0) { throw "makeappx bundle failed with code $LASTEXITCODE" }
+
       - name: Write the checksums and say what was packaged
         shell: pwsh
         run: |
           $lines = @("## Digital Habits To-Do ${{ steps.version.outputs.version }} — Microsoft Store", '')
-          foreach ($file in Get-ChildItem 'apps/todo/for-distribution/*.msix') {
+          $files = @(Get-ChildItem 'apps/todo/for-distribution/*.msix') + @(Get-ChildItem 'apps/todo/for-distribution/*.msixbundle')
+          foreach ($file in $files) {
             $digest = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
             "$digest  $($file.Name)" | Set-Content -NoNewline -Encoding ascii "$($file.FullName).sha256"
             $mb = [math]::Round($file.Length / 1MB, 1)
@@ -320,7 +341,9 @@ jobs:
       - name: Attest where the packages came from
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: apps/todo/for-distribution/*.msix
+          subject-path: |
+            apps/todo/for-distribution/*.msix
+            apps/todo/for-distribution/*.msixbundle
 
       - name: Keep the packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -328,6 +351,7 @@ jobs:
           name: todo-windows-${{ steps.version.outputs.version }}
           path: |
             apps/todo/for-distribution/*.msix
+            apps/todo/for-distribution/*.msixbundle
             apps/todo/for-distribution/*.sha256
           if-no-files-found: error
           retention-days: 30
