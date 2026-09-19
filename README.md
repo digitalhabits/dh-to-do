@@ -1,68 +1,24 @@
 # Digital Habits: To-Do
 
-A simple to-do app that helps you do one thing at a time. A small window stays
-on top of your other windows and shows the task you are on, with a timer.
-Developed by Centre for Digital Habits (digitalhabits.org; lead developer is
-Dr Ulrik Lyngs, ulrik@digitalhabits.org).
+Get back to that thing you meant to do. A to-do app with a floating reminder
+of the task you are on, simple lists, and easy time tracking. It is free, and
+it collects no data. From the [Centre for Digital Habits](https://digitalhabits.org).
 
-> **This is a snapshot of each release, not the development history.**
->
-> The app is built in our private monorepo, where it is also the To-Do tab of
-> the planner that our team uses each day. We export each release here whole,
-> so one commit is one version.
->
-> Versions 2.x were a different code base, written in plain JavaScript. That
-> code and its history are on the branch `legacy-2.x`.
+**Get it:** [Mac App Store](https://apps.apple.com/gb/app/id6760351681) · [Microsoft Store](https://apps.microsoft.com/detail/9P48NJXCBBGH)
 
-![The board: Backlog, Soon (-ish) and Today, with the people a task is for, its time and its due day](apps/todo/docs/screenshots/board.png)
+![Keep your goals in sight: a floating reminder of your task, minimalist task lists, and expected and spent time](apps/todo/store-listing/screenshots/mac/en/01-goals-in-sight.png)
 
-<p align="center">
-  <em>The board. Each task shows who it is for, how long it takes, when it
-  is due, and the list it is on. The pictures on this page are of an invented
-  board.</em>
-</p>
+![Make it easy to stay on track: tabs for your lists, favourites, time for each task, and focus mode](apps/todo/store-listing/screenshots/mac/en/02-stay-on-track.png)
 
-## What it does
+![Remember your main quest: the floating reminder can be moved and sized, or fill the screen](apps/todo/store-listing/screenshots/mac/en/03-main-quest.png)
 
-- **Board View.** Your tasks in three columns: Backlog, Soon (-ish) and
-  Today. A Someday column is optional. The app starts with one list, and
-  Board View is in Settings.
-- **Start your day.** Today opens as a full-screen session that takes you
-  through your tasks one at a time.
-- **Tasks.** A task can have a duration, a due date, notes with pictures, and
-  subtasks. On its due day a task moves to Today. Drag a task to move it.
-- **People.** Turn on Assign tasks in Settings to give tasks to people and to
-  filter the board by person.
-- **Focus mode.** One task in a small window that stays on top, with a timer
-  that counts against the time you gave the task. It can also fill the screen.
-- **Apple Reminders** on macOS. A list can follow a Reminders list in both
-  directions.
-- **Basecamp.** A list can follow a Basecamp to-do list in both directions,
-  with assignees.
-- **English and Danish.**
+![Board View: your tasks in columns for Backlog, Soon (-ish) and Today, and Today as a full-screen session](apps/todo/store-listing/screenshots/mac/en/04-board-view.png)
 
-![Today as a full-screen session: one task with its timer, and the next ones under it](apps/todo/docs/screenshots/today-session.png)
+![Calendar View: a Danish-style calendar of the months or the week, with your tasks, goals and calendars](apps/todo/store-listing/screenshots/mac/en/05-calendar-view.png)
 
-<p align="center">
-  <em>Start your day. Press Start on the Today column, and the app takes you
-  through today's tasks one at a time, with a timer for the task in hand.</em>
-</p>
+![Based on more than ten years of research on digital distraction, with public source code and no data collected](apps/todo/store-listing/screenshots/mac/en/06-research-and-privacy.png)
 
-![An open task: its list, its people, its duration, its due date, its notes and its subtasks](apps/todo/docs/screenshots/task.png)
-
-<p align="center">
-  <em>An open task. People, a duration, a due date, notes, and subtasks that
-  you tick off one by one.</em>
-</p>
-
-<p align="center">
-  <img src="apps/todo/docs/screenshots/list.png" alt="The same tasks as one list, in a narrow window" width="420">
-</p>
-
-<p align="center">
-  <em>With Board View off, or in a narrow window, the same tasks are one
-  list.</em>
-</p>
+The pictures are the ones on the store pages. The tasks in them are invented.
 
 ## How it works
 
@@ -103,6 +59,19 @@ unmodified and this builds the way the released app builds.
   in `src/seams` for the parts that only the planner has
 - `products/todo/packages/todo` — the interface and the task logic
 - `packages/shared` — code that the monorepo also uses in other apps
+
+## About this repository
+
+This is a snapshot of each release, not the development history. The app is
+built in our private monorepo, where it is also the To-Do tab of the planner
+that our team uses each day. We export each release here whole, so one commit
+is one version.
+
+Versions 2.x were a different code base, written in plain JavaScript. That
+code and its history are on the branch `legacy-2.x`.
+
+Lead developer: Dr Ulrik Lyngs, ulrik@digitalhabits.org. Tell us about a fault
+or an idea in the [issues](https://github.com/digitalhabits/dh-to-do/issues).
 
 ## Licence
 
