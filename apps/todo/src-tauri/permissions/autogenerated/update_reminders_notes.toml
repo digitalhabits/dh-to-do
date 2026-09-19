@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-reminders-notes"
+description = "Enables the update_reminders_notes command without any pre-configured scope."
+commands.allow = ["update_reminders_notes"]
+
+[[permission]]
+identifier = "deny-update-reminders-notes"
+description = "Denies the update_reminders_notes command without any pre-configured scope."
+commands.deny = ["update_reminders_notes"]

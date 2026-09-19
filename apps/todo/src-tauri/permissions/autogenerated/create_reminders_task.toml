@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-reminders-task"
+description = "Enables the create_reminders_task command without any pre-configured scope."
+commands.allow = ["create_reminders_task"]
+
+[[permission]]
+identifier = "deny-create-reminders-task"
+description = "Denies the create_reminders_task command without any pre-configured scope."
+commands.deny = ["create_reminders_task"]

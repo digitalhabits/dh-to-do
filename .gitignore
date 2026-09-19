@@ -1,45 +1,14 @@
-# Dependencies
 node_modules/
-
-# Amplify Hosting build output
-hosting/.amplify-hosting/
-
-# Production
 dist/
-release/
-for-distribution/
-msix-build/
-build/ReDD_Todo_New.provisionprofile
-*.mobileprovision
-*.provisionprofile
-profile.plist
-src-tauri/tauri.appstore.temp.conf.json
-src-tauri/src-tauri/target/
-src-tauri/target/
-
-# System Files
-.DS_Store
-Thumbs.db
-ehthumbs.db
-desktop.ini
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Environment variables
+target/
+*.tsbuildinfo
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Editor/IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-.cursor/
+.env.*
+!.env.example
+*.provisionprofile
+*.p12
+*.p8
+.DS_Store
+apps/todo/public/redd-do-calendar/
+apps/todo/public/vendor/
+public/vendor/

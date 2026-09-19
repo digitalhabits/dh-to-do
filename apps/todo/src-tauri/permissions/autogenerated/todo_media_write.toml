@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-media-write"
+description = "Enables the todo_media_write command without any pre-configured scope."
+commands.allow = ["todo_media_write"]
+
+[[permission]]
+identifier = "deny-todo-media-write"
+description = "Denies the todo_media_write command without any pre-configured scope."
+commands.deny = ["todo_media_write"]

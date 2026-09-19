@@ -1,0 +1,176 @@
+# Mac App Store submission lane for CI (Release build / Mac App Store submission).
+#
+# Uploads the .pkg built by scripts/build-mas-package.cjs (pnpm app:build:mas),
+# stamps the macOS "What's new" (from scripts/changelog-to-store-whats-new.js
+# --platform macos; see changelog-style.md), and submits for review with
+# automatic release after approval — the App Store Connect equivalent of
+# scripts/submit-microsoft-store.ps1.
+#
+# Auth: App Store Connect API key via env vars (see the head of mirror/workflows/build.yml):
+#   APP_STORE_CONNECT_API_KEY_ID          Key ID
+#   APP_STORE_CONNECT_API_ISSUER_ID       Issuer ID
+#   APP_STORE_CONNECT_API_KEY_P8          base64 of the .p8 private key
+#
+# Usage:
+#   fastlane mac submit_mac_app_store version:2.7.8 pkg:"path/to.pkg" notes:whats_new_mas.txt
+#   # Retry with an already-uploaded binary (skip upload, pick build by number):
+#   fastlane mac submit_mac_app_store version:2.7.8 notes:whats_new_mas.txt build_number:2.7.8
+#   # Also replace the store pictures with store-listing/screenshots/mac/en/*.png:
+#   fastlane mac submit_mac_app_store version:3.0.0 pkg:"path/to.pkg" notes:whats_new_mas.txt screenshots:true
+#
+# The pictures are made by scripts/todo-store-assets.mjs in the monorepo. App
+# Store Connect keeps the pictures of the version before, so they are sent
+# only when they changed. The app preview video is not touched.
+
+require "fileutils"
+require "tmpdir"
+
+default_platform(:mac)
+
+# Fail before deliver if this platform already has a version in review.
+# Auto-withdrawing is intentionally not done — fix App Store Connect manually.
+def fail_if_app_store_review_in_progress!(app_identifier:, platform:, version:)
+  app = Spaceship::ConnectAPI::App.find(app_identifier)
+  UI.user_error!("App Store Connect app not found: #{app_identifier}") unless app
+
+  platform_api = Spaceship::ConnectAPI::Platform.map(platform)
+  store_label = platform.to_s == "osx" ? "Mac App Store" : "iOS App Store"
+
+  submission = app.get_in_progress_review_submission(
+    platform: platform_api,
+    includes: "appStoreVersionForReview"
+  )
+  return if submission.nil?
+
+  blocked = submission.app_store_version_for_review
+  blocked_version = blocked&.version_string.to_s
+  blocked_version = "(unknown)" if blocked_version.empty?
+  state = submission.state.to_s
+
+  state_human =
+    case state
+    when "WAITING_FOR_REVIEW" then "waiting for review"
+    when "IN_REVIEW" then "in review"
+    when "UNRESOLVED_ISSUES" then "blocked by unresolved review issues"
+    else
+      state.empty? ? "in review" : state.downcase.tr("_", " ")
+    end
+
+  if blocked_version == version.to_s
+    UI.user_error!(
+      "v#{version} is already #{state_human} on the #{store_label}.\n" \
+      "Do not re-run auto-submit. In App Store Connect, verify the attached " \
+      "build and What's New are correct, or remove from review and fix " \
+      "manually, then re-run Mac App Store submission with skip_binary_upload " \
+      "if needed."
+    )
+  end
+
+  UI.user_error!(
+    "v#{blocked_version} is already #{state_human} on the #{store_label}.\n" \
+    "Refusing to submit v#{version} automatically (would risk attaching the " \
+    "wrong build).\n" \
+    "In App Store Connect: remove v#{blocked_version} from review (or wait " \
+    "for approval), merge What's New into the v#{version} changelog if that " \
+    "version never shipped, then re-run this workflow."
+  )
+end
+
+platform :mac do
+  desc "Upload MAS pkg + What's new to App Store Connect and submit for review"
+  lane :submit_mac_app_store do |options|
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_API_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY_P8"),
+      is_key_content_base64: true
+    )
+
+    # fastlane runs lanes from the fastlane/ directory, so paths passed from
+    # the repo root won't resolve as-is — fall back to the parent directory.
+    resolve_path = lambda do |raw|
+      p = raw.to_s.strip
+      return nil if p.empty?
+      return p if File.exist?(p)
+      from_root = File.expand_path(p, "..")
+      File.exist?(from_root) ? from_root : p
+    end
+
+    version = options.fetch(:version)
+    notes_path = resolve_path.call(options.fetch(:notes))
+    UI.user_error!("What's new file not found: #{options[:notes]}") unless notes_path && File.exist?(notes_path)
+    notes = File.read(notes_path).strip
+    UI.user_error!("What's new file is empty — nothing macOS-facing to submit") if notes.empty?
+
+    # Listing copy lives in store-listing/ so CI does not depend on leftover
+    # App Store Connect text. Promo text also does not reliably persist across
+    # versions — stamp both every submit. See the head of mirror/workflows/build.yml.
+    listing_root = File.expand_path("../store-listing", __dir__)
+    description_path = File.join(listing_root, "description.txt")
+    promo_path = File.join(listing_root, "promotional_text.txt")
+    UI.user_error!("Missing #{description_path}") unless File.exist?(description_path)
+    UI.user_error!("Missing #{promo_path}") unless File.exist?(promo_path)
+    description = File.read(description_path).strip
+    promotional_text = File.read(promo_path).strip
+    UI.user_error!("store-listing/description.txt is empty") if description.empty?
+    UI.user_error!("store-listing/promotional_text.txt is empty") if promotional_text.empty?
+
+    pkg = resolve_path.call(options[:pkg])
+    UI.user_error!("PKG not found: #{options[:pkg]}") if !options[:pkg].to_s.strip.empty? && !File.exist?(pkg.to_s)
+    build_number = options[:build_number].to_s.strip
+    build_number = nil if build_number.empty?
+
+    # App Store Connect requires whatsNew on the real listing locale. Passing
+    # only "default" never stamps it; using the wrong locale (e.g. en-US when
+    # primary is en-GB) can activate an empty extra localization and break
+    # submit. Confirm Primary Language in App Store Connect → App Information.
+    # Default here matches Digital Habits: Blocker (English U.K.); override via
+    # ASC_PRIMARY_LOCALE if needed.
+    locale = ENV["ASC_PRIMARY_LOCALE"].to_s.strip
+    locale = "en-GB" if locale.empty?
+
+    # The store pictures, only when asked for. deliver wants one folder for
+    # each locale, named as the locale is, so the pictures are copied to one.
+    upload_screenshots = options[:screenshots].to_s.strip == "true"
+    screenshots_root = nil
+    if upload_screenshots
+      pictures = Dir.glob(File.join(listing_root, "screenshots", "mac", "en", "*.png")).sort
+      UI.user_error!("No pictures in store-listing/screenshots/mac/en") if pictures.empty?
+      screenshots_root = Dir.mktmpdir("todo-store-pictures")
+      FileUtils.mkdir_p(File.join(screenshots_root, locale))
+      FileUtils.cp(pictures, File.join(screenshots_root, locale))
+      UI.message("Sending #{pictures.length} store pictures for #{locale}")
+    end
+
+    fail_if_app_store_review_in_progress!(
+      app_identifier: "com.redd.do",
+      platform: "osx",
+      version: version
+    )
+
+    deliver(
+      api_key: api_key,
+      app_identifier: "com.redd.do",
+      app_version: version,
+      platform: "osx",
+      pkg: pkg,
+      skip_binary_upload: pkg.nil?,
+      build_number: build_number,
+      languages: [locale],
+      description: { locale => description },
+      release_notes: { locale => notes },
+      promotional_text: { locale => promotional_text },
+      submit_for_review: true,
+      automatic_release: true,
+      skip_screenshots: !upload_screenshots,
+      screenshots_path: screenshots_root,
+      overwrite_screenshots: upload_screenshots,
+      skip_metadata: false,
+      force: true, # no interactive HTML preview in CI
+      run_precheck_before_submit: false,
+      submission_information: {
+        export_compliance_uses_encryption: false
+      }
+    )
+  end
+end

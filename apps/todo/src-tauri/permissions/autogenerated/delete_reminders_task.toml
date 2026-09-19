@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-reminders-task"
+description = "Enables the delete_reminders_task command without any pre-configured scope."
+commands.allow = ["delete_reminders_task"]
+
+[[permission]]
+identifier = "deny-delete-reminders-task"
+description = "Denies the delete_reminders_task command without any pre-configured scope."
+commands.deny = ["delete_reminders_task"]

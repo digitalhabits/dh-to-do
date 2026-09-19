@@ -1,34 +1,33 @@
 {
-  "name": "redd-todo",
-  "version": "2.9.0",
-  "description": "Digital Habits: To-Do - Keep your goals in sight and get back to what you wanted to do",
-  "scripts": {
-    "dev": "tauri dev",
-    "tauri:build:mas-app": "APP_STORE=1 CI=true tauri build --target universal-apple-darwin --bundles app --config src-tauri/tauri.appstore.temp.conf.json",
-    "build": "tauri build && node scripts/collect-distribution-artifacts.js",
-    "build:mac": "rm -f src-tauri/target/universal-apple-darwin/release/bundle/macos/rw.*.dmg src-tauri/target/universal-apple-darwin/release/bundle/dmg/rw.*.dmg && CARGO_TARGET_DIR=target CI=false tauri build --target universal-apple-darwin && node scripts/collect-distribution-artifacts.js --target universal-apple-darwin && node scripts/notarize-direct-mac.js && node scripts/build-mas-package.js --skip-tauri-build --optional",
-    "build:mas": "node scripts/build-mas-package.js",
-    "build:win": "powershell -ExecutionPolicy Bypass -File scripts/build-win-store.ps1 -x64Only",
-    "build:win-store": "powershell -ExecutionPolicy Bypass -File scripts/build-win-store.ps1 -x64Only",
-    "build:linux": "bash scripts/build-linux.sh && node scripts/collect-distribution-artifacts.js --target x86_64-unknown-linux-gnu && node scripts/normalize-linux-artifact-names.js x86_64-unknown-linux-gnu"
-  },
-  "keywords": [
-    "todo",
-    "task",
-    "productivity"
-  ],
-  "author": {
-    "name": "Centre for Digital Habits",
-    "email": "team@digitalhabits.org"
-  },
+  "name": "digital-habits-to-do",
+  "version": "3.0.0",
+  "private": true,
   "license": "CC-BY-NC-ND-3.0",
+  "packageManager": "pnpm@9.14.4",
+  "scripts": {
+    "dev": "pnpm --dir apps/todo app:dev",
+    "build": "pnpm --dir apps/todo app:build",
+    "typecheck": "pnpm --dir apps/todo typecheck"
+  },
   "dependencies": {
-    "@tauri-apps/api": "~2.11.1"
+    "@redd/todo": "workspace:*",
+    "@tauri-apps/plugin-http": "^2.5.9",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.30.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-quill-new": "^3.7.0",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^2.6.0",
+    "trix": "^2.0.8"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "~2.11.4",
-    "dotenv": "^17.2.3",
-    "quill": "^2.0.3",
-    "sharp": "^0.34.5"
+    "@tauri-apps/cli": "^2.9.6",
+    "@types/node": "^20",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
   }
 }

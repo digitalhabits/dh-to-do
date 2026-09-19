@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-exit-fullscreen-focus"
+description = "Enables the exit_fullscreen_focus command without any pre-configured scope."
+commands.allow = ["exit_fullscreen_focus"]
+
+[[permission]]
+identifier = "deny-exit-fullscreen-focus"
+description = "Denies the exit_fullscreen_focus command without any pre-configured scope."
+commands.deny = ["exit_fullscreen_focus"]

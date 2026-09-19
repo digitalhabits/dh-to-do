@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-delete-list"
+description = "Enables the todo_delete_list command without any pre-configured scope."
+commands.allow = ["todo_delete_list"]
+
+[[permission]]
+identifier = "deny-todo-delete-list"
+description = "Denies the todo_delete_list command without any pre-configured scope."
+commands.deny = ["todo_delete_list"]

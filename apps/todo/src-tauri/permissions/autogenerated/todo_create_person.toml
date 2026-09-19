@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-create-person"
+description = "Enables the todo_create_person command without any pre-configured scope."
+commands.allow = ["todo_create_person"]
+
+[[permission]]
+identifier = "deny-todo-create-person"
+description = "Denies the todo_create_person command without any pre-configured scope."
+commands.deny = ["todo_create_person"]

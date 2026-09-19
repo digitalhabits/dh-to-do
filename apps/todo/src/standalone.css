@@ -1,0 +1,16 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #faf8f5;
+}
+
+/* Focus window (index.html?focus=1): the page is a transparent NSPanel and
+   the bar draws its own rounded background, so the document must not paint
+   one. main.tsx sets the class before React mounts. */
+html.focus-window,
+html.focus-window body,
+html.focus-window #root {
+  background: transparent;
+}

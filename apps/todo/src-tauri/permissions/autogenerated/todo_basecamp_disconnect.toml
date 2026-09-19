@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-basecamp-disconnect"
+description = "Enables the todo_basecamp_disconnect command without any pre-configured scope."
+commands.allow = ["todo_basecamp_disconnect"]
+
+[[permission]]
+identifier = "deny-todo-basecamp-disconnect"
+description = "Denies the todo_basecamp_disconnect command without any pre-configured scope."
+commands.deny = ["todo_basecamp_disconnect"]

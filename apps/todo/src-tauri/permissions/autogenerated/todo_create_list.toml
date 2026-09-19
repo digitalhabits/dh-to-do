@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-create-list"
+description = "Enables the todo_create_list command without any pre-configured scope."
+commands.allow = ["todo_create_list"]
+
+[[permission]]
+identifier = "deny-todo-create-list"
+description = "Denies the todo_create_list command without any pre-configured scope."
+commands.deny = ["todo_create_list"]

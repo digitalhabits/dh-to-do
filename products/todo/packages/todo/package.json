@@ -1,0 +1,6 @@
+{
+  "name": "@redd/todo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared to-do client ported from redd-do: components and task logic consumed by the plan app's To-Do tab and (later) a standalone apps/todo. Resolved via each app's @/* tsconfig path fallback; app-specific seams (lib/auth, lib/db, components/ui) come from the importing app."
+}

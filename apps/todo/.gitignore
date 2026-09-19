@@ -1,0 +1,10 @@
+node_modules
+dist
+src-tauri/target
+src-tauri/gen/schemas
+for-distribution
+src-tauri/tauri.appstore.temp.conf.json
+src-tauri/entitlements.mas.temp.plist
+*.provisionprofile
+.env.local
+msix-build

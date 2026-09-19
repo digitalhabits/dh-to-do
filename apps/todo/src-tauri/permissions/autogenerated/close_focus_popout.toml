@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-focus-popout"
+description = "Enables the close_focus_popout command without any pre-configured scope."
+commands.allow = ["close_focus_popout"]
+
+[[permission]]
+identifier = "deny-close-focus-popout"
+description = "Denies the close_focus_popout command without any pre-configured scope."
+commands.deny = ["close_focus_popout"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-basecamp-todolists"
+description = "Enables the todo_basecamp_todolists command without any pre-configured scope."
+commands.allow = ["todo_basecamp_todolists"]
+
+[[permission]]
+identifier = "deny-todo-basecamp-todolists"
+description = "Denies the todo_basecamp_todolists command without any pre-configured scope."
+commands.deny = ["todo_basecamp_todolists"]

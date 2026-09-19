@@ -1,0 +1,70 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Standalone To-Do permissions (SQL bridge, Reminders, Basecamp HTTP)",
+  "windows": [
+    "main",
+    "focus-*",
+    "focusfs-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-set-size",
+    "core:window:allow-set-title",
+    "allow-open-focus-popout",
+    "allow-close-focus-popout",
+    "allow-set-focus-popout-height",
+    "allow-enter-fullscreen-focus",
+    "allow-exit-fullscreen-focus",
+    "allow-exit-fullscreen-focus-to-home",
+    "allow-start-basecamp-auth",
+    "allow-handle-oauth-callback",
+    "deep-link:default",
+    "allow-fetch-reminders-lists",
+    "allow-fetch-reminders-tasks",
+    "allow-update-reminders-status",
+    "allow-update-reminders-title",
+    "allow-update-reminders-notes",
+    "allow-update-reminders-due",
+    "allow-delete-reminders-task",
+    "allow-create-reminders-task",
+    "allow-open-reminders-privacy-settings",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://**"
+        },
+        {
+          "url": "http://**"
+        }
+      ]
+    },
+    "allow-todo-sql-query",
+    "allow-todo-sql-batch",
+    "allow-todo-media-write",
+    "allow-todo-media-read",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://launchpad.37signals.com/*"
+        },
+        {
+          "url": "https://*.basecampapi.com/*"
+        },
+        {
+          "url": "https://todo.digitalhabits.org/*"
+        },
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "next/dynamic": ["./src/seams/next-dynamic.tsx"],
+      "@/lib/offline/use-todo-offline": ["./src/seams/use-todo-offline-stub.ts"],
+      "@/lib/offline/todo-offline": ["./src/seams/todo-offline-stub.ts"],
+      "@/lib/page-snapshot-cache": ["./src/seams/page-snapshot-cache.ts"],
+      "@/lib/native-shell": ["../../products/todo/packages/todo/lib/todo/native-bridge.ts"],
+      "@/components/todo/TodoOfflineStatusPill": ["./src/seams/TodoOfflineStatusPill.tsx"],
+      "@/*": [
+        "./src/seams/*",
+        "../../products/todo/packages/todo/*",
+        "../../packages/shared/*",
+        "../../*"
+      ]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

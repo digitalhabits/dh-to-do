@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-media-read"
+description = "Enables the todo_media_read command without any pre-configured scope."
+commands.allow = ["todo_media_read"]
+
+[[permission]]
+identifier = "deny-todo-media-read"
+description = "Denies the todo_media_read command without any pre-configured scope."
+commands.deny = ["todo_media_read"]

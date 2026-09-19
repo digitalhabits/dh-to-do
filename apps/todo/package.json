@@ -1,0 +1,44 @@
+{
+  "name": "digital-habits-todo",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Digital Habits: To-Do — standalone desktop app (SQLite via Tauri).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digitalhabits/dh-to-do.git",
+    "directory": "apps/todo"
+  },
+  "scripts": {
+    "dev": "node ../../scripts/copy-trix.mjs && node ../../scripts/copy-todo-calendar.mjs && vite --port 3472",
+    "build": "node ../../scripts/copy-trix.mjs && node ../../scripts/copy-todo-calendar.mjs && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build",
+    "app:build:mas": "node scripts/build-mas-package.cjs",
+    "app:build:win-store": "powershell -ExecutionPolicy Bypass -File ./scripts/build-win-store.ps1",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@redd/todo": "workspace:*",
+    "@tauri-apps/plugin-http": "^2.5.9",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.30.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-quill-new": "^3.7.0",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^2.6.0",
+    "trix": "^2.0.8"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.6",
+    "@types/node": "^20",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-reminders-lists"
+description = "Enables the fetch_reminders_lists command without any pre-configured scope."
+commands.allow = ["fetch_reminders_lists"]
+
+[[permission]]
+identifier = "deny-fetch-reminders-lists"
+description = "Denies the fetch_reminders_lists command without any pre-configured scope."
+commands.deny = ["fetch_reminders_lists"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-focus-popout-height"
+description = "Enables the set_focus_popout_height command without any pre-configured scope."
+commands.allow = ["set_focus_popout_height"]
+
+[[permission]]
+identifier = "deny-set-focus-popout-height"
+description = "Denies the set_focus_popout_height command without any pre-configured scope."
+commands.deny = ["set_focus_popout_height"]

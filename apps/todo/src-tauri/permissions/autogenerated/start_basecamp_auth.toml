@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-basecamp-auth"
+description = "Enables the start_basecamp_auth command without any pre-configured scope."
+commands.allow = ["start_basecamp_auth"]
+
+[[permission]]
+identifier = "deny-start-basecamp-auth"
+description = "Denies the start_basecamp_auth command without any pre-configured scope."
+commands.deny = ["start_basecamp_auth"]

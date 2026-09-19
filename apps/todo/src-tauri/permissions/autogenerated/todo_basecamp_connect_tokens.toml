@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-todo-basecamp-connect-tokens"
+description = "Enables the todo_basecamp_connect_tokens command without any pre-configured scope."
+commands.allow = ["todo_basecamp_connect_tokens"]
+
+[[permission]]
+identifier = "deny-todo-basecamp-connect-tokens"
+description = "Denies the todo_basecamp_connect_tokens command without any pre-configured scope."
+commands.deny = ["todo_basecamp_connect_tokens"]

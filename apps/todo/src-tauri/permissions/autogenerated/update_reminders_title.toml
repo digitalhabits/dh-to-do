@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-reminders-title"
+description = "Enables the update_reminders_title command without any pre-configured scope."
+commands.allow = ["update_reminders_title"]
+
+[[permission]]
+identifier = "deny-update-reminders-title"
+description = "Denies the update_reminders_title command without any pre-configured scope."
+commands.deny = ["update_reminders_title"]

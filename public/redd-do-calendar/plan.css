@@ -1,0 +1,3142 @@
+/* Plan View Styles - Scoped to #plan-mode */
+
+/* Plan mode container - fills available space below title bar */
+#plan-mode {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#plan-mode.hidden {
+    display: none !important;
+}
+
+/* Plan-specific theme variables — inherit from ReDD brand palette */
+#plan-mode {
+    --plan-app-bg: linear-gradient(180deg, #faf8f5 0%, var(--cream-section) 100%);
+    --plan-container-bg: transparent;
+    --plan-panel-bg: #ffffff;
+    --plan-panel-bg-soft: #faf8f5;
+    --plan-text-primary: #2c2c35;
+    --plan-text-secondary: #1e2d3e;
+    --plan-text-muted: #696977;
+    --plan-navy: #1e2d3e;
+    --plan-on-navy: #f5f0e8;
+    --plan-border-color: #e1dcd6;
+    --plan-accent-color: #2a9d8f;
+    --plan-accent-hover: #21806f;
+    --plan-coral: #d4605a;
+    --plan-row-hover-bg: rgba(42, 157, 143, 0.06);
+    --plan-today-bg: rgba(42, 157, 143, 0.12);
+    --plan-today-border: #2a9d8f;
+    --plan-event-color: #4a90e2;
+    --plan-modal-bg: #ffffff;
+    --plan-input-bg: #ffffff;
+}
+
+[data-theme="dark"] #plan-mode {
+    --plan-app-bg: linear-gradient(180deg, #14202c 0%, #1a2735 100%);
+    --plan-container-bg: transparent;
+    --plan-panel-bg: rgba(255, 255, 255, 0.04);
+    --plan-panel-bg-soft: rgba(255, 255, 255, 0.02);
+    --plan-text-primary: #e6e2d8;
+    --plan-text-secondary: #f5f0e8;
+    --plan-text-muted: #9aa3b0;
+    --plan-navy: #2b4054;
+    --plan-on-navy: #f5f0e8;
+    --plan-border-color: rgba(255, 255, 255, 0.10);
+    --plan-accent-color: #4ec0b0;
+    --plan-accent-hover: #6ad0c1;
+    --plan-coral: #e07b75;
+    --plan-row-hover-bg: rgba(78, 192, 176, 0.10);
+    --plan-today-bg: rgba(78, 192, 176, 0.16);
+    --plan-today-border: #4ec0b0;
+    --plan-event-color: #6aa9ea;
+    --plan-modal-bg: #1a2735;
+    --plan-input-bg: rgba(255, 255, 255, 0.04);
+}
+
+/* App Container */
+#plan-mode .plan-app-container {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+    overflow: hidden;
+}
+
+/* Title Bar */
+#plan-mode .plan-title-bar {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 12px 24px;
+    background: transparent;
+    -webkit-app-region: drag;
+    gap: 12px 24px;
+    flex-shrink: 0;
+}
+
+/* View Switcher in Plan Mode */
+#plan-mode .plan-view-switcher {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 10px;
+    background: var(--plan-panel-bg);
+    -webkit-app-region: no-drag;
+    gap: 2px;
+}
+
+#plan-mode .plan-view-mode-btn {
+    border: none;
+    background: transparent;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--plan-text-muted);
+    transition: background 0.2s ease, color 0.2s ease;
+    padding: 7px 12px;
+}
+
+#plan-mode .plan-view-mode-btn:hover {
+    color: var(--plan-text-secondary);
+    background: var(--plan-row-hover-bg);
+}
+
+#plan-mode .plan-view-mode-btn.active {
+    color: var(--plan-on-navy);
+    background: var(--plan-navy);
+    box-shadow: 0 1px 3px rgba(30, 45, 62, 0.22);
+}
+
+#plan-mode .plan-view-mode-btn.active:hover {
+    color: var(--plan-on-navy);
+    background: var(--plan-navy);
+}
+
+#plan-mode .plan-view-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--plan-text-muted);
+    transition: all 0.2s ease;
+    padding: 0;
+}
+
+#plan-mode .plan-view-btn:hover {
+    color: var(--plan-text-secondary);
+}
+
+#plan-mode .plan-view-btn.active {
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-view-fav-btn svg {
+    fill: currentColor;
+}
+
+/* Period Navigation */
+#plan-mode .plan-period-nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    -webkit-app-region: no-drag;
+}
+
+#plan-mode .plan-period-display {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--plan-text-secondary);
+    min-width: 160px;
+    text-align: center;
+}
+
+#plan-mode .plan-nav-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 8px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+#plan-mode .plan-nav-btn:hover:not(:disabled) {
+    background: var(--plan-accent-color);
+    border-color: var(--plan-accent-color);
+    color: #ffffff;
+}
+
+#plan-mode .plan-nav-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#plan-mode .plan-nav-btn.small {
+    width: 24px;
+    height: 24px;
+}
+
+/* Undo/Redo */
+#plan-mode .plan-undo-redo-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    -webkit-app-region: no-drag;
+}
+
+/* Groups Panel */
+#plan-mode .plan-groups-panel {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+    padding-right: 12px;
+    -webkit-app-region: no-drag;
+}
+
+#plan-mode .plan-groups-toggles {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#plan-mode .plan-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--plan-text-secondary);
+}
+
+#plan-mode .plan-group-toggle label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+#plan-mode .plan-group-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-group-selector select,
+#plan-mode .plan-active-group-select {
+    padding: 4px 8px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 4px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-primary);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+/* Calendar Container */
+#plan-mode .plan-calendar-container {
+    flex: 1;
+    overflow: auto;
+    padding: 0 24px 24px 24px;
+    position: relative;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+}
+
+/* Canvas Layer - positioned inside scrollable area, matches grid height */
+#plan-mode .plan-canvas-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Match the grid's height so canvas doesn't create extra scroll space */
+    height: auto;
+    min-height: 100%;
+    pointer-events: none;
+    z-index: 100;
+}
+
+#plan-mode .plan-canvas-layer>* {
+    pointer-events: auto;
+}
+
+/* Calendar Grid */
+#plan-mode .plan-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 240px);
+    gap: 12px;
+    min-height: 100%;
+    width: max-content;
+}
+
+#plan-mode .plan-calendar-grid.plan-week-grid {
+    width: 100%;
+    min-width: 100%;
+    grid-template-columns: 36px repeat(7, minmax(0, 1fr));
+    align-items: stretch;
+}
+
+/* The week view scrolls sideways by the day. One more day is drawn at each
+   side, as wide as the others and out of sight. Every day is moved one day
+   to the left, and then by how far the scroll has gone. The grid cuts off
+   what is outside it, and the hours column covers the day that goes under
+   it. See onWeekWheel in plan.js. */
+#plan-mode .plan-calendar-grid.plan-week-grid--carousel {
+    clip-path: inset(0);
+}
+
+#plan-mode .plan-week-grid--carousel .plan-week-day-column {
+    transform: translateX(calc(-100% - 12px + var(--week-shift, 0px)));
+}
+
+#plan-mode .plan-week-grid--carousel.plan-week-grid--snapping .plan-week-day-column {
+    transition: transform 0.24s ease-out;
+}
+
+#plan-mode .plan-week-grid--carousel .plan-week-time-gutter {
+    position: relative;
+    z-index: 6;
+    /* A little wider than its column, to cover the gap beside it too. */
+    margin-right: -12px;
+    padding-right: 12px;
+    background: #faf8f5;
+}
+
+[data-theme="dark"] #plan-mode .plan-week-grid--carousel .plan-week-time-gutter {
+    background: #15212d;
+}
+
+#plan-mode .plan-calendar-container.plan-week-mode {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* Week goals bar */
+#plan-mode .plan-week-goals {
+    flex-shrink: 0;
+    padding: 10px 24px 12px;
+    border-bottom: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg);
+}
+
+#plan-mode .plan-week-goals.hidden {
+    display: none;
+}
+
+#plan-mode .plan-week-goals-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+#plan-mode .plan-week-goals-label {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--plan-text-secondary);
+    flex-shrink: 0;
+    margin-right: -2px;
+}
+
+#plan-mode .plan-week-goal-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    margin-right: 4px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 999px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-secondary);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#plan-mode .plan-week-goal-add-btn:hover {
+    background: var(--plan-row-hover-bg);
+    border-color: var(--plan-navy);
+    color: var(--plan-navy);
+}
+
+#plan-mode .plan-week-goals-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#plan-mode .plan-week-goal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    padding: 5px 8px 5px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg-soft);
+    font-size: 13px;
+    line-height: 1.3;
+    cursor: grab;
+    touch-action: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#plan-mode .plan-week-goal-pill:active {
+    cursor: grabbing;
+}
+
+#plan-mode .plan-week-goal-pill--dragging {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0.96;
+    box-shadow: 0 8px 20px rgba(30, 45, 62, 0.18);
+    cursor: grabbing;
+}
+
+#plan-mode .plan-week-goal-pill--source-hidden {
+    opacity: 0.35;
+}
+
+#plan-mode .plan-week-goal-drop-highlight {
+    outline: 2px dashed var(--plan-navy);
+    outline-offset: -2px;
+    background: rgba(30, 45, 62, 0.04);
+}
+
+#plan-mode .plan-week-goal-pill:hover {
+    border-color: var(--plan-navy);
+}
+
+#plan-mode .plan-week-goal-pill--editing {
+    border-color: var(--plan-navy);
+    box-shadow: 0 0 0 2px rgba(30, 45, 62, 0.14);
+}
+
+/* A goal that is for somebody takes that person's colour, the colour their
+   avatar has on the To-Do board. The plain values are for a web view with no
+   color-mix(): they are the navy the first person had. */
+#plan-mode .plan-week-goal-pill--assigned {
+    --goal-colour: var(--plan-navy);
+    border-color: rgba(30, 45, 62, 0.22);
+    background: rgba(30, 45, 62, 0.08);
+    border-color: color-mix(in srgb, var(--goal-colour) 30%, transparent);
+    background: color-mix(in srgb, var(--goal-colour) 11%, transparent);
+}
+
+[data-theme="dark"] #plan-mode .plan-week-goal-pill--assigned {
+    border-color: rgba(245, 240, 232, 0.18);
+    background: rgba(245, 240, 232, 0.08);
+    border-color: color-mix(in srgb, var(--goal-colour) 45%, transparent);
+    background: color-mix(in srgb, var(--goal-colour) 22%, transparent);
+}
+
+#plan-mode .plan-week-goal-pill-text {
+    color: var(--plan-text-primary);
+    font-weight: 500;
+}
+
+#plan-mode .plan-week-goal-pill-assignee {
+    flex-shrink: 0;
+    padding: 3px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+
+#plan-mode .plan-week-goal-pill--assigned .plan-week-goal-pill-assignee {
+    background: var(--goal-colour);
+    color: #fff;
+}
+
+#plan-mode .plan-week-goal-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--plan-text-muted);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-week-goal-remove:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-week-goal-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--plan-border-color);
+    width: fit-content;
+    max-width: min(100%, 520px);
+}
+
+#plan-mode .plan-week-goal-form.hidden {
+    display: none;
+}
+
+#plan-mode .plan-week-goal-person-input {
+    width: 180px;
+    max-width: 100%;
+    flex: 0 1 auto;
+    padding: 8px 12px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 8px;
+    background: var(--plan-input-bg);
+    color: var(--plan-text-primary);
+    font-size: 13px;
+}
+
+#plan-mode .plan-week-goal-person-input.hidden,
+#plan-mode .plan-week-goal-assignee-select.hidden {
+    display: none;
+}
+
+#plan-mode .plan-week-goal-text-input {
+    width: 240px;
+    max-width: 100%;
+    flex: 0 1 auto;
+    padding: 8px 12px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 8px;
+    background: var(--plan-input-bg);
+    color: var(--plan-text-primary);
+    font-size: 13px;
+}
+
+#plan-mode .plan-week-goal-assignee-select {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 8px;
+    background: var(--plan-input-bg);
+    color: var(--plan-text-primary);
+    font-size: 13px;
+}
+
+#plan-mode .plan-week-goal-save-btn,
+#plan-mode .plan-week-goal-cancel-btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#plan-mode .plan-week-goal-save-btn {
+    background: var(--plan-navy);
+    border-color: var(--plan-navy);
+    color: var(--plan-on-navy);
+}
+
+#plan-mode .plan-week-goal-save-btn:hover {
+    filter: brightness(1.05);
+}
+
+#plan-mode .plan-week-goal-cancel-btn:hover {
+    background: var(--plan-row-hover-bg);
+}
+
+/* Week time gutter */
+#plan-mode .plan-week-time-gutter {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#plan-mode .plan-week-time-gutter-header {
+    min-height: 58px;
+}
+
+#plan-mode .plan-week-allday-spacer {
+    min-height: 2rem;
+}
+
+#plan-mode .plan-calendar-grid.plan-week-grid:not(:has(.plan-week-allday-row:not(:empty)))
+    .plan-week-allday-spacer {
+    display: none;
+}
+
+#plan-mode .plan-week-time-hours {
+    position: relative;
+}
+
+#plan-mode .plan-week-hour-label {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 0 2px 0 0;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--plan-text-muted);
+    box-sizing: border-box;
+    transform: translateY(-7px);
+}
+
+#plan-mode .plan-week-hour-label:first-child {
+    transform: none;
+    padding-top: 4px;
+}
+
+/* Week day columns */
+#plan-mode .plan-week-day-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 100%;
+    background: var(--plan-panel-bg);
+    border: 1px solid var(--plan-border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04);
+}
+
+#plan-mode .plan-week-day-column.weekend {
+    background: var(--plan-panel-bg-soft);
+}
+
+[data-theme="dark"] #plan-mode .plan-week-day-column.weekend {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+#plan-mode .plan-week-day-column.weekend .plan-week-day-name {
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-week-day-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--plan-border-color);
+    text-align: center;
+}
+
+#plan-mode .plan-week-day-goals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--plan-border-color);
+    align-content: flex-start;
+    background: var(--plan-panel-bg-soft);
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-week-day-goals:empty {
+    display: none;
+    padding: 0;
+    border-bottom: none;
+    background: transparent;
+}
+
+#plan-mode .plan-week-day-goals--synced:empty,
+#plan-mode .plan-week-day-goals--synced {
+    border-bottom: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-week-day-goals--synced:empty {
+    display: flex;
+    padding: 6px 8px;
+    background: var(--plan-panel-bg-soft);
+}
+
+#plan-mode .plan-week-day-column.weekend .plan-week-day-goals--synced:empty {
+    background: rgba(30, 45, 62, 0.03);
+}
+
+#plan-mode .plan-week-day-goals.plan-week-goal-drop-active:empty {
+    display: flex;
+    min-height: 36px;
+    border-bottom: 1px dashed var(--plan-border-color);
+    background: rgba(30, 45, 62, 0.03);
+}
+
+#plan-mode .plan-week-day-goals-spacer {
+    display: none;
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-week-day-goals .plan-week-goal-pill {
+    max-width: 100%;
+    font-size: 12px;
+}
+
+#plan-mode .plan-week-day-name {
+    /* One line always: a head on two lines makes its day stand lower. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--plan-text-secondary);
+}
+
+#plan-mode .plan-week-day-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#plan-mode .plan-week-allday-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    /* One line of words and a little room. It grows with what is in it. */
+    min-height: 2rem;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg-soft);
+}
+
+#plan-mode .plan-week-allday-row:empty {
+    display: none;
+}
+
+/* Drawn also when it is empty, to keep the hour lines of all days in line.
+   See syncWeekAllDayRows in plan.js. */
+#plan-mode .plan-week-allday-row.plan-week-allday-row--synced:empty {
+    display: flex;
+}
+
+#plan-mode .plan-week-allday-row.weekend {
+    background: rgba(30, 45, 62, 0.03);
+}
+
+#plan-mode .plan-week-allday-item {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--plan-text-primary);
+    background: rgba(42, 157, 143, 0.12);
+}
+
+#plan-mode .plan-week-allday-item.holiday {
+    background: transparent;
+    color: var(--plan-text-muted);
+    font-weight: 500;
+    padding-left: 0;
+}
+
+#plan-mode .plan-week-allday-item.calendar-event {
+    background: rgba(74, 144, 226, 0.14);
+}
+
+/* Open application deadlines, when the Applications tab has them on. Drawn
+   at the right of the day, so they do not sit on a holiday's name. */
+#plan-mode .plan-week-allday-item.application-deadline {
+    background: rgba(180, 83, 9, 0.12);
+    color: #92400e;
+}
+
+/* The flag that marks a deadline, in the deadline's own colour. */
+#plan-mode .application-deadline-icon {
+    display: inline-block;
+    flex-shrink: 0;
+    margin-right: 4px;
+    vertical-align: -2px;
+    opacity: 0.85;
+}
+
+#plan-mode .plan-note-text.application-deadline {
+    top: 4px;
+    right: 4px;
+    max-width: calc(100% - 8px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #92400e;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+}
+
+/* A task from the To-Do board, on its due day. Drawn like a deadline: at the
+   right of the day, in one line, and not to be dragged. Its own colour, the
+   teal of the app, so a task does not read as a deadline or as a note. */
+#plan-mode .plan-week-allday-item.calendar-task {
+    background: rgba(42, 157, 143, 0.14);
+    color: #1f7a6f;
+}
+
+#plan-mode .calendar-task-icon {
+    display: inline-block;
+    flex-shrink: 0;
+    margin-right: 4px;
+    vertical-align: -2px;
+}
+
+/* The two letters of a list with no icon, as on the board. */
+#plan-mode .calendar-task-initials {
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    vertical-align: 1px;
+}
+
+/* At the left, next to the day number, so the tasks of a month make one
+   straight column. A deadline stays at the right. */
+#plan-mode .plan-note-text.calendar-task {
+    top: 4px;
+    left: 0;
+    max-width: calc(100% - 4px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #1f7a6f;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+}
+
+[data-theme="dark"] #plan-mode .plan-note-text.calendar-task,
+[data-theme="dark"] #plan-mode .plan-week-allday-item.calendar-task {
+    color: #6ad0c1;
+}
+
+[data-theme="dark"] #plan-mode .plan-note-text.application-deadline,
+[data-theme="dark"] #plan-mode .plan-week-allday-item.application-deadline {
+    color: #fbbf77;
+}
+
+/* A month day with more than one item keeps one line: a holiday's name, the
+   first item, and a count of the rest. See renderMonthDays in plan.js. The
+   item rules name .plan-note-area so they win over the note rules further
+   down, which place each item at its own position. */
+#plan-mode .plan-day-line {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding-right: 4px;
+}
+
+#plan-mode .plan-note-area .plan-day-line .plan-note-text,
+#plan-mode .plan-note-area .plan-day-stack .plan-note-text {
+    position: static;
+    top: auto;
+    right: auto;
+    max-width: none;
+    margin-left: 0;
+}
+
+#plan-mode .plan-note-area .plan-day-line .holiday {
+    flex: 0 0 auto;
+}
+
+#plan-mode .plan-note-area .plan-day-line .plan-day-first {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#plan-mode .plan-day-more {
+    flex: 0 0 auto;
+    margin-left: auto;
+    border: 0;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    color: var(--plan-text-muted);
+    background: rgba(30, 45, 62, 0.08);
+    cursor: pointer;
+}
+
+#plan-mode .plan-day-more:hover {
+    color: var(--plan-text-primary);
+    background: rgba(30, 45, 62, 0.14);
+}
+
+[data-theme="dark"] #plan-mode .plan-day-more {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* The day opened in place: every item on its own line, the row as tall as it needs. */
+#plan-mode .plan-day-row.is-expanded {
+    align-items: flex-start;
+}
+
+/* The open day's items may be long. The area shrinks, and each item ends in
+   an ellipsis, rather than pushing the day's name and number into each other. */
+#plan-mode .plan-day-row.is-expanded .plan-note-area {
+    min-width: 0;
+}
+
+#plan-mode .plan-day-row.is-expanded .plan-day-name,
+#plan-mode .plan-day-row.is-expanded .plan-day-number {
+    flex-shrink: 0;
+    line-height: 20px;
+}
+
+#plan-mode .plan-day-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+    padding: 3px 0;
+}
+
+#plan-mode .plan-note-area .plan-day-stack .plan-note-text {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#plan-mode .plan-day-stack .plan-day-more {
+    margin-left: 0;
+}
+
+#plan-mode .plan-week-allday-item.line-event {
+    background: rgba(74, 144, 226, 0.18);
+}
+
+#plan-mode .plan-week-time-grid {
+    position: relative;
+    flex: none;
+}
+
+#plan-mode .plan-week-hour-slot {
+    border-bottom: 1px solid var(--plan-border-color);
+    box-sizing: border-box;
+}
+
+#plan-mode .plan-week-hour-slot.weekend {
+    background: rgba(30, 45, 62, 0.02);
+}
+
+#plan-mode .plan-week-hour-slot.today {
+    background: rgba(42, 157, 143, 0.04);
+}
+
+#plan-mode .plan-week-event {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    z-index: 2;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid rgba(42, 157, 143, 0.35);
+    background: #e6f3f1;
+    padding: 4px 6px;
+    box-sizing: border-box;
+}
+
+/* A goal or a task at a time of the day. It can be moved, and its top and
+   bottom edges set the start and the end. See renderWeekBlocks in plan.js. */
+#plan-mode .plan-week-block {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    z-index: 3;
+    overflow: hidden;
+    box-sizing: border-box;
+    border-radius: 8px;
+    padding: 4px 8px 5px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 11px;
+    line-height: 1.3;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+}
+
+#plan-mode .plan-week-block--goal {
+    border: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg, #ffffff);
+    color: var(--plan-text-primary);
+    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.08);
+}
+
+#plan-mode .plan-week-block--task {
+    border: 1px solid rgba(42, 157, 143, 0.35);
+    background: #e0f0ed;
+    color: #1f7a6f;
+}
+
+/* The reader's own note at a time of the day. As in the Months view it is
+   words in the hand font, with no box. It is still a block: a drag moves it,
+   and a drag of its top or bottom edge changes its hours. */
+#plan-mode .plan-week-block--note {
+    border: none;
+    background: transparent;
+    color: var(--plan-text-primary);
+    padding: 0 4px;
+    overflow: visible;
+}
+
+#plan-mode .plan-week-block--note .plan-week-block-title {
+    display: inline-block;
+    font-weight: 400;
+}
+
+/* The hours of a note show while the pointer is on it. */
+#plan-mode .plan-week-block--note .plan-week-block-time {
+    visibility: hidden;
+}
+
+#plan-mode .plan-week-block--note:hover .plan-week-block-time {
+    visibility: visible;
+}
+
+/* The words of the reader's own note in the week view: the hand of the
+   Months view (.plan-note-text), and its mark when it is selected. */
+#plan-mode .plan-week-note-text {
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 1.15;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+#plan-mode .plan-week-note-text.selected {
+    outline: 2px solid var(--plan-accent-color);
+    outline-offset: 2px;
+}
+
+#plan-mode .plan-week-note-text[contenteditable="true"] {
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+    outline: none;
+}
+
+/* The place where a new note is typed in the hours: a caret and no box. */
+#plan-mode .plan-week-block--writing {
+    padding: 0 2px;
+    cursor: text;
+    overflow: visible;
+    background: transparent;
+    border: none;
+}
+
+/* The name of a new line is typed to the right of the line. */
+#plan-mode .plan-week-block--writing.plan-week-block--beside-line {
+    left: 18px;
+}
+
+/* A line down the hours of a day, and the bar of a line over days. */
+#plan-mode .plan-week-line {
+    position: absolute;
+    left: 6px;
+    right: 4px;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 8px;
+    pointer-events: none;
+}
+
+#plan-mode .plan-week-line > * {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+#plan-mode .plan-week-line-bar {
+    display: block;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: #333333;
+}
+
+[data-theme="dark"] #plan-mode .plan-week-line-bar {
+    background: #d8d8d8;
+}
+
+#plan-mode .plan-week-line-bar.vertical {
+    height: 100%;
+}
+
+#plan-mode .plan-week-line-bar.selected {
+    box-shadow: 0 0 0 2px var(--plan-accent-color);
+}
+
+#plan-mode .plan-week-line-label {
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-week-line--drawing {
+    opacity: 0.45;
+}
+
+#plan-mode .plan-week-line-hours {
+    font-size: 10px;
+    color: var(--plan-text-muted);
+}
+
+/* The reader's own line over days, in the rows over the hours. */
+#plan-mode .plan-week-allday-item.plan-week-own-line {
+    flex-direction: column;
+    align-items: stretch;
+    flex: 1 1 100%;
+    gap: 1px;
+    padding: 0 2px 2px;
+    background: transparent;
+    cursor: pointer;
+}
+
+#plan-mode .plan-week-block--writing .plan-week-inline-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* The reader's own note in the row over the hours can be taken to a time. */
+#plan-mode .plan-week-allday-item.plan-week-own-note {
+    background: transparent;
+    padding: 0 2px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+/* The days that a line is drawn across, in the rows over the hours. */
+#plan-mode .plan-week-allday-row.plan-week-allday-row--drawing {
+    background: rgba(42, 157, 143, 0.16);
+}
+
+#plan-mode .plan-week-block-title {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+#plan-mode .plan-week-block-time {
+    margin-top: 1px;
+    font-size: 10px;
+    opacity: 0.75;
+}
+
+#plan-mode .plan-week-block-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 7px;
+    cursor: ns-resize;
+}
+
+#plan-mode .plan-week-block-handle--top {
+    top: 0;
+}
+
+#plan-mode .plan-week-block-handle--bottom {
+    bottom: 0;
+}
+
+/* Where a dragged goal or task will land. */
+#plan-mode .plan-week-block--ghost {
+    z-index: 2;
+    border: 1.5px dashed rgba(42, 157, 143, 0.7);
+    background: rgba(42, 157, 143, 0.1);
+    color: #1f7a6f;
+    font-size: 10px;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+#plan-mode .plan-week-block--source-hidden {
+    opacity: 0.35;
+}
+
+/* A task in the all-day row can be taken to a time. */
+#plan-mode .plan-week-allday-row .plan-week-allday-item.calendar-task {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+[data-theme="dark"] #plan-mode .plan-week-block--task {
+    background: #243632;
+    border-color: rgba(78, 192, 176, 0.45);
+    color: #6ad0c1;
+}
+
+#plan-mode .plan-week-event.calendar-event {
+    border-color: rgba(74, 144, 226, 0.45);
+    background: #dceaf8;
+}
+
+[data-theme="dark"] #plan-mode .plan-week-event {
+    background: #243632;
+    border-color: rgba(78, 192, 176, 0.45);
+}
+
+[data-theme="dark"] #plan-mode .plan-week-event.calendar-event {
+    background: #243548;
+    border-color: rgba(106, 169, 234, 0.5);
+}
+
+#plan-mode .plan-week-event-time {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-week-event-title {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--plan-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#plan-mode .plan-week-now-marker {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    height: 2px;
+    background: #e76f51;
+    pointer-events: none;
+}
+
+#plan-mode .plan-week-now-marker::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #e76f51;
+}
+
+#plan-mode .plan-week-day-column.today .plan-week-day-header {
+    background: var(--plan-today-bg);
+}
+
+#plan-mode .plan-week-day-column.today {
+    position: relative;
+    border-color: var(--plan-today-border);
+}
+
+/* The bar at the left of today: one piece over the whole height of the day,
+   on top of the rows. It was an inner shadow on the head, the goals row and
+   the hours. The hour rows painted over it, so their lines cut it, and it
+   stopped where the hours stopped. */
+#plan-mode .plan-week-day-column.today::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--plan-today-border);
+    z-index: 4;
+    pointer-events: none;
+}
+
+#plan-mode .plan-day-row.hidden {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    #plan-mode .plan-calendar-grid.plan-week-grid {
+        grid-template-columns: 32px repeat(7, minmax(128px, 1fr));
+        width: max-content;
+        min-width: 100%;
+    }
+
+    #plan-mode .plan-calendar-container.plan-week-mode {
+        overflow-x: auto;
+    }
+}
+
+/* Month Column */
+#plan-mode .plan-month-column {
+    display: flex;
+    flex-direction: column;
+    background: var(--plan-panel-bg);
+    border: 1px solid var(--plan-border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04);
+}
+
+#plan-mode .plan-month-header {
+    padding: 10px 8px;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--plan-text-secondary);
+    text-align: left;
+    border-bottom: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-days-container {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Day Row */
+#plan-mode .plan-day-row {
+    display: flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-bottom: 1px solid var(--plan-border-color);
+    min-height: 28px;
+    font-size: 13px;
+}
+
+#plan-mode .plan-day-row.weekend {
+    background: var(--plan-panel-bg-soft);
+}
+
+[data-theme="dark"] #plan-mode .plan-day-row.weekend {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+#plan-mode .plan-day-row.weekend .plan-day-name {
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-day-row:hover {
+    background: var(--plan-row-hover-bg);
+}
+
+#plan-mode .plan-day-row.today {
+    background: var(--plan-today-bg);
+    border-left: 3px solid var(--plan-today-border);
+}
+
+#plan-mode .plan-day-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--plan-text-muted);
+    width: 14px;
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-day-number {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--plan-text-primary);
+    width: 24px;
+    text-align: right;
+    margin-right: 8px;
+}
+
+#plan-mode .plan-note-area {
+    flex: 1;
+    position: relative;
+    min-height: 20px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE/Edge */
+    cursor: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>') 0 16, crosshair;
+}
+
+#plan-mode .plan-note-area::-webkit-scrollbar {
+    display: none;
+    /* Chrome/Safari */
+}
+
+/* Override pencil cursor when something is selected */
+#plan-mode.has-selection .plan-note-area {
+    cursor: default;
+}
+
+#plan-mode .plan-week-number {
+    font-size: 11px;
+    color: var(--plan-text-muted);
+    opacity: 0.7;
+    min-width: 20px;
+    text-align: right;
+}
+
+[data-theme="dark"] #plan-mode .plan-week-number {
+    opacity: 0.6;
+}
+
+/* Notes and Lines */
+#plan-mode .plan-note-text {
+    position: absolute;
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    color: var(--plan-text-primary);
+    cursor: grab;
+    user-select: none;
+}
+
+#plan-mode .plan-note-text.freeform {
+    white-space: nowrap;
+    top: -4px;
+    z-index: 10;
+    /* User notes on top of calendar events */
+}
+
+#plan-mode .plan-note-text.freeform.calendar-event {
+    z-index: 5;
+    /* Calendar events below user notes */
+}
+
+#plan-mode .plan-note-text.holiday {
+    font-size: 11px;
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--plan-text-muted);
+    pointer-events: none;
+    user-select: none;
+    top: 4px;
+    margin-left: 2px;
+}
+
+#plan-mode .plan-note-line {
+    position: absolute;
+    background: var(--plan-accent-color);
+    opacity: 0.4;
+    border-radius: 4px;
+    cursor: grab;
+}
+
+/* Dark mode: user-drawn lines should be almost white and fully opaque */
+[data-theme="dark"] #plan-mode .plan-note-line:not(.calendar-event) {
+    background: #e0e0e0;
+    opacity: 1;
+}
+
+/* Line endpoint handles */
+#plan-mode .plan-line-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: var(--plan-accent-color);
+    border: 2px solid white;
+    border-radius: 50%;
+    cursor: grab;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 110;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+#plan-mode .plan-note-line-container.selected .plan-line-handle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#plan-mode .plan-line-handle:hover {
+    transform: scale(1.2);
+}
+
+/* Inline text input for new notes */
+#plan-mode .plan-note-input-inline {
+    position: absolute;
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    color: var(--plan-text-primary);
+    background: transparent;
+    border: none;
+    outline: none;
+    min-width: 80px;
+    padding: 2px 4px;
+    z-index: 1001;
+}
+
+#plan-mode .plan-note-line.temp {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+/* Footer */
+#plan-mode .plan-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 6px 24px 12px 24px;
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-footer-text {
+    font-size: 12px;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-footer-text a {
+    color: var(--plan-accent-color);
+    text-decoration: none;
+}
+
+#plan-mode .plan-footer-text .heart {
+    color: var(--plan-coral);
+}
+
+/* Settings Modal */
+#plan-mode .plan-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 45, 62, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+#plan-mode .plan-modal-overlay.hidden {
+    display: none;
+}
+
+#plan-mode .plan-modal-dialog {
+    background: var(--plan-modal-bg);
+    border: 1px solid var(--plan-border-color);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(30, 45, 62, 0.18);
+    min-width: 280px;
+}
+
+#plan-mode.dark-mode .plan-modal-dialog,
+body.dark-mode #plan-mode .plan-modal-dialog {
+    background: var(--plan-modal-bg);
+}
+
+#plan-mode .plan-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+}
+
+#plan-mode .plan-modal-header h3 {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--plan-text-muted);
+    cursor: pointer;
+}
+
+#plan-mode .plan-modal-body {
+    padding: 20px;
+}
+
+#plan-mode .plan-settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+}
+
+#plan-mode .plan-toggle-switch {
+    display: flex;
+    gap: 4px;
+}
+
+#plan-mode .plan-toggle-option {
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#plan-mode .plan-toggle-option.active {
+    background: var(--plan-panel-bg);
+}
+
+#plan-mode .plan-language-select {
+    padding: 8px 12px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 6px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-primary);
+}
+
+/* Icon button */
+#plan-mode .icon-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--plan-text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#plan-mode .icon-btn:hover {
+    background: rgba(30, 45, 62, 0.05);
+}
+
+/* Inline Toolbar */
+#plan-mode .plan-inline-toolbar {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    background: var(--plan-modal-bg);
+    border: 1px solid var(--plan-border-color);
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(30, 45, 62, 0.16);
+    z-index: 2000;
+}
+
+[data-theme="dark"] #plan-mode .plan-inline-toolbar {
+    background: var(--plan-modal-bg);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+#plan-mode .plan-inline-toolbar.hidden {
+    display: none;
+}
+
+#plan-mode .plan-toolbar-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--plan-text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#plan-mode .plan-toolbar-btn:hover {
+    background: rgba(30, 45, 62, 0.06);
+}
+
+[data-theme="dark"] #plan-mode .plan-toolbar-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+#plan-mode .plan-toolbar-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--plan-border-color);
+    margin: 0 4px;
+}
+
+#plan-mode .plan-toolbar-snap,
+#plan-mode .plan-snap-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--plan-text-muted);
+    cursor: pointer;
+}
+
+/* Checkbox styling to match task checkboxes */
+#plan-mode input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 3px;
+    background: var(--plan-modal-bg);
+    transition: all 0.15s ease;
+    position: relative;
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] #plan-mode input[type="checkbox"] {
+    background: var(--plan-modal-bg);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+#plan-mode input[type="checkbox"]:checked {
+    background: var(--plan-accent-color);
+    border-color: var(--plan-accent-color);
+}
+
+#plan-mode input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+#plan-mode input[type="checkbox"]:hover {
+    border-color: var(--plan-accent-color);
+}
+
+#plan-mode .plan-toolbar-color,
+#plan-mode .plan-color-picker-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+#plan-mode .plan-toolbar-color input[type="color"],
+#plan-mode .plan-color-picker-wrapper input[type="color"] {
+    position: absolute;
+    opacity: 0;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+#plan-mode .plan-font-color-indicator,
+#plan-mode .plan-bg-color-indicator,
+#plan-mode .plan-line-color-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--plan-border-color);
+    cursor: pointer;
+}
+
+#plan-mode .plan-bg-color-indicator {
+    background: transparent;
+    background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+}
+
+#plan-mode .plan-toolbar-color-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+#plan-mode .plan-toolbar-btn.small {
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
+    padding: 0;
+}
+
+#plan-mode .plan-delete-btn {
+    color: #dc2626;
+}
+
+#plan-mode .plan-delete-btn:hover {
+    background: rgba(220, 38, 38, 0.1);
+}
+
+#plan-mode .plan-line-width-select {
+    padding: 4px 8px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 4px;
+    background: var(--plan-modal-bg);
+    color: var(--plan-text-primary);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+[data-theme="dark"] #plan-mode .plan-line-width-select {
+    background: var(--plan-modal-bg);
+}
+
+/* Line label field in toolbar */
+#plan-mode .plan-line-label-field {
+    width: 80px;
+    padding: 2px 4px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 4px;
+    background: var(--plan-modal-bg);
+    color: var(--plan-text-primary);
+    font-family: 'Caveat', cursive;
+    font-size: 14px;
+    outline: none;
+}
+
+#plan-mode .plan-line-label-field:focus {
+    border-color: var(--plan-accent-color);
+}
+
+[data-theme="dark"] #plan-mode .plan-line-label-field {
+    background: var(--plan-modal-bg);
+}
+
+/* Note selected/dragging states */
+#plan-mode .plan-note-text.selected {
+    outline: 2px solid var(--plan-accent-color);
+    outline-offset: 2px;
+}
+
+#plan-mode .plan-note-text.dragging {
+    opacity: 0.8;
+    cursor: grabbing !important;
+}
+
+/* Line container */
+#plan-mode .plan-note-line-container {
+    position: absolute;
+    pointer-events: none;
+}
+
+#plan-mode .plan-note-line {
+    position: absolute;
+    pointer-events: auto;
+    border-radius: 4px;
+    cursor: grab;
+}
+
+#plan-mode .plan-note-line:hover {
+    filter: brightness(1.1);
+}
+
+#plan-mode .plan-note-line.selected {
+    box-shadow: 0 0 0 2px var(--plan-accent-color);
+}
+
+#plan-mode .plan-note-line.dragging {
+    opacity: 0.8;
+    cursor: grabbing !important;
+}
+
+#plan-mode .plan-note-line.temp {
+    opacity: 0.5;
+    background: #999;
+    height: 8px;
+    border-radius: 4px;
+}
+
+/* Line label */
+#plan-mode .plan-line-label {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    color: var(--plan-text-primary);
+    background: transparent;
+    padding: 2px 6px 2px 0;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: auto;
+    cursor: grab;
+    z-index: 105;
+}
+
+[data-theme="dark"] #plan-mode .plan-line-label {
+    background: transparent;
+}
+
+#plan-mode .plan-line-label.empty {
+    display: none;
+}
+
+#plan-mode .plan-line-label:hover {
+    background: transparent;
+}
+
+[data-theme="dark"] #plan-mode .plan-line-label:hover {
+    background: transparent;
+}
+
+/* Label in edit mode */
+#plan-mode .plan-line-label[contenteditable="true"] {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+    outline: 2px solid var(--plan-accent-color);
+    outline-offset: 1px;
+    min-width: 40px;
+}
+
+/* Line label input */
+#plan-mode .plan-line-label-input {
+    position: absolute;
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    color: var(--plan-text-primary);
+    background: var(--plan-modal-bg);
+    border: 2px solid var(--plan-accent-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    min-width: 100px;
+    outline: none;
+    z-index: 1001;
+    transform: translateX(-50%);
+}
+
+[data-theme="dark"] #plan-mode .plan-line-label-input {
+    background: var(--plan-modal-bg);
+}
+
+/* ========================================
+   Calendar Sync Styles
+   ======================================== */
+
+/* Calendar sync nav section */
+#plan-mode .plan-calendar-sync-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+}
+
+/* Calendar visibility toggles (chip style) */
+#plan-mode .plan-calendar-toggles {
+    display: flex;
+    gap: 6px;
+    margin-right: 8px;
+}
+
+#plan-mode .plan-calendar-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 12px 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg);
+    transition: opacity 0.2s ease, background 0.15s ease;
+}
+
+#plan-mode .plan-calendar-toggle:hover {
+    background: var(--plan-surface-secondary, rgba(0,0,0,0.04));
+}
+
+#plan-mode .plan-calendar-toggle.hidden-cal {
+    opacity: 0.5;
+}
+
+#plan-mode .plan-calendar-toggle .calendar-toggle-eye {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--plan-text-muted);
+    flex-shrink: 0;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 1px;
+    transition: color 0.15s ease;
+}
+
+#plan-mode .plan-calendar-toggle .calendar-toggle-eye:hover {
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-calendar-toggle .calendar-toggle-emoji {
+    font-size: 14px;
+    line-height: 1;
+}
+
+#plan-mode .plan-calendar-toggle .calendar-name {
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-calendar-toggle .calendar-toggle-color {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-left: 2px;
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-calendar-toggle .calendar-color-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0,0,0,0.15);
+    transition: transform 0.15s ease;
+    cursor: pointer;
+}
+
+[data-theme="dark"] #plan-mode .plan-calendar-toggle .calendar-color-dot {
+    border-color: rgba(255,255,255,0.25);
+}
+
+#plan-mode .plan-calendar-toggle .calendar-toggle-color:hover .calendar-color-dot {
+    transform: scale(1.2);
+}
+
+/* Color palette popover */
+#plan-mode .calendar-color-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: -4px;
+    background: var(--plan-modal-bg);
+    border: 1px solid var(--plan-border-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.16);
+    padding: 10px;
+    z-index: 2000;
+}
+
+[data-theme="dark"] #plan-mode .calendar-color-popover {
+    background: var(--plan-modal-bg);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+#plan-mode .calendar-color-swatches {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+#plan-mode .calendar-color-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.08);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    padding: 0;
+    position: relative;
+    flex-shrink: 0;
+    background: none;
+}
+
+[data-theme="dark"] #plan-mode .calendar-color-swatch {
+    border-color: rgba(255,255,255,0.1);
+}
+
+#plan-mode .calendar-color-swatch:hover {
+    transform: scale(1.1);
+}
+
+#plan-mode .calendar-color-swatch.selected {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px var(--plan-modal-bg), 0 0 0 4px var(--plan-accent-color, #2a9d8f);
+}
+
+/* Checkmark on selected swatch */
+#plan-mode .calendar-color-swatch.selected::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Custom "more colors" swatch */
+#plan-mode .calendar-color-swatch-custom {
+    background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red) !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+#plan-mode .calendar-color-swatch-custom svg {
+    color: rgba(255,255,255,0.7);
+    pointer-events: none;
+    z-index: 1;
+}
+
+#plan-mode .calendar-color-custom-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    padding: 0;
+}
+
+/* Hex input row */
+#plan-mode .calendar-color-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .calendar-color-hex-preview {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    border: 1px solid rgba(0,0,0,0.1);
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] #plan-mode .calendar-color-hex-preview {
+    border-color: rgba(255,255,255,0.15);
+}
+
+#plan-mode .calendar-color-hex-input {
+    flex: 1;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 12px;
+    padding: 4px 6px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 6px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-primary);
+    min-width: 0;
+    width: 80px;
+}
+
+#plan-mode .calendar-color-hex-input:focus {
+    outline: none;
+    border-color: var(--plan-accent-color, #2a9d8f);
+    box-shadow: 0 0 0 2px rgba(42, 157, 143, 0.15);
+}
+
+/* Calendar sync button indicator when synced */
+#plan-mode .plan-calendar-sync-btn.has-events {
+    color: var(--plan-event-color);
+}
+
+/* Calendar Sync Popover */
+#plan-mode .plan-calendar-popover {
+    position: absolute;
+    top: 60px;
+    right: 24px;
+    left: auto;
+    background: var(--plan-modal-bg);
+    border: 1px solid var(--plan-border-color);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(30, 45, 62, 0.16);
+    z-index: 1100;
+    width: min(420px, calc(100vw - 32px));
+    min-width: 0;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+}
+
+[data-theme="dark"] #plan-mode .plan-calendar-popover {
+    background: var(--plan-modal-bg);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+#plan-mode .plan-calendar-popover.hidden {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    #plan-mode .plan-calendar-popover {
+        right: 8px;
+        left: 8px;
+        width: auto;
+        max-width: none;
+    }
+
+    #plan-mode .plan-title-bar {
+        padding: 8px 12px;
+        gap: 6px 8px;
+    }
+
+    #plan-mode .plan-period-nav {
+        gap: 8px;
+    }
+
+    #plan-mode .plan-period-display {
+        font-size: 16px;
+        min-width: auto;
+    }
+
+    #plan-mode .plan-nav-btn {
+        width: 28px;
+        height: 28px;
+    }
+
+    #plan-mode .plan-undo-redo-nav {
+        gap: 2px;
+    }
+
+    /* Break the sync-nav container so its children (toggles + buttons)
+       participate directly in the title-bar flex layout */
+    #plan-mode .plan-calendar-sync-nav {
+        display: contents;
+    }
+
+    /* Sync/add buttons stay on row 1 alongside period-nav and undo/redo */
+    #plan-mode .plan-calendar-sync-all-btn {
+        order: 0;
+    }
+
+    #plan-mode .plan-calendar-add-btn {
+        order: 0;
+    }
+
+    /* Calendar toggle chips become a full-width scrollable row below */
+    #plan-mode .plan-calendar-toggles {
+        order: 99;
+        flex: 0 0 100%;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 6px;
+        margin-right: 0;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+    }
+
+    #plan-mode .plan-calendar-toggles::-webkit-scrollbar {
+        display: none;
+    }
+
+    #plan-mode .plan-calendar-toggle {
+        flex-shrink: 0;
+        font-size: 12px;
+        padding: 3px 10px 3px 6px;
+    }
+
+    #plan-mode .plan-calendar-container {
+        min-width: 0;
+        padding: 0 8px 12px 8px;
+    }
+}
+
+#plan-mode .plan-calendar-popover-header {
+    padding: 12px 16px 6px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--plan-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#plan-mode .plan-calendar-help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--plan-border-color);
+    color: var(--plan-text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: help;
+    transition: all 0.15s ease;
+}
+
+#plan-mode .plan-calendar-help-icon:hover,
+#plan-mode .plan-calendar-help-icon.active {
+    background: var(--plan-accent-color);
+    color: #ffffff;
+}
+
+#plan-mode .plan-calendar-help-content {
+    background: var(--plan-surface-secondary);
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    border-bottom: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-calendar-help-content.hidden {
+    display: none;
+}
+
+#plan-mode .plan-calendar-help-content p {
+    margin: 0 0 8px 0;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-calendar-help-content p:last-child {
+    margin-bottom: 0;
+}
+
+#plan-mode .plan-calendar-help-content ol {
+    margin: 8px 0;
+    padding-left: 20px;
+    color: var(--plan-text-secondary);
+}
+
+#plan-mode .plan-calendar-help-content li {
+    margin: 4px 0;
+}
+
+#plan-mode .plan-calendar-popover-body {
+    padding: 16px;
+}
+
+#plan-mode .plan-calendar-popover-body label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--plan-text-secondary);
+    margin-bottom: 6px;
+}
+
+#plan-mode .plan-calendar-url-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 8px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-primary);
+    font-size: 13px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+#plan-mode .plan-calendar-url-input:focus {
+    border-color: var(--plan-accent-color);
+}
+
+/* "Where do I find the address?": opens the same help as the "?". */
+#plan-mode .plan-calendar-help-link {
+    align-self: flex-start;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    font-size: 12px;
+    color: var(--plan-accent-color);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+#plan-mode .plan-calendar-help-content {
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+#plan-mode .plan-calendar-hint {
+    font-size: 11px;
+    color: var(--plan-text-muted);
+    margin: 8px 0 12px 0;
+}
+
+#plan-mode .plan-calendar-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+#plan-mode .plan-calendar-sync-now-btn,
+#plan-mode .plan-calendar-clear-btn {
+    flex: 1;
+    padding: 8px 16px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+#plan-mode .plan-calendar-sync-now-btn {
+    background: var(--plan-accent-color);
+    border-color: var(--plan-accent-color);
+    color: #ffffff;
+}
+
+#plan-mode .plan-calendar-sync-now-btn:hover {
+    background: var(--plan-accent-hover);
+    border-color: var(--plan-accent-hover);
+}
+
+#plan-mode .plan-calendar-clear-btn {
+    background: transparent;
+    border-color: var(--plan-border-color);
+    color: var(--plan-text-secondary);
+}
+
+#plan-mode .plan-calendar-clear-btn:hover {
+    background: rgba(220, 38, 38, 0.08);
+    border-color: rgba(220, 38, 38, 0.3);
+    color: #dc2626;
+}
+
+#plan-mode .plan-calendar-status {
+    font-size: 11px;
+    color: var(--plan-text-muted);
+    text-align: center;
+    padding: 8px;
+    background: var(--plan-panel-bg-soft);
+    border-radius: 8px;
+}
+
+/* Calendar Event Styles (synced events are read-only) */
+#plan-mode .plan-note-text.calendar-event {
+    /* The size and weight of an application deadline, so the two read as one kind. */
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--plan-event-color);
+    opacity: 0.9;
+    cursor: default;
+    top: 0;
+    /* Adjust vertical position */
+}
+
+
+
+#plan-mode .plan-note-line-container.calendar-event .plan-note-line {
+    opacity: 0.6;
+    cursor: default;
+}
+
+#plan-mode .plan-note-line-container.calendar-event .plan-line-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--plan-event-color);
+    cursor: default;
+}
+
+
+
+/* Multi-calendar list styles */
+#plan-mode .plan-calendar-list {
+    margin-bottom: 12px;
+}
+
+#plan-mode .plan-calendar-empty {
+    font-size: 12px;
+    color: var(--plan-text-muted);
+    text-align: center;
+    padding: 12px;
+    background: var(--plan-panel-bg-soft);
+    border-radius: 8px;
+}
+
+#plan-mode .plan-calendar-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    background: var(--plan-panel-bg-soft);
+    border: 1px solid var(--plan-border-color);
+    border-left: 3px solid var(--plan-event-color);
+    border-radius: 8px;
+}
+
+#plan-mode .plan-calendar-item-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#plan-mode .plan-calendar-item-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-calendar-item-url {
+    font-size: 10px;
+    color: var(--plan-text-muted);
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+#plan-mode .plan-calendar-item-delete {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--plan-text-muted);
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-calendar-item-delete:hover {
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.1);
+}
+
+#plan-mode .plan-calendar-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+#plan-mode .plan-calendar-name-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 8px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-primary);
+    font-size: 13px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+#plan-mode .plan-calendar-name-input:focus {
+    border-color: var(--plan-accent-color);
+}
+
+#plan-mode .plan-calendar-add-save-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--plan-accent-color);
+    color: #ffffff;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+#plan-mode .plan-calendar-add-save-btn:hover {
+    background: var(--plan-accent-hover);
+}
+
+/* Sync all button animation */
+#plan-mode .plan-calendar-sync-all-btn.syncing svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Calendar events tooltip popup */
+#plan-mode .calendar-events-tooltip {
+    position: absolute;
+    background: var(--plan-modal-bg);
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(30, 45, 62, 0.16);
+    padding: 12px 16px;
+    z-index: 1000;
+    min-width: 200px;
+    max-width: 300px;
+    border: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .calendar-events-tooltip-header {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--plan-text-muted);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .calendar-events-tooltip-item {
+    padding: 6px 0;
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    color: var(--plan-event-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#plan-mode .calendar-events-tooltip-item::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--plan-accent-color);
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+#plan-mode .calendar-events-tooltip-item.multi-day::before {
+    width: 4px;
+    height: 16px;
+    border-radius: 2px;
+}
+/* The small label that follows the pointer while a goal or a task is dragged
+   in the week view. It is on the body, so it is not under #plan-mode. */
+.plan-week-drag-chip {
+    position: fixed;
+    z-index: 10000;
+    max-width: 220px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: #1e2d3e;
+    color: #ffffff;
+    font: 600 11px/1.3 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgba(30, 45, 62, 0.25);
+}
+
+/* A task that a double click opens. In the months view the other day items
+   let the pointer through; a task takes it, so the double click reaches it. */
+#plan-mode .calendar-task.calendar-task--opens {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* The menu of a day: a right click on an empty place of a day. */
+#plan-mode .plan-day-menu {
+    position: fixed;
+    z-index: 5000;
+    min-width: 168px;
+    padding: 5px;
+    border-radius: 12px;
+    border: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg, #ffffff);
+    box-shadow:
+        0 2px 4px rgba(30, 45, 62, 0.06),
+        0 14px 32px rgba(30, 45, 62, 0.2);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#plan-mode .plan-day-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--plan-text-primary);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+#plan-mode .plan-day-menu-item:hover,
+#plan-mode .plan-day-menu-item:focus-visible {
+    outline: none;
+    background: var(--plan-panel-bg-soft, rgba(30, 45, 62, 0.06));
+}
+
+#plan-mode .plan-day-menu-item svg {
+    flex-shrink: 0;
+    color: var(--plan-text-muted);
+}
+
+/* Where a note or the name of a line is typed in the week view. As in the
+   Months view (.plan-note-input-inline): a caret in the hand font, no box. */
+#plan-mode .plan-week-inline-input {
+    flex: 1 1 100%;
+    min-width: 0;
+    padding: 2px 4px;
+    border: none;
+    background: transparent;
+    color: var(--plan-text-primary);
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    outline: none;
+    /* Not stretched to the height of the row: the words stay at the top. */
+    align-self: flex-start;
+}
+
+/* The wide caret is placed from the box's own corner. */
+#plan-mode .plan-week-allday-row {
+    position: relative;
+}
+
+/* The wide caret of the box for a new note. See giveWideCaret in plan.js. */
+#plan-mode .plan-note-input-inline--own-caret {
+    caret-color: transparent;
+}
+
+#plan-mode .plan-note-caret {
+    position: absolute;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--plan-text-primary);
+    z-index: 1002;
+    pointer-events: none;
+    animation: plan-note-caret-blink 1.06s steps(1) infinite;
+}
+
+@keyframes plan-note-caret-blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+/* ------------------------------------------------------------------
+   Goals live in the heads of the days. The bar over the week is gone.
+   ------------------------------------------------------------------ */
+#plan-mode .plan-week-goals {
+    display: none !important;
+}
+
+/* The row under a day's name. With no goal in the week it has no height,
+   and it opens while the pointer is over the week, in every day at once so
+   the hour lines stay in line. The words show in the day under the pointer. */
+#plan-mode .plan-week-day-goals,
+#plan-mode .plan-week-day-goals:empty {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 0;
+    padding: 0 6px;
+    border-bottom: 0;
+    background: transparent;
+    transition: min-height 0.12s ease, padding 0.12s ease;
+}
+
+#plan-mode .plan-week-grid:hover .plan-week-day-goals,
+#plan-mode .plan-week-grid.has-goal-card .plan-week-day-goals,
+#plan-mode .plan-week-day-goals.plan-week-day-goals--synced,
+#plan-mode .plan-week-day-goals.plan-week-goal-drop-active {
+    min-height: 30px;
+    padding: 3px 6px 5px;
+}
+
+#plan-mode .plan-week-grid:hover .plan-week-day-goals-spacer,
+#plan-mode .plan-week-grid.has-goal-card .plan-week-day-goals-spacer {
+    display: block !important;
+    min-height: 30px;
+}
+
+#plan-mode .plan-week-day-column .plan-week-day-header {
+    border-bottom: 0;
+    padding-bottom: 6px;
+}
+
+#plan-mode .plan-week-day-goals {
+    border-bottom: 1px solid var(--plan-border-color) !important;
+}
+
+#plan-mode .plan-week-add-goal {
+    display: none;
+    flex: 1 1 auto;
+    border: 0;
+    background: transparent;
+    padding: 2px 0;
+    font: inherit;
+    font-size: 12px;
+    color: var(--plan-text-muted);
+    text-align: center;
+    cursor: pointer;
+}
+
+#plan-mode .plan-week-day-column:hover .plan-week-add-goal {
+    display: block;
+}
+
+#plan-mode .plan-week-add-goal:hover {
+    color: var(--plan-accent-color);
+}
+
+/* A day that has a goal: a small "+" at the right, with no change of height. */
+#plan-mode .plan-week-add-goal.plan-week-add-goal--more {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    line-height: 16px;
+    border-radius: 50%;
+    background: var(--plan-panel-bg, #ffffff);
+    box-shadow: 0 0 0 1px var(--plan-border-color);
+    transform: translateY(-50%);
+}
+
+/* A goal in the head of its day. */
+#plan-mode .plan-week-day-goals .plan-week-goal-pill,
+#plan-mode .plan-week-goal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 3px 8px 3px 4px;
+    border: 0;
+    border-radius: 8px;
+    background: rgba(42, 157, 143, 0.13);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-week-goal-pill-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-left: 4px;
+}
+
+#plan-mode .plan-week-goal-pill-progress {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: #1f7a6f;
+}
+
+#plan-mode .plan-week-goal-pill-progress.is-done {
+    color: #ffffff;
+    background: #2a9d8f;
+    border-radius: 999px;
+    padding: 0 5px;
+}
+
+#plan-mode .plan-goal-person-dot {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #1e2d3e;
+    color: #ffffff;
+    font-size: 8px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    overflow: hidden;
+}
+
+/* A person with a photo: the photo fills the dot, as on a task. */
+#plan-mode .plan-goal-person-dot img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* In the card, the dot has the size of the avatar in the assign menu's chip. */
+#plan-mode .plan-goal-editor-person .plan-goal-person-dot {
+    width: 20px;
+    height: 20px;
+}
+
+/* The card of a goal. */
+#plan-mode .plan-goal-editor {
+    position: fixed;
+    /* Over the calendar (2000 at most), under the host's assign menu (2200). */
+    z-index: 2150;
+    box-sizing: border-box;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--plan-border-color);
+    background: var(--plan-panel-bg, #ffffff);
+    box-shadow:
+        0 2px 4px rgba(30, 45, 62, 0.06),
+        0 16px 36px rgba(30, 45, 62, 0.22);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-goal-editor .hidden {
+    display: none;
+}
+
+#plan-mode .plan-goal-editor-text,
+#plan-mode .plan-goal-editor-query,
+#plan-mode .plan-goal-editor-add-person {
+    width: 100%;
+    box-sizing: border-box;
+    border: 0;
+    border-bottom: 2px solid var(--plan-accent-color);
+    background: transparent;
+    padding: 4px 2px;
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    outline: none;
+}
+
+#plan-mode .plan-goal-editor-query,
+#plan-mode .plan-goal-editor-add-person {
+    font-weight: 400;
+    border-bottom-width: 1px;
+    margin-top: 6px;
+}
+
+#plan-mode .plan-goal-editor-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+#plan-mode .plan-goal-editor-person,
+#plan-mode .plan-goal-editor-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 999px;
+    background: transparent;
+    padding: 2px 10px 2px 3px;
+    min-height: 24px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: inherit;
+    cursor: pointer;
+}
+
+#plan-mode .plan-goal-editor-person:not(.is-set) {
+    padding-left: 10px;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-goal-editor-link {
+    border-color: transparent;
+    padding-left: 4px;
+    font-weight: 500;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-goal-editor-link:hover,
+#plan-mode .plan-goal-editor-person:hover {
+    color: var(--plan-accent-color);
+}
+
+#plan-mode .plan-goal-editor-people,
+#plan-mode .plan-goal-editor-results {
+    margin-top: 6px;
+    max-height: 190px;
+    overflow-y: auto;
+}
+
+#plan-mode .plan-goal-editor-option,
+#plan-mode .plan-goal-editor-result {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    padding: 5px 6px;
+    font: inherit;
+    font-size: 12.5px;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+#plan-mode .plan-goal-editor-option:hover,
+#plan-mode .plan-goal-editor-result:hover {
+    background: var(--plan-panel-bg-soft, rgba(30, 45, 62, 0.06));
+}
+
+#plan-mode .plan-goal-editor-option.is-on,
+#plan-mode .plan-goal-editor-result.is-on {
+    background: rgba(42, 157, 143, 0.14);
+    font-weight: 600;
+}
+
+#plan-mode .plan-goal-editor-result.is-on::after {
+    content: "✓";
+    margin-left: auto;
+    color: #1f7a6f;
+}
+
+#plan-mode .plan-goal-editor-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+#plan-mode .plan-goal-editor-tab {
+    border: 1px solid var(--plan-border-color);
+    border-radius: 999px;
+    background: transparent;
+    padding: 1px 8px;
+    font: inherit;
+    font-size: 11px;
+    color: var(--plan-text-muted);
+    cursor: pointer;
+}
+
+#plan-mode .plan-goal-editor-tab.is-on {
+    border-color: transparent;
+    background: #1e2d3e;
+    color: #ffffff;
+}
+
+#plan-mode .plan-goal-editor-group,
+#plan-mode .plan-goal-editor-none {
+    margin: 8px 6px 2px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-goal-editor-none {
+    text-transform: none;
+    font-weight: 400;
+    font-size: 12px;
+}
+
+#plan-mode .plan-goal-editor-linked-task {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 3px 4px 3px 8px;
+    border-radius: 7px;
+    background: var(--plan-panel-bg-soft, rgba(30, 45, 62, 0.05));
+    font-size: 12px;
+}
+
+#plan-mode .plan-goal-editor-linked-task span {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#plan-mode .plan-goal-editor-linked-task.is-done span {
+    text-decoration: line-through;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-goal-editor-linked-task button {
+    border: 0;
+    background: transparent;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--plan-text-muted);
+    cursor: pointer;
+}
+
+#plan-mode .plan-goal-editor-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#plan-mode .plan-goal-editor-done,
+#plan-mode .plan-goal-editor-delete {
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#plan-mode .plan-goal-editor-done {
+    margin-left: auto;
+    background: #1e2d3e;
+    color: #ffffff;
+}
+
+#plan-mode .plan-goal-editor-delete {
+    color: #b4483c;
+}

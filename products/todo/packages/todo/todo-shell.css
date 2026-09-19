@@ -1,0 +1,1060 @@
+/*
+ * Layout for the React port of redd-do, in every host.
+ *
+ * todo.css is generated from redd-do (scripts/port-todo-css.js). There the
+ * board sat in a `.app-container` that filled the OS window, and the footer
+ * was fixed to the viewport. The React port renders no `.app-container`:
+ * `.todo-shell` is the root, and the host decides how tall it is (the
+ * planner tab area, or the standalone window). These rules make the shell
+ * fill its host and keep the header and the add-task footer in place.
+ *
+ * Import this after todo.css. Host-only overrides go in the host's own file
+ * (the planner's app/todo-theme.css, the standalone's standalone.css).
+ */
+
+.todo-shell {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* The `.app-container` job, done by the shell itself. */
+.todo-shell #normal-mode {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The footer sits at the bottom of the shell, not the viewport. Needs the
+   #normal-mode ancestor to outrank the ported fixed-position rule. */
+.todo-shell #normal-mode .footer {
+  position: static;
+  flex-shrink: 0;
+  padding: 8px 8px 10px;
+}
+
+/* Add-task row.
+
+   todo.css styles redd-do's single `#add-task-btn`. The port shows the same
+   row in the board columns too, so the button is a class here, and it is the
+   app's navy instead of redd-do's green. --focus-btn-bg is the same navy the
+   round focus buttons use, and it turns light in dark mode, where navy on
+   navy would disappear. */
+.todo-shell .add-task-btn {
+  padding: 6px 14px;
+  margin-left: 4px;
+  border: none;
+  border-radius: 6px;
+  background: var(--focus-btn-bg);
+  color: var(--focus-btn-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+/* The duration sits next to the button, not a step away from it. todo.css
+   adds 4px here and the button adds its own margin. */
+.todo-shell .duration-input-container.visible {
+  margin-right: 0;
+}
+
+.todo-shell .add-task-btn:hover {
+  background: var(--focus-btn-bg-hover);
+}
+
+.todo-shell .add-task-btn.hidden {
+  display: none;
+}
+
+/* The person button in the add row, right of the clock. It keeps the row's
+   height whether it shows an icon or an avatar. */
+.todo-shell .add-task-assign {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.todo-shell .add-task-assign .assign-btn {
+  min-width: 26px;
+  min-height: 26px;
+}
+
+.todo-shell .add-task-assign .assign-btn.hidden {
+  display: none;
+}
+
+/* The row the arrow keys are on in the assign menu. Hover moves the row, so
+   the pointer and the keys never disagree. */
+.todo-shell .assign-menu-item.is-active,
+.assign-menu-portal .assign-menu-item.is-active {
+  background: var(--hover-bg);
+}
+
+.assign-menu-portal:focus,
+.assign-menu-portal:focus-visible {
+  outline: none;
+}
+
+/* Board columns: the dashed box is the wrapper now, because the row holds
+   the duration control and the button beside the text box. The text box
+   keeps its padding and gives up its border and background. */
+.todo-shell .board-add-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  border: none;
+  border-radius: 10px 0 0 10px;
+  background: transparent;
+}
+
+.todo-shell .board-add-input:focus {
+  background: transparent;
+}
+
+/* Task card buttons that wait for the pointer.
+
+   There is no rule here for them any more. A button that carries nothing —
+   an empty assignee, an unset favourite, a task that is not in focus — is
+   drawn inside .hover-actions, and the same button carrying state is drawn
+   inside .always-actions instead. See renderTask in TodoPage.
+
+   A `hover-only` class used to hide them where they stood, inside
+   .always-actions. That took the row's width back the moment the pointer
+   arrived, and every task long enough to wrap re-wrapped under it. Which
+   group a button is drawn in settles both what shows and what the row
+   measures, so nothing moves. .hover-actions itself is positioned in
+   todo.css, where it is lifted out of the flow and given its pill. */
+
+/* A control that carries nothing keeps its place.
+
+   Focus and the assignee button sit to the right of everything else, which
+   means they stay in the row's flow rather than in the lifted pill. Hiding
+   them outright would hand their width back at rest and take it again on
+   hover, and the words would move — so they are hidden and still measured.
+   The pill covers them while it is up. */
+.todo-shell .action-idle {
+  visibility: hidden;
+  /* And it waits on the far side.
+
+     Its width has to stay in the row, or the words move when the pointer
+     arrives. Held in place it sat to the right of the avatar, so the row at
+     rest ended in a gap rather than in the person on the task. `order` puts
+     the empty box at the head of the group instead and sends it back to the
+     end when it has something to show — the same two boxes either way, so
+     the row is the same width and only the gap moves. */
+  order: -1;
+}
+
+.todo-shell .task-item:hover .action-idle,
+.todo-shell .task-item.has-open-menu .action-idle {
+  visibility: visible;
+  order: 0;
+}
+
+.todo-shell .task-menu-open .task-item:hover .action-idle {
+  visibility: hidden;
+  order: -1;
+}
+
+.todo-shell .task-menu-open .task-item.has-open-menu .action-idle {
+  visibility: visible;
+  order: 0;
+}
+
+/* Assignee avatars carry no ring.
+
+   todo.css rings each avatar in var(--task-bg) to part the ones that overlap.
+   Backlog cards have no fill of their own, so there the ring is white on the
+   column and reads as a border drawn around the person. */
+.todo-shell .assign-avatar-stack-item,
+.todo-shell .assign-avatar-stack-extra {
+  box-shadow: none;
+}
+
+/* The buttons that appear on hover share one rest colour.
+
+   todo.css gives the notes button and the clock a very light grey and the
+   person button a much darker one, so the three read as different things.
+   One colour for all three, a little darker than the light grey. Buttons
+   that carry state keep their own darker colour, because those rules are
+   more specific. */
+.todo-shell .notes-btn,
+.todo-shell .task-meta.add-time,
+.todo-shell .assign-btn {
+  color: color-mix(in srgb, var(--text-tertiary) 62%, transparent);
+}
+
+/* The + for a new list sits on the line of the tab names.
+
+   A tab reserves 2px under its text for the active underline, so its text
+   sits 1px above the middle of its box. todo.css answers that with a 4px
+   margin and a 2px transform, which lifts the + about 3px above the names.
+   A 2px margin, the height of that underline, is the whole correction. */
+.todo-shell .add-tab-btn-subtle {
+  margin-bottom: 2px;
+  transform: none;
+}
+
+/* The Done row sits tight to the board.
+
+   todo.css spaces it for redd-do's single list: 8px of padding on the box,
+   a 32px row for a 24px heading, and 4px more inside the toggle. That is
+   16px of empty space around one word. The row still clears the sync button,
+   which is 24px tall. Collapsed, the box is 28px instead of 48px, and
+   TodoPage caps it to match. */
+.todo-shell .done-container {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.todo-shell .done-heading-row {
+  min-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.todo-shell .done-toggle {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* The sync control is a 22px source logo with a 16px refresh badge hanging
+   off its corner, and todo.css reserves 8px under it for the badge. In this
+   row that made the box 32px tall. Six is enough, and the badge keeps the
+   same overhang it always had. */
+.todo-shell .done-heading-row .sync-controls {
+  padding: 0 8px 6px 0;
+}
+
+/* Collapsed, the box shows the heading row and nothing else. Hide the rest
+   instead of capping the height: a cap has to guess how tall the row is,
+   and it cut the bottom off the refresh badge. */
+.todo-shell .done-container.collapsed > .done-summary,
+.todo-shell .done-container.collapsed > .done-tasks {
+  display: none;
+}
+
+/* Focus window page: the shell is the whole viewport and #focus-mode
+   (hidden by default in the ported stylesheet) is always shown. */
+.todo-shell.focus-shell {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.todo-shell.focus-shell #focus-mode {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   The Today session: Start on the column, and the window it opens.
+   --------------------------------------------------------------------------- */
+
+/* A task dragged onto a tab lands in that list. The tab says so while the
+   pointer is over it, and todo.css shrinks the card to say the same. */
+.todo-shell .tab.task-drop-target {
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  border-bottom-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+/* A column's heading is its handle: press it to put the column somewhere
+   else. The Start pill and the counts are not part of the handle. */
+.todo-shell .board-column-header {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.todo-shell .board-column-someday .board-column-header,
+.todo-shell .board-column.is-rail .board-column-header {
+  cursor: default;
+}
+
+.todo-shell .board-column.is-dragging-column {
+  opacity: 0.6;
+}
+
+.todo-shell .board-column.is-dragging-column .board-column-header {
+  cursor: grabbing;
+}
+
+/* The pill floats at the right of the heading. In the flow it would be the
+   tallest thing in that header, and the Today column's tasks would then
+   start lower than the other columns'. */
+.todo-shell .board-column-today .board-column-header {
+  position: relative;
+}
+
+.todo-shell .board-start-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  /* The app's navy, as the focus button and the filled chips are. */
+  background: var(--focus-btn-bg);
+  color: var(--focus-btn-text);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.todo-shell .board-start-btn:hover {
+  background: var(--focus-btn-bg-hover);
+}
+
+/* The session covers the board and the chrome around it, and no more. It is
+   absolute inside .todo-shell, not fixed to the window, so the planner's
+   navigation rail keeps its place when it is open. Its z-index stays under
+   the rail's 2000 for the same reason. */
+.today-session {
+  position: absolute;
+  inset: 0;
+  z-index: 1900;
+  /* The session is as wide as the pane it is in, not as the window: in the
+     planner the board can be one half of a split, with mail beside it. So
+     what is narrow is asked of this box, not of the screen. See the block
+     at the foot of this file. */
+  container-type: inline-size;
+  container-name: session;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Room around the card, given as a share of the pane once the pane is
+     under 600px: a container query cannot style its own container, so the
+     one box the query cannot reach asks for its own padding here. */
+  padding: clamp(10px, 4%, 24px);
+  background: var(--app-bg-solid, #faf8f5);
+  overflow: auto;
+}
+
+.today-session-card {
+  position: relative;
+  /* A reading width for one task at a time, not a page of columns. */
+  width: min(480px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 28px 32px;
+  border-radius: 18px;
+  /* The cream of a board column. */
+  background: #f4f1ec;
+  box-shadow: 0 24px 60px rgba(30, 45, 62, 0.12);
+  overflow: auto;
+}
+
+.todo-shell[data-theme="dark"] .today-session-card {
+  background: color-mix(in srgb, #fff 5%, var(--app-bg));
+}
+
+/* The way out answers the pointer anywhere on the window. The way to add
+   more answers the pointer on the card. Left alone, the card holds the work
+   and nothing else. */
+.today-session-esc,
+.today-session-add {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.today-session:hover .today-session-esc,
+.today-session-esc:focus-visible,
+.today-session-card:hover .today-session-add,
+/* Words in the box keep it on screen; an empty box with the caret in it does
+   not, or one visit to it leaves it showing for the rest of the session. */
+.today-session-add.has-text,
+.today-session-add:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The corner of the window, not of the card. */
+.today-session-esc {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 6px;
+  background: var(--hover-bg);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* No padding of its own: the 18px here held the esc chip clear of the
+   heading, and the chip now sits in the corner of the window. */
+/* The task in hand: its name said plainly, and under it what can be done
+   about it. Everything else on the card comes after. */
+.today-session-now {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Room under the name of the task before what can be done about it. */
+  gap: 18px;
+  text-align: center;
+}
+
+.today-session-now-title {
+  margin: 0;
+  /* Beside the tick it is a flex item, and a flex item will not go under
+     the width of its longest word unless it is told it may. Without these
+     two a name like "participants" is drawn straight past the card edge. */
+  min-width: 0;
+  overflow-wrap: break-word;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.today-session-now-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.today-session-done-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.today-session-done-btn:hover {
+  background: var(--focus-btn-bg);
+  color: var(--focus-btn-text);
+}
+
+.today-session-cheer {
+  margin: 0;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--redd-teal);
+}
+
+.today-session-count {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Up next, and the rule that runs to the edge of the card. */
+.today-session-upnext {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.today-session-upnext-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-color-medium);
+}
+
+.today-session:hover .today-session-esc,
+.today-session-esc:focus-visible,
+.today-session-card:hover .today-session-add,
+/* Words in the box keep it on screen; an empty box with the caret in it does
+   not, or one visit to it leaves it showing for the rest of the session. */
+.today-session-add.has-text,
+.today-session-add:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The corner of the window, not of the card. */
+.today-session-esc {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 6px;
+  background: var(--hover-bg);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.today-session-pause,
+.today-session-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.today-session-pause:hover,
+.today-session-skip:hover {
+  color: var(--text-primary);
+  background: var(--hover-bg);
+}
+
+.today-session-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-color-medium);
+  overflow: hidden;
+}
+
+.today-session-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--redd-teal);
+  transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.today-session-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.today-session-task {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--task-bg);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* The ring is the app's navy, the colour of the focus buttons. It turns
+   light in dark mode, where navy on navy would not show. */
+/* A row can be picked up and put down elsewhere in the queue. */
+.today-session-task {
+  cursor: grab;
+  touch-action: none;
+  /* WebKit needs the prefixed one, and this shell is WebKit. Without it a
+     drag paints a text selection across the rows it passes. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The words of a task are still worth copying, so give them back to the
+   pointer when nothing is being dragged. */
+.today-session-queue:not(:has(.is-dragging)) .today-session-task-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.today-session-task.is-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.today-session-task.is-running {
+  border-color: var(--focus-btn-bg);
+  box-shadow: 0 0 0 1px var(--focus-btn-bg);
+}
+
+.today-session-task.is-done {
+  border-color: transparent;
+  background: var(--hover-bg);
+}
+
+.today-session-check {
+  /* Over the controls: see the note on them. */
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1.5px solid var(--border-color-strong);
+  border-radius: 6px;
+  background: var(--input-surface, #ffffff);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.today-session-check:hover {
+  border-color: var(--redd-teal);
+}
+
+.today-session-check.is-checked {
+  border-color: var(--focus-btn-bg);
+  background: var(--focus-btn-bg);
+  cursor: default;
+  position: relative;
+}
+
+.today-session-check.is-checked::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--focus-btn-text);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.today-session-task-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+/* The words are clickable — they open a box over themselves. */
+.today-session-queue .today-session-task-text,
+.today-session-now-title {
+  cursor: text;
+}
+
+/*
+  The edit box wears the words' own classes, so it keeps their font and
+  their place; this strips what a textarea brings of its own.
+*/
+textarea.today-session-edit {
+  appearance: none;
+  letter-spacing: inherit;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  font-family: inherit;
+  width: 100%;
+  display: block;
+}
+
+/* The serif the h2 wears comes from the element, not the class; the box
+   that stands in for it says so itself. */
+textarea.today-session-edit.today-session-now-title {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: -0.01em;
+}
+
+.today-session-task.is-done .today-session-task-text {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+
+.today-session-timer {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  transition: opacity 0.2s ease;
+}
+
+.today-session-timer.overtime {
+  color: var(--danger);
+}
+
+/* Every control on a row waits for the pointer — a session is for the work,
+   not for its marks, so even an avatar or a duration stays out of the way
+   until the row is under the pointer. */
+/* In the running block the cluster joins the row of buttons when the pointer
+   is on the block, and takes no room at all until then. Held in the flow it
+   would push Done, Skip, Pause and the clock off centre, and those four are
+   what the row is for. */
+.today-session-controls.is-inline {
+  display: none;
+  position: static;
+  transform: none;
+  /* In the flow, the cap above would squeeze the cluster for nothing: it
+     is there to keep an overlaid box off the tick. */
+  max-width: none;
+  padding-left: 0;
+  background: transparent;
+}
+
+.today-session-now:hover .today-session-controls.is-inline {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* What a task carries sits at the far end of its row and holds that place.
+   The controls come over it when the pointer arrives, so nothing shifts. */
+.today-session-marks {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: opacity 0.2s ease;
+}
+
+.today-session-task:hover .today-session-marks {
+  opacity: 0;
+}
+
+/*
+ * The controls come over the row from the right, which is room the marks
+ * were holding. On a narrow pane there is not that much room: four buttons
+ * are as wide as the row, and what they came over was the tick — the first
+ * answer the row offers, and the one thing on it that must never be hidden.
+ *
+ * So the box is as wide as its buttons and no wider, and it may not reach
+ * further left than where the words start — the row's padding, the tick and
+ * the gap. Held open from there to the far edge instead, it painted the
+ * row's own colour over the whole line, and a task went blank under the
+ * pointer: the words were still there, behind a box the width of the row.
+ */
+.today-session-controls {
+  position: absolute;
+  right: 18px;
+  max-width: calc(100% - 54px - 18px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 10px;
+  border-radius: 10px;
+  /* The row's own colour, so what it covers does not show through. */
+  background: var(--task-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.today-session-task:hover .today-session-controls,
+.today-session-controls:focus-within,
+/* Except the focus button, while its window stands open. */
+.today-session-controls:has(.today-session-focus.is-open) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.today-session-duration {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+
+
+.today-session-controls,
+.today-session-check {
+  cursor: default;
+}
+
+/*
+ * The tick on a finished task is a button: pressing it takes the task back
+ * up. It has to say so, because every other tick in the session is a mark to
+ * read and not to press — hence the rule above, which this one answers.
+ */
+.today-session-task.is-done .today-session-check.is-checked {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.today-session-task.is-done .today-session-check.is-checked:hover,
+.today-session-task.is-done .today-session-check.is-checked:focus-visible {
+  opacity: 0.65;
+}
+
+.today-session-add {
+  padding: 14px 18px;
+  border: 1px dashed var(--border-color-strong);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 15px;
+  outline: none;
+}
+
+.today-session-add::placeholder {
+  color: var(--text-tertiary);
+}
+
+.today-session-add:focus {
+  border-style: solid;
+  border-color: var(--redd-teal);
+}
+
+.today-session-done {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.today-session-done-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/*
+ * The Done bar answers as a finished task reaches it, the way the board's
+ * does. It is set going by the flight, timed to the arrival rather than the
+ * departure — see flyGhostTo.
+ */
+.today-session-done-head.receiving-task {
+  animation: todaySessionDoneReceive 360ms ease-out;
+}
+
+@keyframes todaySessionDoneReceive {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .today-session-done-head.receiving-task {
+    animation: none;
+  }
+}
+
+.today-session-done-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-color-medium);
+}
+
+/* Paper for the last task of the day. */
+.today-session-confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  pointer-events: none;
+}
+
+.today-session-confetti span {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: today-session-confetti 1.4s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes today-session-confetti {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), -160px) rotate(var(--spin));
+  }
+}
+
+/*
+ * The task in hand, promoted.
+ *
+ * It used to be a heading in the middle of the card with a Done button
+ * under it — a second way of saying the one thing every row below says
+ * with a tick, and a shape that matched nothing else on screen. Now it is
+ * the same card as a task waiting, drawn larger and lifted: a box on the
+ * left, in line with the boxes under it, the name beside the box, and
+ * what can be done about it on a line underneath.
+ */
+.today-session-now.is-card {
+  align-items: stretch;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--task-bg);
+  box-shadow: 0 10px 24px rgba(30, 45, 62, 0.1);
+  text-align: left;
+}
+
+.todo-shell[data-theme="dark"] .today-session-now.is-card {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* The box and the name, in the row the queue's own rows are built as —
+   the same 14px between them, so the two boxes line up down the card. */
+.today-session-now-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* A shade larger than the ones waiting, as the name beside it is. Still
+   the same box: the border, the tick and the hover come from
+   `.today-session-check`. */
+.today-session-now-check {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+.today-session-now .today-session-now-title {
+  text-align: left;
+}
+
+/*
+ * Under the name, not under the card.
+ *
+ * 40px is the box and the gap beside it, so what can be done about the
+ * task begins where its name begins. The clock goes to the far edge: it
+ * is the one thing here that is read rather than pressed.
+ */
+.today-session-now.is-card .today-session-now-actions {
+  justify-content: flex-start;
+  padding-left: 40px;
+}
+
+.today-session-now.is-card .today-session-timer {
+  margin-left: auto;
+}
+
+/*
+ * A narrow pane.
+ *
+ * The session was drawn for a card of its own on a wide window, and in the
+ * planner it can be half of a split beside mail — about 330px across. At
+ * that width the padding alone took a third of the room, the name of the
+ * task in hand fell to one word a line, and what could be done about it
+ * stood in a column because a 40px indent left nothing to stand on.
+ *
+ * So: less padding, a smaller name, and the row of buttons back at the
+ * left edge. The question is asked of the pane, not the window, because a
+ * wide window can hold a narrow session.
+ */
+@container session (max-width: 480px) {
+  .today-session-card {
+    gap: 12px;
+    padding: 16px 14px 24px;
+    border-radius: 14px;
+  }
+
+  .today-session-now.is-card {
+    padding: 12px;
+  }
+
+  /* The tick, and the gap beside it, come down to what a waiting row uses,
+     so the two still line up. The numbers below depend on these. */
+  .today-session-now-head {
+    gap: 10px;
+  }
+
+  .today-session-now-check {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+  }
+
+  .today-session-now-title {
+    font-size: 17px;
+  }
+
+  .today-session-cheer {
+    font-size: 17px;
+  }
+
+  /* Under the name there is no room to begin where the name begins: the
+     indent is what put Skip, Pause and the clock on three lines. */
+  .today-session-now.is-card .today-session-now-actions {
+    gap: 8px;
+    padding-left: 0;
+  }
+
+  .today-session-task {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  /* Still the row's padding, plus the tick, plus the gap — 12 + 22 + 10. */
+  .today-session-controls {
+    right: 12px;
+    max-width: calc(100% - 44px - 12px);
+  }
+
+  .today-session-add {
+    padding: 12px 14px;
+  }
+}
+
+/*
+ * The steps of the task in hand, under its name and in line with it
+ * (40px is the box and the gap beside it, as for the actions above).
+ * The board's own subtask rows, so a step looks the same in both places.
+ */
+.today-session-now.is-card .today-session-subtasks {
+  margin-top: 10px;
+  padding-left: 40px;
+}
+
+.today-session-subtasks .task-subtask-text {
+  text-align: left;
+}
+
+.today-session-subtasks-toggle {
+  align-self: flex-start;
+  margin: 2px 0 0 30px;
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.today-session-subtasks-toggle:hover {
+  color: var(--text-primary);
+}
