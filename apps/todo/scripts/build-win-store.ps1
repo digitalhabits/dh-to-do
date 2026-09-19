@@ -136,7 +136,6 @@ try {
             'Square44x44Logo.png'    = 'Square44x44Logo.scale-100.png'
             'Square150x150Logo.png'  = 'Square150x150Logo.scale-100.png'
             'Square71x71Logo.png'    = 'SmallTile.scale-100.png'
-            'Square310x310Logo.png'  = 'LargeTile.scale-100.png'
         }
         foreach ($from in $logos.Keys) {
             $source = Join-Path $iconDir $from
@@ -185,7 +184,10 @@ try {
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.scale-100.png"
         Square44x44Logo="Assets\Square44x44Logo.scale-100.png">
-        <uap:DefaultTile Square71x71Logo="Assets\SmallTile.scale-100.png" Square310x310Logo="Assets\LargeTile.scale-100.png" />
+        <!-- No large tile. makeappx refuses Square310x310Logo when there is
+             no Wide310x150Logo beside it (error 80080204), and there is no
+             wide picture. Windows 11 shows no tiles of those sizes. -->
+        <uap:DefaultTile Square71x71Logo="Assets\SmallTile.scale-100.png" />
         <uap:SplashScreen Image="Assets\Square150x150Logo.scale-100.png" />
       </uap:VisualElements>
     </Application>
