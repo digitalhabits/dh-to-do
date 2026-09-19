@@ -6,19 +6,61 @@ it collects no data. From the [Centre for Digital Habits](https://digitalhabits.
 
 **Get it:** [Mac App Store](https://apps.apple.com/gb/app/id6760351681) · [Microsoft Store](https://apps.microsoft.com/detail/9P48NJXCBBGH)
 
-![Keep your goals in sight: a floating reminder of your task, minimalist task lists, and expected and spent time](apps/todo/store-listing/screenshots/mac/en/01-goals-in-sight.png)
+## Keep your goals in sight
 
-![Make it easy to stay on track: tabs for your lists, favourites, time for each task, and focus mode](apps/todo/store-listing/screenshots/mac/en/02-stay-on-track.png)
+![A small yellow note with the task "Reply to Anton" and a timer, on top of a full email inbox](apps/todo/docs/screenshots/01-floating-note.png)
 
-![Remember your main quest: the floating reminder can be moved and sized, or fill the screen](apps/todo/store-listing/screenshots/mac/en/03-main-quest.png)
+A floating note stays on top of your other apps and shows the one task you
+are on, so you get back to what you wanted to do. Move it and size it as you
+want.
 
-![Board View: your tasks in columns for Backlog, Soon (-ish) and Today, and Today as a full-screen session](apps/todo/store-listing/screenshots/mac/en/04-board-view.png)
+## Make it easy to stay on track
 
-![Calendar View: a Danish-style calendar of the months or the week, with your tasks, goals and calendars](apps/todo/store-listing/screenshots/mac/en/05-calendar-view.png)
+<p align="center">
+  <img src="apps/todo/docs/screenshots/02-lists.png" alt="A short list of tasks, each with its time, and tabs for the lists at the top" width="460">
+</p>
 
-![Based on more than ten years of research on digital distraction, with public source code and no data collected](apps/todo/store-listing/screenshots/mac/en/06-research-and-privacy.png)
+Simple lists, with tabs for your lists. Give a task the time you expect it to
+take, press the focus button, and see how long you actually spent.
 
-The pictures are the ones on the store pages. The tasks in them are invented.
+## Remember your main quest
+
+![The task "Reply to Anton" and its timer, large, on a calm full screen](apps/todo/docs/screenshots/03-full-screen.png)
+
+The reminder can fill the screen: for a second screen, or for work away from
+the screen.
+
+## Plan your day on a board
+
+![Board View: three columns of tasks, Backlog, Soon (-ish) and Today](apps/todo/docs/screenshots/04-board.png)
+
+Board View puts your tasks in columns for Backlog, Soon (-ish) and Today. Turn
+it on in Settings. A task can have subtasks, a due date and notes with
+pictures.
+
+<p align="center">
+  <img src="apps/todo/docs/screenshots/04-today-session.png" alt="Today as a full-screen session: one task with its timer, and the next tasks under it" width="460">
+</p>
+
+Press Start on Today, and the app takes you through the day's tasks one at a
+time.
+
+## See the road ahead
+
+![Calendar View: months as columns of days, with notes written on the days, tasks on their due dates and events from a linked calendar](apps/todo/docs/screenshots/05-calendar.png)
+
+A calm, Danish-style calendar of the months or the week. Write your plans onto
+the days, see tasks on their due dates, and link your calendar to see your
+important events.
+
+## Based on research, and private
+
+The app comes from more than ten years of research on digital distraction at
+the University of Oxford. The source code is public, the app collects no data,
+and your tasks stay in a file on your computer. It syncs two ways with Apple
+Reminders and Basecamp, if you want that.
+
+The tasks, the names and the mail in the pictures are invented.
 
 ## How it works
 
