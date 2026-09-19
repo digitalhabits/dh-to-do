@@ -92,6 +92,10 @@ on:
         description: "Mac build number, only to send the same version again"
         type: string
         default: ""
+      mac_existing_build_number:
+        description: "With the Mac submission: submit a build that is already in App Store Connect (for example 3.0.6). Nothing is uploaded."
+        type: string
+        default: ""
 
 concurrency:
   group: build-${{ github.ref }}
@@ -430,13 +434,29 @@ jobs:
           APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
           ASC_PRIMARY_LOCALE: ${{ secrets.ASC_PRIMARY_LOCALE }}
           FASTLANE_SKIP_UPDATE_CHECK: "1"
+          # Through the environment, never written into the script: an input
+          # is text from outside.
+          EXISTING_BUILD: ${{ inputs.mac_existing_build_number }}
+          SCREENSHOTS: ${{ inputs.upload_mac_screenshots }}
         run: |
+          # A build that was uploaded before (with Transporter, and tested in
+          # TestFlight) goes to review as it is. The package of this run is
+          # not sent. See "Retry with an already-uploaded binary" in the Fastfile.
+          if [ -n "$EXISTING_BUILD" ]; then
+            if ! printf '%s' "$EXISTING_BUILD" | grep -Eq '^[0-9]+(\.[0-9]+){0,2}$'; then
+              echo "::error::mac_existing_build_number must be a number such as 3.0.6."
+              exit 1
+            fi
+            echo "Submitting build $EXISTING_BUILD, which is already in App Store Connect. Nothing is uploaded."
+            fastlane mac submit_mac_app_store "version:$VERSION" "notes:whats_new_mas.txt" "build_number:$EXISTING_BUILD" "screenshots:$SCREENSHOTS"
+            exit 0
+          fi
           pkg="$(find store-packages-mas -type f -name '*.pkg' | head -1)"
           if [ -z "$pkg" ]; then
             echo "::error::No .pkg in the artifact of the mac job."
             exit 1
           fi
-          fastlane mac submit_mac_app_store "version:$VERSION" "pkg:$pkg" "notes:whats_new_mas.txt" "screenshots:${{ inputs.upload_mac_screenshots }}"
+          fastlane mac submit_mac_app_store "version:$VERSION" "pkg:$pkg" "notes:whats_new_mas.txt" "screenshots:$SCREENSHOTS"
 
   submit-windows:
     name: Submit (Microsoft Store)
