@@ -84,6 +84,10 @@ on:
         description: "Send the .msix to Partner Center and submit for certification"
         type: boolean
         default: false
+      microsoft_store_draft_only:
+        description: "With the Microsoft submission: upload the package and the texts, and leave the draft open. You add pictures by hand and press Submit in Partner Center."
+        type: boolean
+        default: true
       upload_mac_screenshots:
         description: "With the Mac submission, replace the store pictures with store-listing/screenshots/mac/en"
         type: boolean
@@ -519,9 +523,12 @@ jobs:
           SELLER_ID: ${{ secrets.SELLER_ID }}
           MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
           PYTHONUTF8: "1"
+          DRAFT_ONLY: ${{ inputs.microsoft_store_draft_only }}
         run: |
+          $more = @{}
+          if ($env:DRAFT_ONLY -eq 'true') { $more['DraftOnly'] = $true }
           ./scripts/submit-microsoft-store.ps1 `
             -PackagesDir store-packages `
             -WhatsNewFile whats_new.txt `
             -ProductId $env:MS_STORE_PRODUCT_ID `
-            -Reconfigure
+            -Reconfigure @more

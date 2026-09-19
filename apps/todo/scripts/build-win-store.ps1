@@ -120,33 +120,33 @@ try {
         $assets = Join-Path $staging 'Assets'
         New-Item -ItemType Directory -Path $assets | Out-Null
 
-        # Every logo the manifest names already exists at exactly the right
-        # size: `tauri icon` generated the Square*Logo set for Windows when it
-        # made the .icns and the .ico. So this renames rather than resizes, and
-        # needs no image library.
-        #
-        # Only scale-100 assets, so Windows scales the tile itself on a
-        # high-DPI display. Adding scale-200 and scale-400 means generating
-        # 300px and 600px versions from a source bigger than the 512px icon.png
-        # - worth doing if the tile ever looks soft, not worth it before then.
+        # The pictures of the package are kept in src-tauri\icons\store, made
+        # from the icon's drawing by scripts/todo-store-logos.mjs. They are
+        # the same 28 files, by name and by pixel size, as in the 2.9.0
+        # package that the Store accepted: three scales of each logo, the wide
+        # and the large tile, and the taskbar sizes. The first 3.0.0 package
+        # had four pictures at one scale, and Partner Center's check of it
+        # hung ("Paused") with no fault named. So this copies, and needs no
+        # image library here.
         Write-Host '  [1/4] Icon assets...' -ForegroundColor Gray
-        $iconDir = Join-Path $AppRoot 'src-tauri\icons'
-        $logos = @{
-            'StoreLogo.png'          = 'StoreLogo.scale-100.png'
-            'Square44x44Logo.png'    = 'Square44x44Logo.scale-100.png'
-            'Square150x150Logo.png'  = 'Square150x150Logo.scale-100.png'
-            'Square71x71Logo.png'    = 'SmallTile.scale-100.png'
+        $iconDir = Join-Path $AppRoot 'src-tauri\icons\store'
+        $pictures = @(Get-ChildItem -Path $iconDir -Filter '*.png' -File -ErrorAction SilentlyContinue)
+        if ($pictures.Count -lt 28) {
+            Write-Host "  ERROR: $iconDir holds $($pictures.Count) pictures, and the package needs 28." -ForegroundColor Red
+            Write-Host '  Make them again with: node scripts/todo-store-logos.mjs' -ForegroundColor Yellow
+            exit 1
         }
-        foreach ($from in $logos.Keys) {
-            $source = Join-Path $iconDir $from
-            if (-not (Test-Path $source)) {
-                Write-Host "  ERROR: missing icon $source" -ForegroundColor Red
-                Write-Host '  Regenerate with: pnpm tauri icon' -ForegroundColor Yellow
-                exit 1
-            }
-            Copy-Item $source (Join-Path $assets $logos[$from])
+        foreach ($picture in $pictures) {
+            Copy-Item $picture.FullName (Join-Path $assets $picture.Name)
         }
 
+        # The manifest is the 2.9.0 one, line for line, but for the version
+        # and the name of the program. No comments inside it: what the Store
+        # accepted had none. The tiles: makeappx refuses Square310x310Logo
+        # with no Wide310x150Logo beside it (error 80080204), so both are
+        # there. The capability is runFullTrust and nothing else, as in 2.x:
+        # the board is a SQLite file in the app's own data directory, and the
+        # Basecamp sign-in comes back through a listener on localhost.
         Write-Host '  [2/4] AppxManifest.xml...' -ForegroundColor Gray
         $manifest = @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -184,18 +184,12 @@ try {
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.scale-100.png"
         Square44x44Logo="Assets\Square44x44Logo.scale-100.png">
-        <!-- No large tile. makeappx refuses Square310x310Logo when there is
-             no Wide310x150Logo beside it (error 80080204), and there is no
-             wide picture. Windows 11 shows no tiles of those sizes. -->
-        <uap:DefaultTile Square71x71Logo="Assets\SmallTile.scale-100.png" />
-        <uap:SplashScreen Image="Assets\Square150x150Logo.scale-100.png" />
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.scale-100.png" Square71x71Logo="Assets\SmallTile.scale-100.png" Square310x310Logo="Assets\LargeTile.scale-100.png" />
+        <uap:SplashScreen Image="Assets\Square150x150Logo.scale-200.png" />
       </uap:VisualElements>
     </Application>
   </Applications>
 
-  <!-- runFullTrust and nothing else, as in 2.x. The board is a SQLite file
-       in the app's own data directory, and the Basecamp sign-in comes back
-       through a listener on localhost, which runFullTrust leaves alone. -->
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>

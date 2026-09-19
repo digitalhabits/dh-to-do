@@ -20,6 +20,9 @@
 #   3. submission get → stamp What's new + listing description + mark
 #      superseded packages PendingDelete → submission update
 #   4. msstore submission publish  (commit for certification)
+#   5. msstore submission status, until Partner Center has checked the commit
+#
+# With -DraftOnly, steps 4 and 5 are left out, and the draft stays open.
 
 param(
     [Parameter(Mandatory = $true)]
@@ -35,7 +38,15 @@ param(
     # Long description shared with Mac App Store (store-listing/description.txt).
     [string]$DescriptionFile = "",
 
-    [switch]$Reconfigure
+    [switch]$Reconfigure,
+
+    # Upload the package and put the texts in, then stop: the draft stays open
+    # in Partner Center. For a release with new pictures or logos. No script
+    # sends those, and `msstore publish` deletes the open draft and makes a new
+    # one from the last published submission, so pictures put in by hand
+    # BEFORE a run are lost. With this, the run comes first, the pictures go
+    # into its draft by hand, and "Submit for certification" is pressed there.
+    [switch]$DraftOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -200,8 +211,42 @@ try {
     }
 }
 
+if ($DraftOnly) {
+    if (-not $notesStamped) {
+        throw 'The texts did not go into the draft (see the warning above). Nothing was committed.'
+    }
+    Write-Host ''
+    Write-Host 'Draft only: nothing was committed. In Partner Center, open the submission that is in draft:' -ForegroundColor Green
+    Write-Host '  1. Packages: wait until the new bundle says "Validated".'
+    Write-Host '  2. Store listings: put in the pictures and the logos by hand.'
+    Write-Host '  3. Press "Submit for certification".'
+    exit 0
+}
+
 Write-Host "Committing submission for $ProductId…" -ForegroundColor Cyan
 msstore submission publish $ProductId
 Assert-CommandOk 'msstore submission publish'
 
-Write-Host "Submitted to Partner Center (certification). notesStamped=$notesStamped packagesCleaned=$packagesCleaned" -ForegroundColor Green
+# "CommitStarted" is not "in certification". After the commit, Partner Center
+# checks the package, and that check can fail or hang: the submission then
+# falls back to a draft, and nothing says so here. The first 3.0.0 run ended
+# green that way. So ask for the state until it is no longer CommitStarted,
+# and fail the job when the commit did not go through.
+$state = ''
+for ($try = 1; $try -le 30; $try++) {
+    Start-Sleep -Seconds 30
+    $statusText = (msstore submission status $ProductId 2>&1 | Out-String)
+    if ($statusText -match 'CommitFailed|PreProcessingFailed') { $state = 'CommitFailed'; break }
+    if ($statusText -match 'PreProcessing|Certification|Release|PendingPublication|Publishing|Published') { $state = $Matches[0]; break }
+    Write-Host "  commit still being checked by Partner Center ($try of 30)…" -ForegroundColor Gray
+}
+if ($state -eq 'CommitFailed') {
+    Write-Host $statusText
+    throw 'Partner Center refused the commit. The submission is a draft again. Open Packages in Partner Center for the error.'
+}
+if (-not $state) {
+    Write-Host $statusText
+    throw 'Partner Center did not finish its check of the commit in 15 minutes. Open the submission in Partner Center: the package can be "Paused" there.'
+}
+
+Write-Host "In Partner Center the submission is now: $state. notesStamped=$notesStamped packagesCleaned=$packagesCleaned" -ForegroundColor Green
