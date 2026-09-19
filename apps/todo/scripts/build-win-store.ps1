@@ -59,15 +59,22 @@ try {
     # is in the manifest of every package that ships.
     #
     # The publisher GUID is the seller account, so it is the same as Mail's
-    # and Blocker's. The identity name is this product's alone. The display
-    # name is the one 2.x was listed under, and the upload is refused if it
-    # does not match the product in Partner Center.
+    # and Blocker's. The identity name is this product's alone.
+    #
+    # The display name must be the publisher display name of the ACCOUNT in
+    # Partner Center, as it is today, and not the name that 2.x went out
+    # under. The account was renamed after 2.9.0. The first 3.0.0 packages
+    # still said "Reduce Digital Distraction", and Partner Center refused
+    # them: "doesn't match your publisher display name: Centre for Digital
+    # Habits". Through the API the same fault showed only as a package check
+    # that hung ("Paused"), with no reason named. Mail's script has the same
+    # name.
     $identityName = if ($env:WINDOWS_IDENTITY_NAME) { $env:WINDOWS_IDENTITY_NAME }
                     else { 'ReduceDigitalDistraction.ReDDTodo' }
     $publisher = if ($env:WINDOWS_PUBLISHER) { $env:WINDOWS_PUBLISHER }
                  else { 'CN=EC16037E-D0B5-446F-9912-F41B3DCCBFB3' }
     $publisherDisplayName = if ($env:WINDOWS_PUBLISHER_DISPLAY_NAME) { $env:WINDOWS_PUBLISHER_DISPLAY_NAME }
-                            else { 'Reduce Digital Distraction' }
+                            else { 'Centre for Digital Habits' }
 
     $version = (Get-Content (Join-Path $AppRoot 'package.json') | ConvertFrom-Json).version
     # The Store wants four parts, and reserves the last for itself.
