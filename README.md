@@ -66,9 +66,10 @@ important events.
 
 ## Based on research, and private
 
-The app comes from more than ten years of research on digital distraction at
-the University of Oxford. The source code is public, the app collects no data,
-and your tasks stay in a file on your computer. It syncs two ways with Apple
+The app is based on more than ten years of research on digital distraction
+led by Dr Ulrik Lyngs at the universities of Oxford and Copenhagen. The source
+code is public, the app collects no data, and your tasks stay in a file on
+your computer. It syncs two ways with Apple
 Reminders and Basecamp, if you want that.
 
 The tasks, the names and the mail in the pictures are invented.
