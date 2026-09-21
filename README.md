@@ -37,15 +37,6 @@ want.
 Simple lists, with tabs for your lists. Give a task the time you expect it to
 take, press the focus button, and see how long you actually spent.
 
-### Remember your main quest
-
-<p align="center">
-  <img src="apps/todo/docs/screenshots/03-full-screen.png" alt="The task &quot;Reply to Anton&quot; and its timer, large, on a calm full screen" width="560">
-</p>
-
-The reminder can fill the screen: for a second screen, or for work away from
-the screen.
-
 ### Plan your day on a board
 
 <p align="center">
