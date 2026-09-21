@@ -6,6 +6,16 @@ it collects no data. From the [Centre for Digital Habits](https://digitalhabits.
 
 **Get it:** [Mac App Store](https://apps.apple.com/gb/app/id6760351681) · [Microsoft Store](https://apps.microsoft.com/detail/9P48NJXCBBGH)
 
+> **This is a snapshot of each release, not the development history.**
+>
+> The app is built in our private monorepo, where it is also the To-Do tab of
+> the planner our team uses each day. We export each release here whole, so
+> one commit is one version rather than one change.
+>
+> It is published so the code can be read and checked. Issues are welcome:
+> tell us about a fault or an idea in the
+> [issues](https://github.com/digitalhabits/dh-to-do/issues).
+
 ## Keep your goals in sight
 
 ![A small yellow note with the task "Reply to Anton" and a timer, on top of a full email inbox](apps/todo/docs/screenshots/01-floating-note.png)
@@ -104,16 +114,10 @@ unmodified and this builds the way the released app builds.
 
 ## About this repository
 
-This is a snapshot of each release, not the development history. The app is
-built in our private monorepo, where it is also the To-Do tab of the planner
-that our team uses each day. We export each release here whole, so one commit
-is one version.
-
 Versions 2.x were a different code base, written in plain JavaScript. That
 code and its history are on the branch `legacy-2.x`.
 
-Lead developer: Dr Ulrik Lyngs, ulrik@digitalhabits.org. Tell us about a fault
-or an idea in the [issues](https://github.com/digitalhabits/dh-to-do/issues).
+Lead developer: Dr Ulrik Lyngs, ulrik@digitalhabits.org.
 
 ## Licence
 
