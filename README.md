@@ -1,8 +1,9 @@
 # Digital Habits: To-Do
 
 Get back to that thing you meant to do. A to-do app with a floating reminder
-of the task you are on, simple lists, and easy time tracking. It is free, and
-it collects no data. From the [Centre for Digital Habits](https://digitalhabits.org).
+of the task you are on, simple lists, and easy time tracking. Built by Centre
+for Digital Habits (see [digitalhabits.org](https://digitalhabits.org); lead
+developer: Dr Ulrik Lyngs).
 
 **Get it:** [Mac App Store](https://apps.apple.com/gb/app/id6760351681) · [Microsoft Store](https://apps.microsoft.com/detail/9P48NJXCBBGH)
 
