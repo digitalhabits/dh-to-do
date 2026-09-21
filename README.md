@@ -16,48 +16,58 @@ it collects no data. From the [Centre for Digital Habits](https://digitalhabits.
 > tell us about a fault or an idea in the
 > [issues](https://github.com/digitalhabits/dh-to-do/issues).
 
-## Keep your goals in sight
+## Features
 
-![A small yellow note with the task "Reply to Anton" and a timer, on top of a full email inbox](apps/todo/docs/screenshots/01-floating-note.png)
+### Keep your goals in sight
+
+<p align="center">
+  <img src="apps/todo/docs/screenshots/01-floating-note.png" alt="A small yellow note with the task &quot;Reply to Anton&quot; and a timer, on top of a full email inbox" width="620">
+</p>
 
 A floating note stays on top of your other apps and shows the one task you
 are on, so you get back to what you wanted to do. Move it and size it as you
 want.
 
-## Make it easy to stay on track
+### Make it easy to stay on track
 
 <p align="center">
-  <img src="apps/todo/docs/screenshots/02-lists.png" alt="A short list of tasks, each with its time, and tabs for the lists at the top" width="460">
+  <img src="apps/todo/docs/screenshots/02-lists.png" alt="A short list of tasks, each with its time, and tabs for the lists at the top" width="380">
 </p>
 
 Simple lists, with tabs for your lists. Give a task the time you expect it to
 take, press the focus button, and see how long you actually spent.
 
-## Remember your main quest
+### Remember your main quest
 
-![The task "Reply to Anton" and its timer, large, on a calm full screen](apps/todo/docs/screenshots/03-full-screen.png)
+<p align="center">
+  <img src="apps/todo/docs/screenshots/03-full-screen.png" alt="The task &quot;Reply to Anton&quot; and its timer, large, on a calm full screen" width="560">
+</p>
 
 The reminder can fill the screen: for a second screen, or for work away from
 the screen.
 
-## Plan your day on a board
+### Plan your day on a board
 
-![Board View: three columns of tasks, Backlog, Soon (-ish) and Today](apps/todo/docs/screenshots/04-board.png)
+<p align="center">
+  <img src="apps/todo/docs/screenshots/04-board.png" alt="Board View: three columns of tasks, Backlog, Soon (-ish) and Today" width="620">
+</p>
 
 Board View puts your tasks in columns for Backlog, Soon (-ish) and Today. Turn
 it on in Settings. A task can have subtasks, a due date and notes with
 pictures.
 
 <p align="center">
-  <img src="apps/todo/docs/screenshots/04-today-session.png" alt="Today as a full-screen session: one task with its timer, and the next tasks under it" width="460">
+  <img src="apps/todo/docs/screenshots/04-today-session.png" alt="Today as a full-screen session: one task with its timer, and the next tasks under it" width="380">
 </p>
 
 Press Start on Today, and the app takes you through the day's tasks one at a
 time.
 
-## See the road ahead
+### See the road ahead
 
-![Calendar View: months as columns of days, with notes written on the days, tasks on their due dates and events from a linked calendar](apps/todo/docs/screenshots/05-calendar.png)
+<p align="center">
+  <img src="apps/todo/docs/screenshots/05-calendar.png" alt="Calendar View: months as columns of days, with notes written on the days, tasks on their due dates and events from a linked calendar" width="620">
+</p>
 
 A calm, Danish-style calendar of the months or the week. Write your plans onto
 the days, see tasks on their due dates, and link your calendar to see your
