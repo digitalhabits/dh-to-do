@@ -298,6 +298,8 @@
 }
 
 #plan-mode .plan-calendar-grid.plan-week-grid {
+    /* It holds the pieces of a goal that cross the gaps between the days. */
+    position: relative;
     width: 100%;
     min-width: 100%;
     grid-template-columns: 36px repeat(7, minmax(0, 1fr));
@@ -625,12 +627,7 @@
     font-weight: 500;
     color: var(--plan-text-muted);
     box-sizing: border-box;
-    transform: translateY(-7px);
-}
-
-#plan-mode .plan-week-hour-label:first-child {
-    transform: none;
-    padding-top: 4px;
+    transform: translateY(-6px);
 }
 
 /* Week day columns */
@@ -715,6 +712,118 @@
 #plan-mode .plan-week-day-goals .plan-week-goal-pill {
     max-width: 100%;
     font-size: 12px;
+    /* It holds the two edges that a pointer pulls. */
+    position: relative;
+}
+
+/* A goal over more than one day.
+
+   Every day it covers draws one bar. The bars of one goal keep the same
+   line from day to day, and each bar is one line high, so the days stay in
+   step. The words are on the first day the goal has on screen. The columns
+   are separate cards with a gap between them, so the bar is drawn once per
+   day and joined by its flat edges. */
+#plan-mode .plan-week-goal-pill--span {
+    position: relative;
+    width: 100%;
+    height: 24px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-radius: 0;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* A goal over more than one day runs unbroken across the week. Each bar
+   goes out to the edge of its own card — the card cuts it off there — and
+   a piece drawn on the grid covers the gap to the next card. See
+   drawWeekGoalBridges in plan.js. */
+#plan-mode .plan-week-goal-bridge {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+}
+
+/* The week scrolls sideways by moving every day card. The pieces in the
+   gaps move with them, by the same step. See the carousel rules above. */
+#plan-mode .plan-week-grid--carousel .plan-week-goal-bridge {
+    transform: translateX(calc(var(--week-shift, 0px) - var(--week-day-step, 0px)));
+}
+
+#plan-mode .plan-week-grid--carousel.plan-week-grid--snapping .plan-week-goal-bridge {
+    transition: transform 0.24s ease-out;
+}
+
+#plan-mode .plan-week-goal-pill--span-first {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+#plan-mode .plan-week-goal-pill--span-last {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+#plan-mode .plan-week-goal-pill--span .plan-week-goal-pill-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* A day with nothing on a line that a lower line needs. It holds the line
+   open, so the bars of a goal stay level across its days. */
+#plan-mode .plan-week-goal-lane-gap {
+    width: 100%;
+    height: 24px;
+}
+
+/* The two edges a pointer pulls to give a goal more days, or fewer. */
+#plan-mode .plan-week-goal-edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    cursor: ew-resize;
+    touch-action: none;
+}
+
+#plan-mode .plan-week-goal-edge--start {
+    left: 0;
+}
+
+#plan-mode .plan-week-goal-edge--end {
+    right: 0;
+}
+
+#plan-mode .plan-week-goal-pill:hover .plan-week-goal-edge::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--plan-navy);
+    opacity: 0.5;
+}
+
+[data-theme="dark"] #plan-mode .plan-week-goal-pill:hover .plan-week-goal-edge::after {
+    background: var(--plan-text-primary);
+}
+
+#plan-mode .plan-week-goal-edge--start::after {
+    left: 3px;
+}
+
+#plan-mode .plan-week-goal-edge--end::after {
+    right: 3px;
+}
+
+/* While an edge is on the move, the pointer says so everywhere in the
+   calendar, and nothing takes a selection. */
+#plan-mode.plan-week-goal-resizing,
+#plan-mode .plan-week-goal-resizing {
+    cursor: ew-resize;
+    user-select: none;
 }
 
 #plan-mode .plan-week-day-name {
@@ -1702,6 +1811,15 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: rgba(255, 255, 255, 0.08);
 }
 
+/* Bold, italic or underline that the selected note has. */
+#plan-mode .plan-toolbar-btn.is-on {
+    background: rgba(30, 45, 62, 0.12);
+}
+
+[data-theme="dark"] #plan-mode .plan-toolbar-btn.is-on {
+    background: rgba(255, 255, 255, 0.16);
+}
+
 #plan-mode .plan-toolbar-divider {
     width: 1px;
     height: 20px;
@@ -2312,7 +2430,11 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     color: var(--plan-text-muted);
     font-size: 11px;
     font-weight: 600;
-    cursor: help;
+    /* A button: it opens the help, as a click on any other button does. */
+    cursor: pointer;
+    /* On the title's letters, which sit a pixel below the row's middle. */
+    position: relative;
+    top: 1px;
     transition: all 0.15s ease;
 }
 
@@ -2500,21 +2622,24 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 }
 
 #plan-mode .plan-calendar-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 10px;
+    padding: 9px 11px;
     margin-bottom: 6px;
     background: var(--plan-panel-bg-soft);
     border: 1px solid var(--plan-border-color);
-    border-left: 3px solid var(--plan-event-color);
-    border-radius: 8px;
+    border-radius: 10px;
+}
+
+#plan-mode .plan-calendar-item-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 #plan-mode .plan-calendar-item-info {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    flex: 1;
 }
 
 #plan-mode .plan-calendar-item-name {
@@ -2534,16 +2659,314 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 #plan-mode .plan-calendar-item-delete {
     background: none;
     border: none;
-    padding: 4px;
+    padding: 4px 2px;
     cursor: pointer;
     color: var(--plan-text-muted);
+    font-size: 12px;
+    font-family: inherit;
     border-radius: 4px;
     flex-shrink: 0;
 }
 
 #plan-mode .plan-calendar-item-delete:hover {
     color: #dc2626;
-    background: rgba(220, 38, 38, 0.1);
+}
+
+/*
+ * Picking a calendar from an account the reader is signed in to, in place
+ * of pasting a secret address. A dropdown that can be searched, with the
+ * calendars under the account each is on.
+ */
+#plan-mode .plan-calendar-picker {
+    position: relative;
+    margin-bottom: 14px;
+}
+
+/*
+ * A host offers the picker or the address box, never both. There is no
+ * plain `.hidden` rule in this stylesheet: each one says which element it
+ * puts away.
+ */
+#plan-mode .plan-calendar-picker.hidden,
+#plan-mode .plan-calendar-menu.hidden,
+#plan-mode .plan-calendar-added-title.hidden,
+#plan-mode .plan-calendar-add-form.hidden,
+#plan-mode .plan-calendar-help-icon.hidden {
+    display: none;
+}
+
+#plan-mode .plan-calendar-picker-title,
+#plan-mode .plan-calendar-added-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--plan-text-primary);
+    margin: 0 0 8px;
+}
+
+#plan-mode .plan-calendar-added-title {
+    margin-top: 2px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--plan-text-muted);
+}
+
+/* The closed dropdown. */
+#plan-mode .plan-calendar-select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 10px;
+    background: var(--plan-panel-bg);
+    color: var(--plan-text-muted);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+#plan-mode .plan-calendar-select:hover,
+#plan-mode .plan-calendar-select.is-open {
+    border-color: var(--plan-accent-color);
+}
+
+#plan-mode .plan-calendar-select svg {
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+
+/* The open dropdown, over the calendars below it. */
+#plan-mode .plan-calendar-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 20;
+    margin-top: 4px;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 10px;
+    background: var(--plan-panel-bg);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+}
+
+#plan-mode .plan-calendar-search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--plan-border-color);
+    color: var(--plan-text-muted);
+    position: sticky;
+    top: 0;
+    background: var(--plan-panel-bg);
+}
+
+#plan-mode .plan-calendar-search {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: none;
+    color: var(--plan-text-primary);
+    font-size: 13px;
+    font-family: inherit;
+}
+
+#plan-mode .plan-calendar-menu-group {
+    padding: 6px 0;
+}
+
+#plan-mode .plan-calendar-menu-group + .plan-calendar-menu-group {
+    border-top: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-calendar-menu-email {
+    padding: 4px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--plan-text-muted);
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+#plan-mode .plan-calendar-menu-choice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: none;
+    color: var(--plan-text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+#plan-mode .plan-calendar-menu-choice:hover:not(:disabled) {
+    background: var(--plan-panel-bg-soft);
+}
+
+#plan-mode .plan-calendar-menu-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Already on the board: shown, so the reader can see it is there. */
+#plan-mode .plan-calendar-menu-choice.is-added {
+    color: var(--plan-text-muted);
+    cursor: default;
+}
+
+#plan-mode .plan-calendar-menu-added {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--plan-accent-color);
+}
+
+#plan-mode .plan-calendar-picker-problem {
+    font-size: 11px;
+    color: var(--plan-text-muted);
+    padding: 6px 12px;
+}
+
+/* How many calendars are on the board, out of how many there are. Empty,
+   it takes no room: its margin and the header's gaps on each side put the
+   "?" 24px from the title. */
+#plan-mode .plan-calendar-count:empty {
+    display: none;
+}
+
+#plan-mode .plan-calendar-count {
+    margin-left: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--plan-text-muted);
+}
+
+/* The colour of a calendar, and the palette it brings out. */
+#plan-mode .plan-calendar-item-swatch {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#plan-mode .plan-calendar-item-colours {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-calendar-item-colours-label {
+    margin-right: 2px;
+    font-size: 11px;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-calendar-colour-choice {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#plan-mode .plan-calendar-colour-choice.is-on {
+    outline: 2px solid var(--plan-accent-color);
+    outline-offset: 1px;
+}
+
+/* The eye that shows or hides one row's things on the board. */
+#plan-mode .plan-calendar-item-eye {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 4px;
+    border: none;
+    background: none;
+    color: var(--plan-text-primary);
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+#plan-mode .plan-calendar-item-eye:hover {
+    background: var(--plan-panel-bg);
+}
+
+#plan-mode .plan-calendar-item-eye.is-off {
+    color: var(--plan-text-muted);
+    opacity: 0.6;
+}
+
+/* A source that cannot be given a colour here keeps a still square. */
+#plan-mode .plan-calendar-item-swatch.is-still {
+    display: inline-block;
+    cursor: default;
+}
+
+/* Marked only, or everything the calendar holds. */
+#plan-mode .plan-calendar-item-show {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+#plan-mode .plan-calendar-item-show-label {
+    font-size: 11px;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-calendar-show-group {
+    display: inline-flex;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--plan-panel-bg);
+    border: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-calendar-show-choice {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 999px;
+    background: none;
+    color: var(--plan-text-muted);
+    font-size: 11px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+#plan-mode .plan-calendar-show-choice.is-on {
+    background: var(--plan-panel-bg-soft);
+    color: var(--plan-text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Why a calendar showed nothing, under its name. */
+#plan-mode .plan-calendar-item-problem {
+    color: #dc2626;
 }
 
 #plan-mode .plan-calendar-add-form {
@@ -2803,6 +3226,15 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     border-bottom: 1px solid var(--plan-border-color) !important;
 }
 
+/* A day that has a goal keeps room at its right for the "+" that adds
+   another one. The "+" sat on the right edge of the goal, and that edge is
+   what a pointer pulls to give the goal more days. */
+#plan-mode .plan-week-grid .plan-week-day-goals:has(.plan-week-add-goal--more),
+#plan-mode .plan-week-day-goals.plan-week-day-goals--synced:has(.plan-week-add-goal--more),
+#plan-mode .plan-week-day-goals.plan-week-goal-drop-active:has(.plan-week-add-goal--more) {
+    padding-right: 26px;
+}
+
 #plan-mode .plan-week-add-goal {
     display: none;
     flex: 1 1 auto;
@@ -2859,6 +3291,26 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     color: var(--plan-text-primary);
 }
 
+#plan-mode .plan-week-day-goals .plan-week-goal-pill--span {
+    /* How far the bar goes past the row on each side: the padding of the
+       row, so that it ends at the edge of the card. The width grows by as
+       much as the margins take away, so the bar still fills one line. */
+    --bar-out-left: 0px;
+    --bar-out-right: 0px;
+    margin-left: calc(-1 * var(--bar-out-left));
+    margin-right: calc(-1 * var(--bar-out-right));
+    width: calc(100% + var(--bar-out-left) + var(--bar-out-right));
+    max-width: none;
+}
+
+#plan-mode .plan-week-day-goals .plan-week-goal-pill--span:not(.plan-week-goal-pill--span-first) {
+    --bar-out-left: 6px;
+}
+
+#plan-mode .plan-week-day-goals .plan-week-goal-pill--span:not(.plan-week-goal-pill--span-last) {
+    --bar-out-right: 26px;
+}
+
 #plan-mode .plan-week-goal-pill-text {
     flex: 1 1 auto;
     min-width: 0;
@@ -2897,6 +3349,25 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     letter-spacing: 0.02em;
     line-height: 1;
     overflow: hidden;
+}
+
+/* The people a goal is for, as a row of faces. The faces overlap, so a goal
+   for four people is no wider than a goal for one. */
+#plan-mode .plan-goal-person-dots {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+#plan-mode .plan-goal-person-dots .plan-goal-person-dot + .plan-goal-person-dot {
+    margin-left: -6px;
+    box-shadow: 0 0 0 1.5px var(--plan-panel-bg-soft);
+}
+
+#plan-mode .plan-goal-person-dot--more {
+    background: var(--plan-border-color);
+    color: var(--plan-text-secondary);
+    font-size: 9px;
 }
 
 /* A person with a photo: the photo fills the dot, as on a task. */
@@ -2990,6 +3461,12 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     padding-left: 4px;
     font-weight: 500;
     color: var(--plan-text-muted);
+}
+
+/* Hidden until the goal has words (see openGoalEditor): the display above
+   would otherwise win over the hidden attribute. */
+#plan-mode .plan-goal-editor-link[hidden] {
+    display: none;
 }
 
 #plan-mode .plan-goal-editor-link:hover,

@@ -50,6 +50,13 @@ const PlanModule = (function () {
     let resizeObserver = null;
     let resizeTimer = null;
     let onWindowResize = null;
+    let onPopoverResize = null;
+    // Keeps the week's hour labels in line (see watchWeekHourGutter); here
+    // so that destroy can stop it.
+    let weekHourGutterObserver = null;
+    // Writes the name of the period a moment after a scroll stops. It is
+    // here, and not beside the scroll, so that destroy can stop it.
+    let scrollTimeout = null;
 
     // Flag to prevent re-rendering during drag operations
     let isDragInProgress = false;
@@ -75,8 +82,12 @@ const PlanModule = (function () {
     let addGoalPerson = null;   // (name) => Promise<{ id, name, colour } | null>
     // The host's own menu for "who is it for": the one a task is assigned
     // from, so a goal and a task show the same people in the same way. Called
-    // with { anchorEl, assigneeId, onPick(id | null), onLeave() } to open it, and with
-    // null to put it away. With no host menu, the card draws a plain list.
+    // with { anchorEl, assigneeIds, assigneeId, onPick(ids), onLeave() } to
+    // open it, and with null to put it away. A goal can be for several
+    // people, so the menu stays open and each name goes on or off.
+    // `assigneeId` is the first of them, for a host that knows one person
+    // only, and such a host may answer onPick with one id or null.
+    // With no host menu, the card draws a plain list.
     let pickGoalPerson = null;
     let goalPeopleKey = '';
 
@@ -232,10 +243,39 @@ const PlanModule = (function () {
             // drawn (then it is zoomed already), or as wide as its style says.
             const drawn = container.getBoundingClientRect().width;
             const styled = container.offsetWidth;
-            if (zoom !== 1 && styled > 0 && Math.abs(drawn / styled - zoom) < 0.03) rectScale = zoom;
+            const measured = styled > 0 ? drawn / styled : 1;
+            /*
+             * A shell that zooms the page without saying so.
+             *
+             * The planner's own Cmd-+ puts a CSS zoom on the column this
+             * calendar sits in and sets no variable, so there was nothing to
+             * read and every measured place stayed in the zoomed pixels
+             * while `left`, `top` and the scroll counted in unzoomed ones.
+             * A line then landed weeks away from its own dates.
+             *
+             * The width it is drawn at against the width its style gives is
+             * the zoom itself. Far enough from 1 to not be a rounding, and
+             * within reason, or it is something else and is left alone.
+             */
+            if (zoom === 1 && measured > 0.25 && measured < 4 && Math.abs(measured - 1) > 0.01) {
+                zoom = measured;
+            }
+            if (zoom !== 1 && styled > 0 && Math.abs(measured - zoom) < 0.03) rectScale = zoom;
         }
         zoomRead = { at: now, zoom, rectScale };
         return zoomRead;
+    }
+
+    /**
+     * Read the zoom again at the next ask.
+     *
+     * The reading is kept for a moment, because it is wanted many times in
+     * one drag. A zoom changes the size of the window, and the re-draw that
+     * follows is sooner than that moment is over, so it would measure the
+     * new layout with the old zoom.
+     */
+    function forgetZoom() {
+        zoomRead = { at: 0, zoom: zoomRead.zoom, rectScale: zoomRead.rectScale };
     }
 
     function pointerX(event) { return event.clientX / zoomInfo().zoom; }
@@ -420,6 +460,47 @@ const PlanModule = (function () {
     // It gets the day, the time when the click was in the hours of the week
     // view, and the place on the screen to put its box beside.
     let createTask = null;
+    /*
+     * Calendars the reader picks from a signed-in account, rather than by
+     * pasting a secret address.
+     *
+     * A token cannot travel to the browser, so the host reads those
+     * calendars and gives the events. A host that offers neither of these
+     * keeps the address box, which is how the To-Do app works: it ships to
+     * people on Outlook and iCloud, and it has no server to read for them.
+     *
+     *   listCalendarChoices — () => Promise<[{ email, calendars: [{ id, name,
+     *                         primary }], error }]>; what the picker offers
+     *   readCalendarEvents  — (sources) => Promise<[{ id, events, error }]>;
+     *                         the events of the calendars given, in one
+     *                         answer, because the board draws them together.
+     *                         The board says which, rather than the host
+     *                         looking them up: a calendar picked a moment ago
+     *                         is on the board before it is anywhere else.
+     */
+    let listCalendarChoices = null;
+    let readCalendarEvents = null;
+    /*
+     * What the board draws besides calendars, and whether each is on.
+     *
+     * The application deadlines are one of these: they come from another
+     * tab, not from a calendar, so they cannot be removed here — only shown
+     * or hidden. The host says what they are called and keeps the setting,
+     * because it is the host that knows where such a setting lives.
+     *
+     *   boardSources        — [{ id, name, detail, colour, shown }]
+     *   toggleBoardSource   — (id, shown) => Promise<void> | void
+     */
+    let boardSources = [];
+    let toggleBoardSource = null;
+    // Why a calendar showed nothing, by its id: a token that needs
+    // reconnecting says so on the calendar's own row, instead of the board
+    // going quietly empty.
+    let calendarErrors = {};
+    // What the last read of the picked calendars gave, by calendar id, and
+    // when. A draw that comes too soon after one uses these again.
+    let lastCalendarFeeds = {};
+    let lastCalendarFeedsAt = 0;
     // Every task of the board, for a goal to be linked to: [{ id, name,
     // listName, completed }]. The host gives them, as it gives the people.
     let linkableTasks = [];
@@ -679,6 +760,9 @@ const PlanModule = (function () {
         calendarLastSync = null;
         calendarEventsCache = { notes: [], lines: [] };
         calendarCustomisations = { notes: {}, lines: {} };
+        calendarErrors = {};
+        lastCalendarFeeds = {};
+        lastCalendarFeedsAt = 0;
         expandedDateKey = null;
     }
 
@@ -689,6 +773,13 @@ const PlanModule = (function () {
     //   onAddPerson  — (name) => Promise<person>; adds to the host's people list
     //   onPickGoalPerson — the host's menu for who a goal is for; see pickGoalPerson
     //   tasks        — [{ id, dateKey, name }], tasks to show on their due day
+    //   onListCalendarChoices — the accounts and calendars the picker offers;
+    //                  left out, the reader pastes a calendar address instead
+    //   onReadCalendarEvents — the events of the picked calendars; needed by
+    //                  a host that offers the picker
+    //   boardSources — what the board draws besides calendars, each with a
+    //                  name and whether it is on; see boardSources above
+    //   onBoardSourceToggle — the reader turned one of those on or off
     function init(containerElement, options) {
         if (isInitialized) return;
         container = containerElement;
@@ -701,6 +792,13 @@ const PlanModule = (function () {
         changeTaskDue = typeof opts.onTaskDueChange === 'function' ? opts.onTaskDueChange : null;
         openTask = typeof opts.onTaskOpen === 'function' ? opts.onTaskOpen : null;
         createTask = typeof opts.onTaskCreate === 'function' ? opts.onTaskCreate : null;
+        listCalendarChoices =
+            typeof opts.onListCalendarChoices === 'function' ? opts.onListCalendarChoices : null;
+        readCalendarEvents =
+            typeof opts.onReadCalendarEvents === 'function' ? opts.onReadCalendarEvents : null;
+        boardSources = Array.isArray(opts.boardSources) ? opts.boardSources : [];
+        toggleBoardSource =
+            typeof opts.onBoardSourceToggle === 'function' ? opts.onBoardSourceToggle : null;
         setLinkableTasks(opts.linkableTasks);
         mePersonId = opts.mePersonId ? String(opts.mePersonId) : null;
         loadTaskTimes();
@@ -763,8 +861,11 @@ const PlanModule = (function () {
 
     function scheduleLayoutRefresh() {
         if (!isInitialized || isDragInProgress) return;
+        // The window changed size, and a zoom is one of the reasons why.
+        forgetZoom();
         if (resizeTimer) clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
+            forgetZoom();
             renderFreeformElements();
         }, 50);
     }
@@ -776,12 +877,22 @@ const PlanModule = (function () {
             onCalendarKeyDown = null;
         }
         clearTimeout(redrawAfterWritingTimer);
+        clearTimeout(scrollTimeout);
+        scrollTimeout = null;
+        clearTimeout(weekSnapTimer);
+        weekSnapTimer = null;
         resizeObserver?.disconnect();
         resizeObserver = null;
         if (onWindowResize) {
             window.removeEventListener('resize', onWindowResize);
             onWindowResize = null;
         }
+        if (onPopoverResize) {
+            window.removeEventListener('resize', onPopoverResize);
+            onPopoverResize = null;
+        }
+        weekHourGutterObserver?.disconnect();
+        weekHourGutterObserver = null;
         if (resizeTimer) clearTimeout(resizeTimer);
         resizeTimer = null;
         stopCalendarAutoSync();
@@ -900,7 +1011,8 @@ const PlanModule = (function () {
             <!-- Calendar Popover (Add/Manage Calendars) -->
             <div class="plan-calendar-popover hidden">
                 <div class="plan-calendar-popover-header">
-                    Calendars
+                    <span class="plan-calendar-popover-title">Calendars</span>
+                    <span class="plan-calendar-count"></span>
                     <span class="plan-calendar-help-icon">?</span>
                 </div>
                 <div class="plan-calendar-help-content hidden">
@@ -926,6 +1038,21 @@ const PlanModule = (function () {
                     <p>Keep the address to yourself. A person who has it can read the calendar.</p>
                 </div>
                 <div class="plan-calendar-popover-body">
+                    <div class="plan-calendar-picker hidden">
+                        <div class="plan-calendar-picker-title">Add a calendar</div>
+                        <button type="button" class="plan-calendar-select">
+                            <span class="plan-calendar-select-label">Select a calendar</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+                        </button>
+                        <div class="plan-calendar-menu hidden">
+                            <label class="plan-calendar-search-row">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                                <input type="text" class="plan-calendar-search" placeholder="Search calendars...">
+                            </label>
+                            <div class="plan-calendar-menu-list"></div>
+                        </div>
+                    </div>
+                    <div class="plan-calendar-added-title hidden">Showing in this calendar</div>
                     <div class="plan-calendar-list"></div>
                     <div class="plan-calendar-add-form">
                         <input type="text" class="plan-calendar-name-input" placeholder="Calendar name">
@@ -933,7 +1060,7 @@ const PlanModule = (function () {
                         <button type="button" class="plan-calendar-help-link">Where do I find the address?</button>
                         <button class="plan-calendar-add-save-btn">Add Calendar</button>
                     </div>
-                    <p class="plan-calendar-hint">Only the events that you mark show here, so the calendar stays calm. To mark an event, start its description with DH-TO-DO. (REDD-DO works too.)</p>
+                    <p class="plan-calendar-hint">Set to Marked only, a calendar shows just the events you mark, so the calendar stays calm. To mark an event, start its description with DH-TO-DO. (REDD-DO works too.)</p>
                     <div class="plan-calendar-status"></div>
                 </div>
             </div>
@@ -1041,6 +1168,14 @@ const PlanModule = (function () {
      */
     const CALENDAR_AUTO_SYNC_MS = 15 * 60 * 1000;
     const CALENDAR_RETURN_SYNC_GAP_MS = 60 * 1000;
+    /**
+     * The least time between two reads of the picked calendars.
+     *
+     * The same guard an address has in calendar-sync.js, and for the same
+     * reason: a draw is not a change, and every read asks Google once per
+     * calendar. What the last read gave is kept and used again.
+     */
+    const CALENDAR_FEED_FLOOR_MS = 5 * 60 * 1000;
 
     function readStoredJson(key, fallback) {
         try {
@@ -1230,6 +1365,100 @@ const PlanModule = (function () {
         if (!home.some((item) => item.id === goal.id)) home.push(goal);
     }
 
+    // ------------------------------------------------------------------
+    // A goal over more than one day.
+    //
+    // A goal keeps the day it starts on and a count of days from there:
+    // `spanDays` of 3 covers its day and the two after it. A goal with no
+    // count covers its day alone, so every goal written before this reads
+    // as it did. The count is not written down when it is 1.
+    //
+    // A goal belongs to one week, so it stops at the Sunday of that week.
+    // A goal with hours is a block in the time grid and covers one day.
+    // ------------------------------------------------------------------
+    function daysBetween(fromKey, toKey) {
+        const from = parseDateKey(fromKey);
+        const to = parseDateKey(toKey);
+        return Math.round((to - from) / 86400000);
+    }
+
+    // How many days are left in the week of this day, the day itself too.
+    function goalMaxSpan(dateKey) {
+        if (!dateKey) return 1;
+        const day = parseDateKey(dateKey);
+        return 7 - (day.getDay() === 0 ? 6 : day.getDay() - 1);
+    }
+
+    function goalSpanDays(goal) {
+        if (!goal || !goal.dateKey || goalHasTime(goal)) return 1;
+        const raw = Number(goal.spanDays);
+        if (!Number.isFinite(raw) || raw < 2) return 1;
+        return Math.min(Math.round(raw), goalMaxSpan(goal.dateKey));
+    }
+
+    // The days a goal covers, from the first to the last.
+    function goalDayKeys(goal) {
+        if (!goal || !goal.dateKey) return [];
+        const start = parseDateKey(goal.dateKey);
+        const keys = [];
+        for (let i = 0; i < goalSpanDays(goal); i++) {
+            keys.push(formatDateKey(addDays(start, i)));
+        }
+        return keys;
+    }
+
+    // Write a new count of days on a goal. It answers whether it changed one.
+    function setGoalSpan(goal, span) {
+        const next = Math.min(Math.max(Math.round(span), 1), goalMaxSpan(goal.dateKey));
+        if (next === goalSpanDays(goal)) return false;
+        if (next > 1) goal.spanDays = next;
+        else delete goal.spanDays;
+        renderWeekGoals();
+        return true;
+    }
+
+    // The right edge went to this day: the goal ends there.
+    function stretchGoalEnd(goal, dayKey) {
+        if (!goal.dateKey || !dayKey) return false;
+        return setGoalSpan(goal, daysBetween(goal.dateKey, dayKey) + 1);
+    }
+
+    // The left edge went to this day: the goal starts there and keeps its
+    // last day. It cannot start before the Monday of its own week.
+    function stretchGoalStart(goal, dayKey) {
+        const days = goalDayKeys(goal);
+        const lastKey = days[days.length - 1];
+        if (!lastKey || !dayKey) return false;
+        const weekKey = formatDateKey(getMondayOfWeek(parseDateKey(goal.dateKey)));
+        let nextKey = dayKey;
+        if (nextKey < weekKey) nextKey = weekKey;
+        if (nextKey > lastKey) nextKey = lastKey;
+        if (nextKey === goal.dateKey) return false;
+        goal.dateKey = nextKey;
+        const span = daysBetween(nextKey, lastKey) + 1;
+        if (span > 1) goal.spanDays = span;
+        else delete goal.spanDays;
+        renderWeekGoals();
+        return true;
+    }
+
+    // The day of the column under this pointer, or the nearest one.
+    function weekDayKeyAtX(clientX) {
+        let best = null;
+        let bestDistance = Infinity;
+        container.querySelectorAll('.plan-week-day-column').forEach((col) => {
+            const rect = rectOf(col);
+            const distance = clientX < rect.left
+                ? rect.left - clientX
+                : (clientX > rect.right ? clientX - rect.right : 0);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = col;
+            }
+        });
+        return best ? best.dataset.dateKey : null;
+    }
+
     function createGoalId() {
         return `goal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     }
@@ -1323,7 +1552,7 @@ const PlanModule = (function () {
         // The form shows who the goal is for now, so what it says is the answer:
         // a person, or no one.
         const person = findGoalPerson(assignee);
-        goal.assignee = person ? person.id : null;
+        setGoalAssignees(goal, person ? [person.id] : []);
         saveWeekGoals();
         hideWeekGoalForm();
     }
@@ -1356,6 +1585,14 @@ const PlanModule = (function () {
         if (goal.dateKey === nextDateKey && !goalHasTime(goal)) return;
 
         goal.dateKey = nextDateKey;
+        // The days it covers go with it, as far as its new week allows.
+        if (goal.spanDays) {
+            const span = nextDateKey
+                ? Math.min(Number(goal.spanDays), goalMaxSpan(nextDateKey))
+                : 1;
+            if (span > 1) goal.spanDays = span;
+            else delete goal.spanDays;
+        }
         // The day row and the goals bar hold goals with no hours.
         delete goal.startMinutes;
         delete goal.endMinutes;
@@ -1473,6 +1710,40 @@ const PlanModule = (function () {
     }
 
     function syncWeekGoalGutterSpacer() {
+        syncWeekGoalRowHeights();
+        drawWeekGoalBridges();
+        alignWeekHourGutter();
+    }
+
+    // The hours in the gutter start where the days' hours start. The gutter
+    // copies the rows above the hours (header, goals, all-day) with spacers,
+    // and a spacer that missed a row by a few pixels put every hour label
+    // that far from its line: 19px, in the To-Do app. So the hours are moved
+    // by what is measured, whatever the spacers say.
+    //
+    // Measured again whenever the first day or the gutter changes height:
+    // the rows above the hours grow after the first draw (tasks arrive, and
+    // a CSS :has() rule shows the all-day spacer), with no event of their own.
+    function watchWeekHourGutter() {
+        weekHourGutterObserver?.disconnect();
+        const gutter = container.querySelector('.plan-week-time-gutter');
+        const day = container.querySelector('.plan-week-day-column');
+        if (!gutter || !day || typeof ResizeObserver === 'undefined') return;
+        weekHourGutterObserver = new ResizeObserver(() => alignWeekHourGutter());
+        weekHourGutterObserver.observe(day);
+        weekHourGutterObserver.observe(gutter);
+    }
+
+    function alignWeekHourGutter() {
+        const hours = container.querySelector('.plan-week-time-hours');
+        const grid = container.querySelector('.plan-week-time-grid');
+        if (!hours || !grid) return;
+        hours.style.marginTop = '';
+        const shift = rectOf(grid).top - rectOf(hours).top;
+        if (Math.abs(shift) >= 0.5) hours.style.marginTop = `${shift}px`;
+    }
+
+    function syncWeekGoalRowHeights() {
         syncWeekAllDayRows();
         const dayGoalRows = container.querySelectorAll('.plan-week-day-goals');
         const spacer = container.querySelector('.plan-week-day-goals-spacer');
@@ -1637,6 +1908,8 @@ const PlanModule = (function () {
             goal.dateKey = dateKey;
             goal.startMinutes = start;
             goal.endMinutes = end;
+            // A goal at a time of the day is a block on that day alone.
+            delete goal.spanDays;
             rehomeGoal(goal);
             saveWeekGoals();
             renderWeekGoals();
@@ -2043,6 +2316,50 @@ const PlanModule = (function () {
         return { done: found.filter((t) => t.completed).length, total: found.length };
     }
 
+    // ------------------------------------------------------------------
+    // Who a goal is for.
+    //
+    // A goal was for one person, and `assignee` held that person. A goal
+    // can be for several now, and `assignees` holds them in the order they
+    // were picked. `assignee` keeps the first of them, so a goal written
+    // here still reads in an older copy of this script.
+    // ------------------------------------------------------------------
+    function goalAssigneeIds(goal) {
+        if (!goal) return [];
+        if (Array.isArray(goal.assignees)) {
+            return [...new Set(goal.assignees.filter(Boolean).map(String))];
+        }
+        return goal.assignee ? [String(goal.assignee)] : [];
+    }
+
+    function goalPeopleOf(goal) {
+        return goalAssigneeIds(goal)
+            .map((id) => findGoalPerson(id))
+            .filter(Boolean);
+    }
+
+    function setGoalAssignees(goal, ids) {
+        const clean = [...new Set((ids || []).filter(Boolean).map(String))];
+        if (clean.length > 1) goal.assignees = clean;
+        else delete goal.assignees;
+        goal.assignee = clean[0] || null;
+    }
+
+    // The people a goal is for, drawn as one row of faces.
+    function goalPersonDots(people) {
+        const row = document.createElement('span');
+        row.className = 'plan-goal-person-dots';
+        people.slice(0, 3).forEach((person) => row.appendChild(goalPersonDot(person)));
+        if (people.length > 3) {
+            const more = document.createElement('span');
+            more.className = 'plan-goal-person-dot plan-goal-person-dot--more';
+            more.textContent = `+${people.length - 3}`;
+            more.title = people.slice(3).map((person) => person.name).join(', ');
+            row.appendChild(more);
+        }
+        return row;
+    }
+
     function goalPersonDot(person) {
         const dot = document.createElement('span');
         dot.className = 'plan-goal-person-dot';
@@ -2065,8 +2382,11 @@ const PlanModule = (function () {
     // A goal in the head of its day: who it is for, its words, and how many
     // of its linked tasks are done. A click opens its card, a drag takes it
     // to another day or to a time.
-    function createWeekGoalPill(goal) {
-        const person = findGoalPerson(goal.assignee);
+    // `edges` says which edges this pill can be pulled by: { start, end }.
+    // A goal in the bar over the week has none, and a bar of a goal over
+    // several days has one at each of its two ends only.
+    function createWeekGoalPill(goal, edges) {
+        const people = goalPeopleOf(goal);
         const pill = document.createElement('div');
         pill.className = 'plan-week-goal-pill';
         if (goal.id === editingGoalId) pill.classList.add('plan-week-goal-pill--editing');
@@ -2075,7 +2395,7 @@ const PlanModule = (function () {
         pill.tabIndex = 0;
         pill.title = `${goal.text} — click to change, drag to move`;
 
-        if (person) pill.appendChild(goalPersonDot(person));
+        if (people.length) pill.appendChild(goalPersonDots(people));
         const textEl = document.createElement('span');
         textEl.className = 'plan-week-goal-pill-text';
         textEl.textContent = goal.text;
@@ -2090,6 +2410,9 @@ const PlanModule = (function () {
             pill.appendChild(count);
         }
 
+        if (edges && edges.start) pill.appendChild(createWeekGoalEdge(goal, 'start'));
+        if (edges && edges.end) pill.appendChild(createWeekGoalEdge(goal, 'end'));
+
         setupWeekGoalPointerDrag(pill, goal);
         pill.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -2098,6 +2421,213 @@ const PlanModule = (function () {
             }
         });
         return pill;
+    }
+
+    /**
+     * The pieces of a goal that cross the gaps between the day cards.
+     *
+     * A day card cuts off everything that crosses its edge, so the bar of a
+     * goal cannot reach the next card by itself. Each bar goes out to the
+     * edge of its own card, and one piece for each gap covers the rest, so
+     * a goal from Monday to Wednesday reads as one band. The pieces are
+     * drawn on the grid, over the gap, and they move with the days when the
+     * week scrolls sideways — plan.css gives them the same step.
+     */
+    function drawWeekGoalBridges() {
+        const grid = container.querySelector('.plan-calendar-grid');
+        if (!grid) return;
+        grid.querySelectorAll('.plan-week-goal-bridge').forEach((piece) => piece.remove());
+        if (calendarViewMode !== 'week') return;
+
+        const columns = container.querySelectorAll('.plan-week-day-column');
+        if (!columns.length) return;
+        // One day to the next, the gap between the cards as well. Measured
+        // from two cards, so it is the step the week scrolls by exactly.
+        const step = columns.length > 1
+            ? rectOf(columns[1]).left - rectOf(columns[0]).left
+            : rectOf(columns[0]).width + 12;
+        grid.style.setProperty('--week-day-step', `${step}px`);
+
+        const gridTop = rectOf(grid).top;
+        container.querySelectorAll('.plan-week-goal-pill--span').forEach((bar) => {
+            // The last day of a goal has nothing to its right.
+            if (bar.classList.contains('plan-week-goal-pill--span-last')) return;
+            const column = bar.closest('.plan-week-day-column');
+            const next = column ? column.nextElementSibling : null;
+            if (!next || !next.classList.contains('plan-week-day-column')) return;
+
+            const barRect = rectOf(bar);
+            const piece = document.createElement('div');
+            piece.className = 'plan-week-goal-bridge';
+            // From the inner edge of this card to the inner edge of the next:
+            // the two borders and the gap between them.
+            // A pixel of slack at each end, so that a card edge on a half
+            // pixel leaves no line of its own between the two.
+            const from = column.offsetLeft + column.offsetWidth - 2;
+            piece.style.left = `${from}px`;
+            piece.style.width = `${next.offsetLeft + 2 - from}px`;
+            piece.style.top = `${barRect.top - gridTop}px`;
+            piece.style.height = `${barRect.height}px`;
+            piece.style.background = window.getComputedStyle(bar).backgroundColor;
+            grid.appendChild(piece);
+        });
+    }
+
+    function dayGoalsRow(dateKey) {
+        return container.querySelector(`.plan-week-day-goals[data-date-key="${dateKey}"]`);
+    }
+
+    /**
+     * The goals on the days of the week.
+     *
+     * A goal over more than one day is drawn once in each of its days: the
+     * first day on screen carries the words, and the days after it carry a
+     * bar that joins them. Each such goal keeps a line of its own, the same
+     * line in every day it covers, so a goal from Monday to Wednesday reads
+     * as one thing across the three columns. Where a day has nothing on a
+     * line that a lower line needs, an empty bar holds the line open.
+     *
+     * A goal of one day keeps the pill it always had, under the bars.
+     */
+    function drawWeekDayGoals(goals) {
+        const spans = goals.filter((goal) => goalSpanDays(goal) > 1);
+        const singles = goals.filter((goal) => goalSpanDays(goal) === 1);
+        const lanes = weekGoalLanes(spans);
+
+        // Which goal is on which line, day by day.
+        const byDay = new Map();
+        spans.forEach((goal) => {
+            const days = goalDayKeys(goal);
+            days.forEach((dateKey, index) => {
+                if (!byDay.has(dateKey)) byDay.set(dateKey, []);
+                byDay.get(dateKey)[lanes.get(goal.id)] = {
+                    goal,
+                    first: index === 0,
+                    last: index === days.length - 1,
+                };
+            });
+        });
+
+        // The first day of a goal that is on screen says what the goal is.
+        const wordsOn = new Map();
+        spans.forEach((goal) => {
+            const firstShown = goalDayKeys(goal).find((dateKey) => dayGoalsRow(dateKey));
+            if (firstShown) wordsOn.set(goal.id, firstShown);
+        });
+
+        byDay.forEach((lanesOfDay, dateKey) => {
+            const row = dayGoalsRow(dateKey);
+            if (!row) return;
+            for (let lane = 0; lane < lanesOfDay.length; lane++) {
+                const at = lanesOfDay[lane];
+                if (!at) {
+                    const gap = document.createElement('div');
+                    gap.className = 'plan-week-goal-lane-gap';
+                    row.appendChild(gap);
+                    continue;
+                }
+                row.appendChild(createWeekGoalSegment(at.goal, {
+                    first: at.first,
+                    last: at.last,
+                    words: wordsOn.get(at.goal.id) === dateKey,
+                }));
+            }
+        });
+
+        singles.forEach((goal) => {
+            const row = dayGoalsRow(goal.dateKey);
+            // A day that is not on screen brings its goals back with it.
+            if (row) row.appendChild(createWeekGoalPill(goal, { start: true, end: true }));
+        });
+    }
+
+    // The line each goal over more than one day takes. The first free line
+    // wins, and a goal holds its line for every day it covers.
+    function weekGoalLanes(spans) {
+        const order = [...spans].sort((a, b) => {
+            if (a.dateKey !== b.dateKey) return a.dateKey < b.dateKey ? -1 : 1;
+            const longer = goalSpanDays(b) - goalSpanDays(a);
+            if (longer !== 0) return longer;
+            return a.id < b.id ? -1 : 1;
+        });
+        const taken = [];
+        const lanes = new Map();
+        order.forEach((goal) => {
+            const days = goalDayKeys(goal);
+            let lane = 0;
+            while (taken[lane] && days.some((dateKey) => taken[lane].has(dateKey))) lane += 1;
+            if (!taken[lane]) taken[lane] = new Set();
+            days.forEach((dateKey) => taken[lane].add(dateKey));
+            lanes.set(goal.id, lane);
+        });
+        return lanes;
+    }
+
+    // One day of a goal that covers several.
+    function createWeekGoalSegment(goal, opts) {
+        const pill = createWeekGoalPill(goal);
+        pill.classList.add('plan-week-goal-pill--span');
+        if (opts.first) pill.classList.add('plan-week-goal-pill--span-first');
+        if (opts.last) pill.classList.add('plan-week-goal-pill--span-last');
+        // Only one day says what the goal is. The others are its bar.
+        if (!opts.words) pill.replaceChildren();
+        if (opts.first) pill.appendChild(createWeekGoalEdge(goal, 'start'));
+        if (opts.last) pill.appendChild(createWeekGoalEdge(goal, 'end'));
+        return pill;
+    }
+
+    // The edge a pointer pulls to give a goal more days, or fewer.
+    function createWeekGoalEdge(goal, edge) {
+        const handle = document.createElement('span');
+        handle.className = `plan-week-goal-edge plan-week-goal-edge--${edge}`;
+        handle.title = currentLanguage === 'da'
+            ? 'Træk for at dække flere dage'
+            : 'Drag to cover more days';
+        setupWeekGoalResize(handle, goal, edge);
+        return handle;
+    }
+
+    /**
+     * Pull an edge of a goal from day to day.
+     *
+     * The goal follows the pointer while it moves, one whole day at a time,
+     * and the day it is written down on comes at the end of the drag. The
+     * listeners are on the document, because each day redraws the pills.
+     */
+    function setupWeekGoalResize(handle, goal, edge) {
+        handle.addEventListener('click', (event) => event.stopPropagation());
+        handle.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+
+            let changed = false;
+            isWeekGoalDragInProgress = true;
+            container.classList.add('plan-week-goal-resizing');
+
+            const onPointerMove = (moveEvent) => {
+                moveEvent.preventDefault();
+                const dayKey = weekDayKeyAtX(pointerX(moveEvent));
+                if (!dayKey) return;
+                const moved = edge === 'end'
+                    ? stretchGoalEnd(goal, dayKey)
+                    : stretchGoalStart(goal, dayKey);
+                changed = changed || moved;
+            };
+
+            const onPointerUp = () => {
+                document.removeEventListener('pointermove', onPointerMove);
+                document.removeEventListener('pointerup', onPointerUp);
+                document.removeEventListener('pointercancel', onPointerUp);
+                container.classList.remove('plan-week-goal-resizing');
+                isWeekGoalDragInProgress = false;
+                if (changed) saveWeekGoals();
+            };
+
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+            document.addEventListener('pointercancel', onPointerUp);
+        });
     }
 
     function renderWeekGoals() {
@@ -2113,6 +2643,7 @@ const PlanModule = (function () {
         });
 
         const barWeek = getGoalsForCurrentWeek();
+        const onDays = [];
         getVisibleGoals().forEach((goal) => {
             // A goal with no day shows in the bar of its own week only.
             if (!goal.dateKey && !barWeek.includes(goal)) return;
@@ -2120,20 +2651,13 @@ const PlanModule = (function () {
             if (goal.dateKey && goalHasTime(goal) && container.querySelector(
                 `.plan-week-time-grid[data-date-key="${goal.dateKey}"]`
             )) return;
-            const pill = createWeekGoalPill(goal);
             if (goal.dateKey) {
-                const dayGoals = container.querySelector(
-                    `.plan-week-day-goals[data-date-key="${goal.dateKey}"]`
-                );
-                if (dayGoals) {
-                    dayGoals.appendChild(pill);
-                    return;
-                }
-                // Its day is not on screen. It comes back when the day does.
+                onDays.push(goal);
                 return;
             }
-            list.appendChild(pill);
+            list.appendChild(createWeekGoalPill(goal));
         });
+        drawWeekDayGoals(onDays);
 
         // The way to a new goal: words under the day's name while the pointer
         // is in that day, and a small "+" when the day has a goal already.
@@ -2206,6 +2730,10 @@ const PlanModule = (function () {
     function updatePeriodDisplay() {
         const display = container.querySelector('.plan-period-display');
         const todayBtn = container.querySelector('.plan-today-btn');
+        // The host took the calendar off the page — a tab was left, or the
+        // window went to another view. A timer of this file can still run
+        // after that, and there is nothing left to write on.
+        if (!display) return;
 
         if (calendarViewMode === 'week') {
             const weekEnd = addDays(weekStartDate, 6);
@@ -2230,6 +2758,7 @@ const PlanModule = (function () {
         }
 
         const grid = container.querySelector('.plan-calendar-grid');
+        if (!grid) return;
         const columns = grid.querySelectorAll('.plan-month-column');
 
         if (columns.length === 0) {
@@ -2350,6 +2879,9 @@ const PlanModule = (function () {
             grid.appendChild(createWeekDayColumn(addDays(weekStartDate, i)));
         }
         applyWeekShift(false);
+        // A new gutter starts with no shift. Once it is drawn, the observer
+        // lines it up (it reports once on observe) and again on each resize.
+        requestAnimationFrame(watchWeekHourGutter);
     }
 
     // ---- Sideways scroll, a day at a time ----
@@ -2551,6 +3083,28 @@ const PlanModule = (function () {
         return Boolean(line) && Number.isFinite(line.startMinutes) && Number.isFinite(line.endMinutes);
     }
 
+    // Bold, italic and underline on a whole note, kept on the note as its
+    // colours are (note.bold, note.italic, note.underline). A part of the
+    // words can still be made bold in place, as HTML in note.html; this is
+    // the whole note, set with the note selected and no words picked out.
+    const NOTE_TEXT_STYLES = {
+        bold: ['fontWeight', '700'],
+        italic: ['fontStyle', 'italic'],
+        underline: ['textDecoration', 'underline'],
+    };
+    function applyNoteTextStyle(el, note) {
+        Object.entries(NOTE_TEXT_STYLES).forEach(([flag, [prop, value]]) => {
+            el.style[prop] = note[flag] ? value : '';
+        });
+    }
+
+    // The toolbar's bold, italic and underline show which the note has.
+    function syncNoteStyleButtons(note) {
+        container.querySelectorAll('.plan-note-toolbar .plan-toolbar-btn[data-command]').forEach((btn) => {
+            btn.classList.toggle('is-on', Boolean(note && note[btn.dataset.command]));
+        });
+    }
+
     // The words of the reader's own note in the week view, as the Months view
     // shows a note: the hand font, the note's own colours, and the same menu.
     function dressWeekNoteText(textEl, note) {
@@ -2559,6 +3113,7 @@ const PlanModule = (function () {
         textEl.dataset.noteId = note.id;
         if (note.fontColor) textEl.style.color = note.fontColor;
         if (note.bgColor) textEl.style.backgroundColor = note.bgColor;
+        applyNoteTextStyle(textEl, note);
         // While the words are changed in place (the second click).
         textEl.addEventListener('input', () => {
             note.html = textEl.innerHTML;
@@ -2584,7 +3139,13 @@ const PlanModule = (function () {
     function selectWeekNote(note, textEl, event) {
         if (!textEl) return;
         if (event) window._lastClickEvent = { clientX: event.clientX, clientY: event.clientY };
-        showNoteEditor(note.id, textEl, Boolean(event && event.shiftKey));
+        const shiftKey = Boolean(event && event.shiftKey);
+        const wasAlone = selectedElements.length === 1 && selectedElements[0].type === 'note' && selectedElements[0].id === note.id;
+        showNoteEditor(note.id, textEl, shiftKey);
+        // One click writes: chosen alone, the note opens at once for its words.
+        if (!shiftKey && !wasAlone && selectedElements.length === 1 && selectedElements[0].id === note.id) {
+            showNoteEditor(note.id, textEl, false);
+        }
     }
 
     function createWeekTimedLine(line) {
@@ -3175,6 +3736,7 @@ const PlanModule = (function () {
         if (note.fontFamily) el.style.fontFamily = note.fontFamily + ', sans-serif';
         if (note.fontColor) el.style.color = note.fontColor;
         if (note.bgColor) el.style.backgroundColor = note.bgColor;
+        applyNoteTextStyle(el, note);
 
         el.dataset.noteId = note.id;
         if (note.source === 'calendar') {
@@ -4193,6 +4755,7 @@ const PlanModule = (function () {
         if (fontColorIndicator) fontColorIndicator.style.background = note.fontColor || '#333333';
         if (bgColorPicker) bgColorPicker.value = note.bgColor || '#ffff00';
         if (bgColorIndicator) bgColorIndicator.style.background = note.bgColor || 'transparent';
+        syncNoteStyleButtons(note);
     }
 
     // Show line editor toolbar
@@ -4453,7 +5016,6 @@ const PlanModule = (function () {
         });
 
         // Update period display and handle infinite loading as user scrolls
-        let scrollTimeout;
         let lastScrollLeft = calendarContainer.scrollLeft;
 
         // Not passive: the week view takes the sideways scroll for itself.
@@ -4466,7 +5028,7 @@ const PlanModule = (function () {
             clearTimeout(scrollTimeout);
             // Canvas scrolls with content naturally, no need to re-render lines
 
-            scrollTimeout = setTimeout(() => {
+            scrollTimeout = window.setTimeout(() => {
                 updatePeriodDisplay();
 
                 if (calendarViewMode === 'week') return;
@@ -4681,7 +5243,9 @@ const PlanModule = (function () {
         const da = currentLanguage === 'da';
         const draft = {
             text: goal ? goal.text : '',
-            assignee: goal ? (goal.assignee || null) : (findGoalPerson(mePersonId) ? mePersonId : null),
+            assignees: goal
+                ? goalAssigneeIds(goal)
+                : (findGoalPerson(mePersonId) ? [String(mePersonId)] : []),
             taskIds: goal && Array.isArray(goal.taskIds) ? [...goal.taskIds] : [],
         };
         let searchOpen = false;
@@ -4718,16 +5282,31 @@ const PlanModule = (function () {
         const resultsBox = card.querySelector('.plan-goal-editor-results');
         textInput.value = draft.text;
 
+        const draftPeople = () => draft.assignees.map((id) => findGoalPerson(id)).filter(Boolean);
+
         const drawPerson = () => {
             personBtn.innerHTML = '';
-            const person = findGoalPerson(draft.assignee);
-            if (person) {
-                personBtn.appendChild(goalPersonDot(person));
-                personBtn.appendChild(document.createTextNode(shortGoalPersonName(person)));
+            const people = draftPeople();
+            if (people.length) {
+                personBtn.appendChild(goalPersonDots(people));
+                personBtn.appendChild(document.createTextNode(
+                    people.length === 1
+                        ? shortGoalPersonName(people[0])
+                        : `${people.length} ${da ? 'personer' : 'people'}`
+                ));
             } else {
                 personBtn.textContent = da ? 'Tildel' : 'Assign';
             }
-            personBtn.classList.toggle('is-set', Boolean(person));
+            personBtn.classList.toggle('is-set', people.length > 0);
+        };
+
+        // Add a person to the goal, or take that person off it again.
+        const togglePerson = (id) => {
+            const key = String(id);
+            draft.assignees = draft.assignees.includes(key)
+                ? draft.assignees.filter((other) => other !== key)
+                : [...draft.assignees, key];
+            drawPerson();
         };
 
         const drawPeople = () => {
@@ -4735,13 +5314,23 @@ const PlanModule = (function () {
             const option = (label, id, dot) => {
                 const b = document.createElement('button');
                 b.type = 'button';
-                b.className = 'plan-goal-editor-option' + ((draft.assignee || null) === id ? ' is-on' : '');
+                const on = id === null
+                    ? draft.assignees.length === 0
+                    : draft.assignees.includes(String(id));
+                b.className = 'plan-goal-editor-option' + (on ? ' is-on' : '');
                 if (dot) b.appendChild(dot);
                 b.appendChild(document.createTextNode(label));
                 b.addEventListener('click', () => {
-                    draft.assignee = id;
-                    peopleBox.classList.add('hidden');
-                    drawPerson();
+                    // A goal can be for several people, so the list stays open
+                    // and each name goes on or off. "No one" clears it.
+                    if (id === null) {
+                        draft.assignees = [];
+                        peopleBox.classList.add('hidden');
+                        drawPerson();
+                        return;
+                    }
+                    togglePerson(id);
+                    drawPeople();
                 });
                 peopleBox.appendChild(b);
             };
@@ -4762,7 +5351,9 @@ const PlanModule = (function () {
                         if (!goalPeople.some((p) => p.id === String(person.id))) {
                             goalPeople.push(toGoalPerson(person));
                         }
-                        draft.assignee = String(person.id);
+                        if (!draft.assignees.includes(String(person.id))) {
+                            draft.assignees = [...draft.assignees, String(person.id)];
+                        }
                     }
                     peopleBox.classList.add('hidden');
                     drawPerson();
@@ -4875,10 +5466,11 @@ const PlanModule = (function () {
             if (save && text) {
                 if (goal) {
                     goal.text = text;
-                    goal.assignee = draft.assignee;
+                    setGoalAssignees(goal, draft.assignees);
                     goal.taskIds = draft.taskIds;
                 } else {
-                    const made = { id: createGoalId(), text, assignee: draft.assignee, dateKey, taskIds: draft.taskIds };
+                    const made = { id: createGoalId(), text, dateKey, taskIds: draft.taskIds };
+                    setGoalAssignees(made, draft.assignees);
                     goalsOfWeek(weekKeyForDate(parseDateKey(dateKey))).push(made);
                 }
                 saveWeekGoals();
@@ -4890,16 +5482,29 @@ const PlanModule = (function () {
         const inHostPeople = (target) =>
             target instanceof Element && Boolean(target.closest('.assign-menu-portal-root'));
         const onOutside = (event) => { if (!card.contains(event.target) && !inHostPeople(event.target)) finish(true); };
-        const onScroll = () => finish(true);
+        // A scroll of the calendar puts the card away, saved: its goal moved.
+        // Not the scroll "+ Link task" makes to show its search, or it closes.
+        let quietUntil = 0;
+        const onScroll = () => {
+            if (Date.now() < quietUntil) return;
+            finish(true);
+        };
 
         personBtn.addEventListener('click', () => {
             if (pickGoalPerson) {
-                const person = findGoalPerson(draft.assignee);
                 pickGoalPerson({
                     anchorEl: personBtn,
-                    assigneeId: person ? person.id : null,
-                    onPick: (id) => {
-                        draft.assignee = id || null;
+                    assigneeIds: [...draft.assignees],
+                    // A host that knows one person only still reads this.
+                    assigneeId: draft.assignees[0] || null,
+                    onPick: (picked) => {
+                        // A host of this script gives the whole list back. An
+                        // older one gives one person, or nothing.
+                        if (Array.isArray(picked)) {
+                            draft.assignees = [...new Set(picked.filter(Boolean).map(String))];
+                        } else {
+                            draft.assignees = picked ? [String(picked)] : [];
+                        }
                         drawPerson();
                     },
                     // "Edit people…" opens the host's people list over the
@@ -4912,10 +5517,29 @@ const PlanModule = (function () {
             if (show) drawPeople();
             peopleBox.classList.toggle('hidden', !show);
         });
-        card.querySelector('.plan-goal-editor-link').addEventListener('click', () => {
+        // "+ Link task" shows only once the goal has words: a goal with none
+        // is not kept on Done, so the tasks linked to it were lost, and the
+        // button seemed to do nothing. Cleared again, the search goes too;
+        // the tasks stay linked for when words come back.
+        const linkBtn = card.querySelector('.plan-goal-editor-link');
+        const showLinkWhenNamed = () => {
+            const named = textInput.value.trim() !== '';
+            linkBtn.hidden = !named;
+            if (!named && searchOpen) {
+                searchOpen = false;
+                searchBox.classList.add('hidden');
+            }
+        };
+        textInput.addEventListener('input', showLinkWhenNamed);
+        showLinkWhenNamed();
+        linkBtn.addEventListener('click', () => {
             searchOpen = !searchOpen;
             searchBox.classList.toggle('hidden', !searchOpen);
-            if (searchOpen) { drawResults(); queryInput.focus(); }
+            if (searchOpen) {
+                quietUntil = Date.now() + 400;
+                drawResults();
+                queryInput.focus({ preventScroll: true });
+            }
         });
         queryInput.addEventListener('input', () => {
             // The first letter looks in every list. With no words again, one list at a time.
@@ -4968,7 +5592,9 @@ const PlanModule = (function () {
             document.addEventListener('pointerdown', onOutside, true);
             calendarContainer.addEventListener('scroll', onScroll);
         }, 0);
-        textInput.focus();
+        // Without preventScroll the calendar scrolls to the box, and the
+        // scroll puts the card away as soon as it opens.
+        textInput.focus({ preventScroll: true });
         textInput.select();
     }
 
@@ -5092,12 +5718,11 @@ const PlanModule = (function () {
             )) return;
             const col = target.closest('.plan-week-day-column');
             if (!col) return;
-            const wasWriting = Boolean(container.querySelector('.plan-week-inline-input, .plan-week-note-text[contenteditable="true"]'));
-            if (selectedElements.length > 0) {
-                // As in the Months view: a press elsewhere takes the mark and the menu away.
-                deselectElement();
-                return;
-            }
+            // A press elsewhere takes the mark and the menu away, and puts an
+            // open text box away (it keeps its words as it loses the caret).
+            // The same click then goes on to write where it was: it took a
+            // second click before, the first one only put the old things away.
+            if (selectedElements.length > 0) deselectElement();
             const startDay = col.dataset.dateKey;
             const startTime = findWeekTimeDropTarget(pointerX(event), pointerY(event));
             const startX = pointerX(event);
@@ -5157,7 +5782,6 @@ const PlanModule = (function () {
                 document.removeEventListener('mouseup', onUp);
                 lineGhost?.remove();
                 markDays(false);
-                if (wasWriting) return; // the press put a text box away, and that is all
                 if (startTime && drawing) {
                     // A drag: a line from its start to its end. Then a caret for its name,
                     // which can stay empty.
@@ -5516,56 +6140,555 @@ const PlanModule = (function () {
         const calendarAddBtn = container.querySelector('.plan-calendar-add-btn');
         const calendarPopover = container.querySelector('.plan-calendar-popover');
         const calendarList = container.querySelector('.plan-calendar-list');
+        const calendarPicker = container.querySelector('.plan-calendar-picker');
+        const calendarSelect = container.querySelector('.plan-calendar-select');
+        const calendarMenu = container.querySelector('.plan-calendar-menu');
+        const calendarMenuList = container.querySelector('.plan-calendar-menu-list');
+        const calendarSearch = container.querySelector('.plan-calendar-search');
+        const calendarCount = container.querySelector('.plan-calendar-count');
+        const calendarAddedTitle = container.querySelector('.plan-calendar-added-title');
+        const calendarAddForm = container.querySelector('.plan-calendar-add-form');
         const calendarNameInput = container.querySelector('.plan-calendar-name-input');
         const calendarUrlInput = container.querySelector('.plan-calendar-url-input');
         const calendarAddSaveBtn = container.querySelector('.plan-calendar-add-save-btn');
         const calendarStatus = container.querySelector('.plan-calendar-status');
 
-        // Render calendar list in popover
-        function renderCalendarList() {
-            if (!calendarList) return;
-            if (calendars.length === 0) {
-                calendarList.innerHTML = '<div class="plan-calendar-empty">No calendars added yet</div>';
-                return;
-            }
-            calendarList.innerHTML = calendars.map(cal => `
-                <div class="plan-calendar-item" data-id="${cal.id}">
-                    <div class="plan-calendar-item-info">
-                        <span class="plan-calendar-item-name">${cal.name || 'Unnamed'}</span>
-                        <span class="plan-calendar-item-url">${cal.url.substring(0, 40)}...</span>
-                    </div>
-                    <button class="plan-calendar-item-delete" data-id="${cal.id}" title="Remove calendar">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                    </button>
-                </div>
-            `).join('');
+        /*
+         * A host that offers the picker does not offer the address box.
+         *
+         * The box asks for a secret address, and the help beside it explains
+         * where to copy one from. Both are about a way of adding a calendar
+         * that this host does not use, so both go.
+         */
+        if (listCalendarChoices) {
+            if (calendarAddForm) calendarAddForm.classList.add('hidden');
+            if (calendarPicker) calendarPicker.classList.remove('hidden');
+            const helpIconEl = calendarPopover && calendarPopover.querySelector('.plan-calendar-help-icon');
+            if (helpIconEl) helpIconEl.classList.add('hidden');
+        }
 
-            // Add delete handlers
-            calendarList.querySelectorAll('.plan-calendar-item-delete').forEach(btn => {
-                btn.addEventListener('click', (e) => {
+        /*
+         * The dropdown of calendars to add.
+         *
+         * A press opens it and puts the caret in the search box, because the
+         * reader who opens it means to find one. Escape and a press outside
+         * put it away, and Enter takes the first calendar still to be added:
+         * with nine of them, typing three letters and pressing Enter is the
+         * whole job.
+         */
+        if (calendarSelect) {
+            calendarSelect.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (calendarMenuIsOpen()) closeCalendarMenu();
+                else openCalendarMenu();
+            });
+        }
+        if (calendarSearch) {
+            calendarSearch.addEventListener('input', () => renderCalendarMenu());
+            calendarSearch.addEventListener('click', (e) => e.stopPropagation());
+            calendarSearch.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
                     e.stopPropagation();
-                    const id = btn.dataset.id;
-                    calendars = calendars.filter(c => c.id !== id);
+                    closeCalendarMenu();
+                    return;
+                }
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const first = calendarMenuList
+                    && calendarMenuList.querySelector('[data-pickable="true"]');
+                if (first) first.click();
+            });
+        }
+
+        /*
+         * The colours a calendar can be given.
+         *
+         * The editorial palette: Sky, Ice, Mint, Buttercup, Blush, Apricot,
+         * Sunset, Lavender. Keep in step with PLAN_CALENDAR_COLOR_PRESETS in
+         * redd-plan/lib/canvasBackground.ts.
+         */
+        const CALENDAR_PALETTE = ['#7da9c8', '#8eb5b0', '#8cb89c', '#d4ba6a', '#d4a5a8', '#d99a6c', '#d4605a', '#a896c0'];
+
+        /**
+         * Give a calendar a colour, everywhere it shows.
+         *
+         * The chip in the toolbar and the row in this popover both set the
+         * colour, so the work is in one place and neither can leave the
+         * other behind.
+         */
+        function setCalendarColour(cal, newColour) {
+            cal.fontColor = newColour;
+            cal.lineColor = newColour;
+            localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+            freeformNotes.filter(n => n.calendarId === cal.id).forEach(n => {
+                n.fontColor = newColour;
+            });
+            freeformLines.filter(l => l.calendarId === cal.id).forEach(l => {
+                l.color = newColour;
+                l.fontColor = newColour;
+            });
+            saveData();
+            renderFreeformElements();
+            renderCalendarToggles();
+        }
+
+        /** What a calendar's row says underneath its name. */
+        function calendarItemDetail(cal) {
+            if (calendarErrors[cal.id]) return calendarErrors[cal.id];
+            if (cal.kind === 'google') return cal.accountEmail || '';
+            return cal.url ? cal.url.substring(0, 40) + '...' : '';
+        }
+
+        function removeCalendar(id) {
+            calendars = calendars.filter(c => c.id !== id);
+            delete calendarErrors[id];
+            if (openColourFor === id) openColourFor = null;
+            localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+            renderCalendarList();
+            renderCalendarMenu();
+            updateCalendarCount();
+            syncAllCalendars(); // Re-sync to update events
+        }
+
+        /** Which calendar's colours are out, by id. One at a time. */
+        let openColourFor = null;
+
+        const EYE_OPEN_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+        const EYE_SHUT_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
+
+        /** The eye that shows or hides one row's things on the board. */
+        function eyeButton(isOn, onPress) {
+            const eye = document.createElement('button');
+            eye.type = 'button';
+            eye.className = 'plan-calendar-item-eye' + (isOn ? '' : ' is-off');
+            eye.innerHTML = isOn ? EYE_OPEN_SVG : EYE_SHUT_SVG;
+            eye.title = isOn ? 'Hide from the calendar' : 'Show on the calendar';
+            eye.addEventListener('click', (e) => {
+                e.stopPropagation();
+                onPress();
+            });
+            return eye;
+        }
+
+        /**
+         * A row for something the board draws that is not a calendar.
+         *
+         * No Remove: the application deadlines come from another tab and
+         * belong to it. They can be shown or hidden here, and that is all.
+         */
+        function boardSourceRow(source) {
+            const item = document.createElement('div');
+            item.className = 'plan-calendar-item';
+
+            const top = document.createElement('div');
+            top.className = 'plan-calendar-item-top';
+
+            const swatch = document.createElement('span');
+            swatch.className = 'plan-calendar-item-swatch is-still';
+            swatch.style.background = source.colour || '#d4605a';
+
+            const info = document.createElement('div');
+            info.className = 'plan-calendar-item-info';
+            const name = document.createElement('span');
+            name.className = 'plan-calendar-item-name';
+            name.textContent = source.name;
+            const detail = document.createElement('span');
+            detail.className = 'plan-calendar-item-url';
+            detail.textContent = source.detail || '';
+            info.append(name, detail);
+
+            const eye = eyeButton(source.shown !== false, () => {
+                const next = source.shown === false;
+                source.shown = next;
+                renderCalendarList();
+                Promise.resolve(toggleBoardSource && toggleBoardSource(source.id, next))
+                    .catch((err) => {
+                        console.warn('[Plan] Could not change that setting:', err);
+                        // It did not take, so the row should not say it did.
+                        source.shown = !next;
+                        renderCalendarList();
+                    });
+            });
+
+            top.append(swatch, info, eye);
+            item.appendChild(top);
+            return item;
+        }
+
+        /** Marked only, or everything the calendar holds. */
+        function calendarShowRow(cal) {
+            const row = document.createElement('div');
+            row.className = 'plan-calendar-item-show';
+            const label = document.createElement('span');
+            label.className = 'plan-calendar-item-show-label';
+            label.textContent = 'Show';
+            row.appendChild(label);
+
+            const group = document.createElement('div');
+            group.className = 'plan-calendar-show-group';
+            const options = [
+                { words: 'Marked only', showAll: false },
+                { words: 'All events', showAll: true },
+            ];
+            for (const option of options) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'plan-calendar-show-choice';
+                button.textContent = option.words;
+                if (Boolean(cal.showAll) === option.showAll) button.classList.add('is-on');
+                button.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (Boolean(cal.showAll) === option.showAll) return;
+                    cal.showAll = option.showAll;
                     localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
                     renderCalendarList();
-                    syncAllCalendars(); // Re-sync to update events
+                    // Asked again, because which events belong on the board
+                    // has changed and the answer is not in what we kept.
+                    void syncAllCalendars({ force: true });
                 });
+                group.appendChild(button);
+            }
+            row.appendChild(group);
+            return row;
+        }
+
+        /** A square of the calendar's colour, which brings the palette out. */
+        function calendarSwatch(cal) {
+            const swatch = document.createElement('button');
+            swatch.type = 'button';
+            swatch.className = 'plan-calendar-item-swatch';
+            swatch.style.background = cal.fontColor || '#7da9c8';
+            swatch.title = 'Change the colour';
+            swatch.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // A second press puts the colours away, the way the first
+                // brought them out.
+                openColourFor = openColourFor === cal.id ? null : cal.id;
+                renderCalendarList();
             });
+            return swatch;
+        }
+
+        /** The palette under a calendar, when its square has been pressed. */
+        function calendarColourRow(cal) {
+            const row = document.createElement('div');
+            row.className = 'plan-calendar-item-colours';
+            const label = document.createElement('span');
+            label.className = 'plan-calendar-item-colours-label';
+            label.textContent = 'Colour';
+            row.appendChild(label);
+            for (const colour of CALENDAR_PALETTE) {
+                const dot = document.createElement('button');
+                dot.type = 'button';
+                dot.className = 'plan-calendar-colour-choice';
+                if ((cal.fontColor || '#7da9c8') === colour) dot.classList.add('is-on');
+                dot.style.background = colour;
+                dot.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setCalendarColour(cal, colour);
+                    renderCalendarList();
+                });
+                row.appendChild(dot);
+            }
+            return row;
+        }
+
+        // The calendars on the board, with what each one is for and a way to
+        // take it off again.
+        function renderCalendarList() {
+            if (!calendarList) return;
+            if (calendarAddedTitle) {
+                calendarAddedTitle.classList.toggle(
+                    'hidden',
+                    calendars.length === 0 && boardSources.length === 0,
+                );
+            }
+            calendarList.textContent = '';
+            // What the board draws besides calendars goes first: it is
+            // always there, and a calendar comes and goes under it.
+            for (const source of boardSources) {
+                calendarList.appendChild(boardSourceRow(source));
+            }
+            if (calendars.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'plan-calendar-empty';
+                empty.textContent = listCalendarChoices
+                    ? 'No calendars yet. Pick one above.'
+                    : 'No calendars added yet';
+                calendarList.appendChild(empty);
+                return;
+            }
+            // Built as elements, not as text: a calendar's name and the
+            // address of its account come from elsewhere, and are shown, not
+            // run.
+            for (const cal of calendars) {
+                const item = document.createElement('div');
+                item.className = 'plan-calendar-item';
+                item.dataset.id = cal.id;
+
+                const top = document.createElement('div');
+                top.className = 'plan-calendar-item-top';
+
+                const info = document.createElement('div');
+                info.className = 'plan-calendar-item-info';
+                const name = document.createElement('span');
+                name.className = 'plan-calendar-item-name';
+                name.textContent = cal.name || 'Unnamed';
+                const detail = document.createElement('span');
+                detail.className = 'plan-calendar-item-url';
+                if (calendarErrors[cal.id]) detail.classList.add('plan-calendar-item-problem');
+                detail.textContent = calendarItemDetail(cal);
+                info.append(name, detail);
+
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'plan-calendar-item-delete';
+                remove.textContent = 'Remove';
+                remove.title = 'Take this calendar off the board';
+                remove.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeCalendar(cal.id);
+                });
+
+                const eye = eyeButton(cal.visible !== false, () => {
+                    cal.visible = cal.visible === false;
+                    localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+                    renderFreeformElements();
+                    renderCalendarToggles();
+                    renderCalendarList();
+                });
+
+                top.append(calendarSwatch(cal), info, eye, remove);
+                item.appendChild(top);
+                if (openColourFor === cal.id) item.appendChild(calendarColourRow(cal));
+                item.appendChild(calendarShowRow(cal));
+                calendarList.appendChild(item);
+            }
+        }
+
+        /** How many calendars are on the board, out of how many there are. */
+        function updateCalendarCount() {
+            if (!calendarCount) return;
+            if (!listCalendarChoices) {
+                calendarCount.textContent = '';
+                return;
+            }
+            const offered = calendarChoices.reduce(
+                (total, account) => total + (account.calendars || []).length,
+                0,
+            );
+            calendarCount.textContent = offered
+                ? `${calendars.length} of ${offered} syncing`
+                : '';
+        }
+
+        /** What the accounts offered, the last time we asked. */
+        let calendarChoices = [];
+        let calendarChoicesLoaded = false;
+
+        /**
+         * Ask the host what the picker can offer.
+         *
+         * Asked when the popover opens, not when the board draws: it is a
+         * round trip to Google, and the board does not need it until the
+         * reader means to add something.
+         */
+        async function loadCalendarChoices(force) {
+            if (!listCalendarChoices) return;
+            if (calendarChoicesLoaded && !force) return;
+            try {
+                calendarChoices = (await listCalendarChoices()) || [];
+                calendarChoicesLoaded = true;
+            } catch (err) {
+                console.warn('[Plan] Could not list the calendars to add:', err);
+                calendarChoices = [];
+                calendarChoicesLoaded = false;
+            }
+            renderCalendarMenu();
+            updateCalendarCount();
+        }
+
+        /** Is this calendar already on the board? */
+        function calendarIsAdded(accountEmail, calendarId) {
+            return calendars.some(
+                c => c.kind === 'google' && c.accountEmail === accountEmail && c.calendarId === calendarId,
+            );
+        }
+
+        /**
+         * The calendars to choose from, under the account each is on.
+         *
+         * Narrowed by what the reader has typed, over both the calendar's
+         * name and the account's address: with nine calendars on three
+         * accounts, "ulrik" is as good a way to find one as its name.
+         */
+        function renderCalendarMenu() {
+            if (!calendarMenuList) return;
+            const needle = (calendarSearch && calendarSearch.value.trim().toLowerCase()) || '';
+            calendarMenuList.textContent = '';
+
+            if (!calendarChoicesLoaded) {
+                const waiting = document.createElement('div');
+                waiting.className = 'plan-calendar-picker-problem';
+                waiting.textContent = calendarChoices.length
+                    ? 'Could not reach the accounts. Try again in a moment.'
+                    : 'Looking for your calendars…';
+                calendarMenuList.appendChild(waiting);
+                return;
+            }
+
+            if (calendarChoices.length === 0) {
+                const none = document.createElement('div');
+                none.className = 'plan-calendar-picker-problem';
+                none.textContent = 'No Google account yet. Connect one in Settings.';
+                calendarMenuList.appendChild(none);
+                return;
+            }
+
+            let shown = 0;
+            for (const account of calendarChoices) {
+                const matches = (account.calendars || []).filter(choice => {
+                    if (!needle) return true;
+                    return (
+                        choice.name.toLowerCase().includes(needle) ||
+                        account.email.toLowerCase().includes(needle)
+                    );
+                });
+                const accountMatches =
+                    !needle || account.email.toLowerCase().includes(needle);
+                if (!matches.length && !(account.error && accountMatches)) continue;
+
+                const group = document.createElement('div');
+                group.className = 'plan-calendar-menu-group';
+
+                const heading = document.createElement('div');
+                heading.className = 'plan-calendar-menu-email';
+                heading.textContent = account.email;
+                group.appendChild(heading);
+
+                if (account.error) {
+                    const problem = document.createElement('div');
+                    problem.className = 'plan-calendar-picker-problem';
+                    problem.textContent = account.error;
+                    group.appendChild(problem);
+                }
+
+                for (const choice of matches) {
+                    const row = document.createElement('button');
+                    row.type = 'button';
+                    row.className = 'plan-calendar-menu-choice';
+                    const already = calendarIsAdded(account.email, choice.id);
+                    row.disabled = already;
+
+                    const label = document.createElement('span');
+                    label.className = 'plan-calendar-menu-name';
+                    label.textContent = choice.name;
+                    row.appendChild(label);
+
+                    if (already) {
+                        row.classList.add('is-added');
+                        const mark = document.createElement('span');
+                        mark.className = 'plan-calendar-menu-added';
+                        mark.textContent = 'Added';
+                        row.appendChild(mark);
+                    } else {
+                        shown += 1;
+                        row.dataset.pickable = 'true';
+                        row.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            addPickedCalendar(account.email, choice);
+                        });
+                    }
+                    group.appendChild(row);
+                }
+
+                calendarMenuList.appendChild(group);
+            }
+
+            if (shown === 0 && needle) {
+                const none = document.createElement('div');
+                none.className = 'plan-calendar-picker-problem';
+                none.textContent = `Nothing matches "${needle}".`;
+                calendarMenuList.appendChild(none);
+            }
+        }
+
+        function openCalendarMenu() {
+            if (!calendarMenu || !calendarSelect) return;
+            calendarMenu.classList.remove('hidden');
+            calendarSelect.classList.add('is-open');
+            if (calendarSearch) {
+                calendarSearch.value = '';
+                calendarSearch.focus();
+            }
+            renderCalendarMenu();
+            // Asked again each time it opens: an account connected or a
+            // calendar made since the last look should be here.
+            void loadCalendarChoices(true);
+        }
+
+        function closeCalendarMenu() {
+            if (!calendarMenu || !calendarSelect) return;
+            calendarMenu.classList.add('hidden');
+            calendarSelect.classList.remove('is-open');
+        }
+
+        function calendarMenuIsOpen() {
+            return Boolean(calendarMenu && !calendarMenu.classList.contains('hidden'));
+        }
+
+        /** A calendar the reader picked goes on the board under its own name. */
+        async function addPickedCalendar(accountEmail, choice) {
+            // A colour each, so two calendars are told apart at a glance.
+            const colour = CALENDAR_PALETTE[calendars.length % CALENDAR_PALETTE.length];
+            calendars.push({
+                id: 'cal-' + Date.now(),
+                kind: 'google',
+                name: choice.name,
+                accountEmail,
+                calendarId: choice.id,
+                fontColor: colour,
+                lineColor: colour,
+            });
+            localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+            closeCalendarMenu();
+            renderCalendarList();
+            renderCalendarMenu();
+            updateCalendarCount();
+            renderCalendarToggles();
+            await syncAllCalendars({ force: true });
+        }
+
+        /*
+         * One picked calendar, from the answer the host gave.
+         *
+         * A calendar with no answer of its own is not blank: it is unknown,
+         * and an error sends the caller to what that calendar showed before.
+         * A host that offers the picker but cannot read is the same case.
+         */
+        function readPickedCalendar(CalendarSync, cal, feeds, reading) {
+            if (!readCalendarEvents) {
+                throw new Error('This calendar needs an account, and there is none here');
+            }
+            const feed = feeds[cal.id];
+            if (!feed) throw new Error('Could not read this calendar');
+            if (feed.error) throw new Error(feed.error);
+            return CalendarSync.syncBoardEvents(feed.events, reading);
         }
 
         // Sync all calendars. One at a time: a sync asked for while one runs
         // shares its result.
-        function syncAllCalendars() {
+        function syncAllCalendars(options) {
             if (calendarSyncInFlight) return calendarSyncInFlight;
             lastCalendarSyncStartedAt = Date.now();
-            calendarSyncInFlight = runCalendarSync().finally(() => {
+            calendarSyncInFlight = runCalendarSync(options).finally(() => {
                 calendarSyncInFlight = null;
             });
             return calendarSyncInFlight;
         }
         syncCalendarsNow = syncAllCalendars;
 
-        async function runCalendarSync() {
+        async function runCalendarSync(options) {
             // Start spinning animation
             if (calendarSyncAllBtn) calendarSyncAllBtn.classList.add('syncing');
             if (calendarStatus) calendarStatus.textContent = 'Syncing...';
@@ -5590,9 +6713,55 @@ const PlanModule = (function () {
                 const CalendarSync = window.CalendarSync;
                 if (!CalendarSync) throw new Error('CalendarSync module not loaded');
 
+                // The picked calendars come in one answer, because the host
+                // reads them with one token each and the board draws them
+                // together. A failure here is the same as a feed that would
+                // not answer: every one of them keeps what it showed.
+                let feeds = lastCalendarFeeds;
+                const wantsFeeds = calendars.some(c => c.kind === 'google');
+                // Read a moment ago is read enough. Coming back to the tab
+                // syncs after a minute, and each read asks Google once per
+                // calendar, so without this a reader moving between tabs
+                // asks far more often than the calendars change. Asking by
+                // hand still asks.
+                const readAgain =
+                    Boolean(options && options.force) ||
+                    Date.now() - lastCalendarFeedsAt >= CALENDAR_FEED_FLOOR_MS;
+                if (wantsFeeds && readCalendarEvents && readAgain) {
+                    try {
+                        // Which calendars, from here. The board knows a
+                        // calendar the moment it is picked; the server only
+                        // learns it when the save catches up, so a sync
+                        // straight after a pick would find nothing.
+                        const answered = await readCalendarEvents(
+                            calendars
+                                .filter(c => c.kind === 'google')
+                                .map(c => ({
+                                    id: c.id,
+                                    kind: 'google',
+                                    name: c.name,
+                                    accountEmail: c.accountEmail,
+                                    calendarId: c.calendarId,
+                                })),
+                        );
+                        feeds = {};
+                        for (const feed of answered || []) {
+                            if (feed && feed.id) feeds[feed.id] = feed;
+                        }
+                        lastCalendarFeeds = feeds;
+                        lastCalendarFeedsAt = Date.now();
+                    } catch (err) {
+                        console.warn('[Plan] Could not read the picked calendars:', err);
+                    }
+                }
+                calendarErrors = {};
+
                 for (const cal of calendars) {
                     try {
-                        const result = await CalendarSync.syncCalendar(cal.url);
+                        const reading = { ...(options || {}), markedOnly: cal.showAll !== true };
+                        const result = cal.kind === 'google'
+                            ? readPickedCalendar(CalendarSync, cal, feeds, reading)
+                            : await CalendarSync.syncCalendar(cal.url, reading);
 
                         // Add calendar styling and source markers to notes
                         result.notes.forEach(n => {
@@ -5618,7 +6787,17 @@ const PlanModule = (function () {
                     } catch (err) {
                         // A calendar that could not be read keeps what it showed
                         // before, rather than going blank until the next sync.
-                        console.warn(`[Plan] Failed to sync calendar "${cal.name}":`, err);
+                        // A calendar that was not asked at all — read a moment
+                        // ago, or waiting out a 429 — says nothing: see the
+                        // waits in calendar-sync.js.
+                        if (!err || !err.calendarSkipped) {
+                            console.warn(`[Plan] Failed to sync calendar "${cal.name}":`, err);
+                            // What went wrong belongs on the calendar's own
+                            // row: a token that needs reconnecting is the
+                            // reader's to mend, and they cannot mend what
+                            // they cannot see.
+                            calendarErrors[cal.id] = (err && err.message) || 'Could not read this calendar';
+                        }
                         fetchedNotes.push(...previousNotes.filter(n => n.calendarId === cal.id));
                         fetchedLines.push(...previousLines.filter(l => l.calendarId === cal.id));
                     }
@@ -5632,6 +6811,8 @@ const PlanModule = (function () {
                 showCalendarItems(fetchedNotes, fetchedLines);
                 updateCalendarStatus();
                 renderCalendarToggles();
+                // A calendar that could not be read says so on its own row.
+                renderCalendarList();
 
                 console.log('[Plan] All calendars synced and merged:', {
                     calendars: calendars.length,
@@ -5650,20 +6831,38 @@ const PlanModule = (function () {
         // Sync All button
         if (calendarSyncAllBtn) {
             calendarSyncAllBtn.addEventListener('click', () => {
-                syncAllCalendars();
+                // Asked for by hand: the feed is asked even if it told us to
+                // wait — see the 429 wait in calendar-sync.js.
+                syncAllCalendars({ force: true });
             });
         }
 
         // Add Calendar button - opens popover
         if (calendarAddBtn && calendarPopover) {
+            // Under the button, measured from its offset parent, not the container
+            // (in the To-Do app that put it a title bar too high). Again on resize.
+            const placeCalendarPopover = () => {
+                if (calendarPopover.classList.contains('hidden')) return;
+                const anchor = calendarPopover.offsetParent || container;
+                const btnRect = rectOf(calendarAddBtn);
+                const anchorRect = rectOf(anchor);
+                calendarPopover.style.top = (btnRect.bottom - anchorRect.top + 5) + 'px';
+                let right = anchorRect.right - btnRect.right;
+                // At least 12px from the left edge, for a narrow window.
+                const width = rectOf(calendarPopover).width;
+                const room = anchorRect.right - anchorRect.left - right - width;
+                if (room < 12) right = Math.max(12, right + room - 12);
+                calendarPopover.style.right = right + 'px';
+            };
+            onPopoverResize = placeCalendarPopover;
+            window.addEventListener('resize', onPopoverResize);
             calendarAddBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 calendarPopover.classList.toggle('hidden');
-                const btnRect = rectOf(calendarAddBtn);
-                const containerRect = rectOf(container);
-                calendarPopover.style.top = (btnRect.bottom - containerRect.top + 5) + 'px';
-                calendarPopover.style.right = (containerRect.right - btnRect.right) + 'px';
+                placeCalendarPopover();
                 renderCalendarList();
+                updateCalendarCount();
+                void loadCalendarChoices();
                 updateCalendarStatus();
                 renderCalendarToggles();
             });
@@ -5690,8 +6889,16 @@ const PlanModule = (function () {
                 const isInsidePopover = calendarPopover.contains(e.target);
                 const isAddBtn = calendarAddBtn && calendarAddBtn.contains(e.target);
                 const isSyncBtn = calendarSyncAllBtn && calendarSyncAllBtn.contains(e.target);
+                // A press anywhere but the dropdown puts it away first, so
+                // one press outside the popover does not close both.
+                if (calendarMenuIsOpen()) {
+                    const isInsideMenu = calendarMenu.contains(e.target)
+                        || (calendarSelect && calendarSelect.contains(e.target));
+                    if (!isInsideMenu) closeCalendarMenu();
+                }
                 if (!isInsidePopover && !isAddBtn && !isSyncBtn) {
                     calendarPopover.classList.add('hidden');
+                    closeCalendarMenu();
                 }
             });
         }
@@ -5788,28 +6995,30 @@ const PlanModule = (function () {
                 // Color palette popover
                 const colorWrapper = chip.querySelector('.calendar-toggle-color');
                 const colorDot = chip.querySelector('.calendar-color-dot');
-                // redd-do editorial palette: Sky, Ice, Mint, Buttercup, Blush, Apricot, Sunset, Lavender
-                // Keep in sync with PLAN_CALENDAR_COLOR_PRESETS in redd-plan/lib/canvasBackground.ts
-                const PALETTE = ['#7da9c8', '#8eb5b0', '#8cb89c', '#d4ba6a', '#d4a5a8', '#d99a6c', '#d4605a', '#a896c0'];
+                // The same palette the popover offers: see CALENDAR_PALETTE.
+                const PALETTE = CALENDAR_PALETTE;
 
                 function applyColor(newColor) {
-                    cal.fontColor = newColor;
-                    cal.lineColor = newColor;
                     colorDot.style.background = newColor;
-                    localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
-                    freeformNotes.filter(n => n.calendarId === cal.id).forEach(n => {
-                        n.fontColor = newColor;
-                    });
-                    freeformLines.filter(l => l.calendarId === cal.id).forEach(l => {
-                        l.color = newColor;
-                        l.fontColor = newColor;
-                    });
-                    saveData();
-                    renderFreeformElements();
+                    setCalendarColour(cal, newColor);
+                    // The row in the popover shows the colour too.
+                    renderCalendarList();
                 }
+
+                /** Put this chip's palette away, when it is out. */
+                let closeColors = null;
 
                 colorDot.addEventListener('click', e => {
                     e.stopPropagation();
+
+                    // A second press on the dot puts the colours away, the
+                    // way the first brought them out. It used to take them
+                    // away and put them straight back, which reads as a
+                    // palette that will not close.
+                    if (closeColors) {
+                        closeColors();
+                        return;
+                    }
 
                     // Close any other open palette popovers
                     container.querySelectorAll('.calendar-color-popover').forEach(p => p.remove());
@@ -5838,12 +7047,32 @@ const PlanModule = (function () {
                     // Position below the dot
                     colorWrapper.appendChild(popover);
 
+                    /*
+                      And inside the calendar, wherever the dot is.
+
+                      The palette hangs to the left of its dot, and the
+                      chips start at the left of the toolbar — so in a
+                      narrow calendar, a tile of a split window most of
+                      all, it hung off the side with its first swatches
+                      and the start of the hex box out of reach.
+                    */
+                    const edges = rectOf(container);
+                    const box = rectOf(popover);
+                    const margin = 8;
+                    let shift = 0;
+                    if (box.left < edges.left + margin) {
+                        shift = edges.left + margin - box.left;
+                    } else if (box.right > edges.right - margin) {
+                        shift = edges.right - margin - box.right;
+                    }
+                    if (shift) popover.style.transform = `translateX(${shift}px)`;
+
                     // Swatch click handlers
                     popover.querySelectorAll('.calendar-color-swatch:not(.calendar-color-swatch-custom)').forEach(swatch => {
                         swatch.addEventListener('click', ev => {
                             ev.stopPropagation();
                             applyColor(swatch.dataset.color);
-                            popover.remove();
+                            closeColors();
                         });
                     });
 
@@ -5878,14 +7107,23 @@ const PlanModule = (function () {
                     hexInput.addEventListener('blur', applyHex);
 
                     // Close on outside click
-                    const closePopover = ev => {
-                        if (!popover.contains(ev.target) && ev.target !== colorDot) {
-                            popover.remove();
+                    let closePopover = null;
+                    closeColors = () => {
+                        popover.remove();
+                        if (closePopover) {
                             document.removeEventListener('click', closePopover, true);
+                        }
+                        closeColors = null;
+                    };
+                    closePopover = ev => {
+                        if (!popover.contains(ev.target) && ev.target !== colorDot) {
+                            closeColors();
                         }
                     };
                     // Use setTimeout so the current click doesn't immediately close it
-                    setTimeout(() => document.addEventListener('click', closePopover, true), 0);
+                    setTimeout(() => {
+                        if (closeColors) document.addEventListener('click', closePopover, true);
+                    }, 0);
                 });
 
                 // Click to rename calendar
@@ -5936,7 +7174,31 @@ const PlanModule = (function () {
             btn.addEventListener('mousedown', e => {
                 e.preventDefault(); // Prevent losing focus from note
                 const command = btn.dataset.command;
-                document.execCommand(command, false, null);
+                const selectedNotes = selectedElements
+                    .filter((s) => s.type === 'note')
+                    .map((s) => ({ sel: s, note: freeformNotes.find((n) => n.id === s.id) }))
+                    .filter((x) => x.note);
+                // Words picked out inside a note being changed: those words,
+                // as before. Otherwise the whole note, as a colour does.
+                const selection = window.getSelection();
+                const wordsPicked = selection && !selection.isCollapsed && selectedNotes.some(
+                    ({ sel }) => sel.element?.contains(selection.anchorNode)
+                );
+                if (wordsPicked || selectedNotes.length === 0 || !NOTE_TEXT_STYLES[command]) {
+                    document.execCommand(command, false, null);
+                    return;
+                }
+                pushHistory();
+                const turnOn = !selectedNotes.every(({ note }) => note[command]);
+                selectedNotes.forEach(({ sel, note }) => {
+                    if (turnOn) note[command] = true;
+                    else delete note[command];
+                    // Week notes keep their words in an inner element.
+                    const target = sel.element.querySelector('.plan-week-note-text') || sel.element;
+                    applyNoteTextStyle(target, note);
+                });
+                syncNoteStyleButtons(selectedNotes[0].note);
+                saveData();
             });
         });
 

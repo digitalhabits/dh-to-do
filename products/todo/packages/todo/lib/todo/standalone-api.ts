@@ -15,6 +15,7 @@ import { installSqliteTodoDriver } from "./sqlite-driver";
 import { installTauriMediaStore } from "./tauri-media";
 import { installStandaloneBasecampTransport } from "./standalone-basecamp";
 import { isStandaloneTodo } from "./product-flavor";
+import { savedLangT } from "./saved-prefs";
 import { THIS_DEVICE_MAKER } from "./people-scope";
 import * as store from "./store";
 
@@ -336,7 +337,7 @@ export function listenStandaloneBasecampAuth(handlers: {
           configured: true,
         });
       } catch (err) {
-        handlers.onError(describeError(err, "Could not save Basecamp login"));
+        handlers.onError(describeError(err, savedLangT()("basecampLoginSaveFailed")));
       }
     });
     keep(offOk);

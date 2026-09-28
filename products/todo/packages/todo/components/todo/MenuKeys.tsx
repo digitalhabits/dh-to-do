@@ -23,8 +23,13 @@ export function MenuKeys({
   closeOnBlur = true,
   children,
 }: {
-  /** Called on Escape, and when the caret leaves the menu. */
-  onClose: () => void;
+  /**
+   * Called on Escape, and when the caret leaves the menu. Only an Escape
+   * should give the caret back to the menu's button: on a blur the reader
+   * has put it somewhere else, a click on the page or into a field, and
+   * taking it back kept the card they left looking hovered.
+   */
+  onClose: (reason: "escape" | "blur") => void;
   className?: string;
   /**
    * The caret leaving the menu closes it. Off for a menu that is put away
@@ -92,7 +97,7 @@ export function MenuKeys({
       case "Escape":
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        onClose("escape");
         break;
       default:
     }
@@ -114,7 +119,7 @@ export function MenuKeys({
         if (!closeOnBlur) return;
         if (pressing.current) return;
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-          onClose();
+          onClose("blur");
         }
       }}
     >

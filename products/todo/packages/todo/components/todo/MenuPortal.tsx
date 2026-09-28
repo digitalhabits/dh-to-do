@@ -81,7 +81,11 @@ export function MenuPortal({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, anchorEl, align, children]);
+    // `mounted` too: a popover made at the moment it opens draws nothing on
+    // its first render, so the first place() finds no menu to measure. Once
+    // the menu exists it must be placed, or it waits hidden until something
+    // else redraws it.
+  }, [open, anchorEl, align, children, mounted]);
 
   if (!mounted || !open) return null;
 

@@ -53,6 +53,10 @@ try {
         }
     }
 
+    # A store build: only then does the usage count run (src/usage-ping.ts).
+    # Tauri passes it on to `pnpm build` (beforeBuildCommand).
+    $env:VITE_TODO_STORE = 'windows'
+
     # The identity that Partner Center gave To-Do 2.x, and 3.x must have the
     # same one: a package with another identity is another product, and the
     # people who have 2.x get no update. None of the three is a secret. Each
@@ -231,5 +235,7 @@ try {
     Write-Host ''
 }
 finally {
+    # Run from a shell, the next build there is not a store build.
+    Remove-Item Env:VITE_TODO_STORE -ErrorAction SilentlyContinue
     Pop-Location
 }

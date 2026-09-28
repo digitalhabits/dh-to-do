@@ -491,7 +491,7 @@ export function TodoPeopleEditor({
                     type="button"
                     className={`people-editor-me${
                       meIds.includes(person.id) ? " is-me" : ""
-                    }${meIds.length === 0 ? " is-offered" : ""}`}
+                    }`}
                     title={meIds.includes(person.id) ? t("meMarked") : t("thisIsMe")}
                     aria-pressed={meIds.includes(person.id)}
                     onClick={() =>

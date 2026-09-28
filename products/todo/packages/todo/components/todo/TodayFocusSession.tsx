@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Pause, Play } from "lucide-react";
 
-import { NotesIcon } from "@/components/todo/TodoPage";
+import { NotesIcon } from "@/components/todo/task-icons";
 import { TaskAssignMenu, TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
 import { focusTimerShown, formatFocusTime } from "@/lib/todo/focus-time";
@@ -581,6 +581,16 @@ export function TodayFocusSession({
             .replace("{done}", String(doneCount))
             .replace("{total}", String(total))}
         </p>
+
+        {/* The way out, under the count that says there is nothing left.
+            With every task done the session has no next step, and the only
+            way back was a small "esc to exit" in the far corner of the
+            window. */}
+        {allDone ? (
+          <button type="button" className="today-session-back" onClick={exit}>
+            {t("sessionBackToBoard")}
+          </button>
+        ) : null}
 
         {queued.length > 0 ? (
           <div className="today-session-upnext">

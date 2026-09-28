@@ -453,6 +453,9 @@ try {
         env: {
           ...process.env,
           APP_STORE: '1',
+          // A store build: only then does the usage count run (src/usage-ping.ts).
+          // Tauri passes it on to `pnpm build` (beforeBuildCommand).
+          VITE_TODO_STORE: 'mac',
           CI: 'true',
           npm_config_ci: 'false',
           NPM_CONFIG_CI: 'false'

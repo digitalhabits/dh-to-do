@@ -33,6 +33,9 @@ export const LEGACY_BOARD_KEY = "redd-todo-data";
 /** What this module did, and when. Its presence is what stops a second run. */
 export const LEGACY_IMPORT_MARK_KEY = "dh-todo-legacy-import";
 
+/** When the first list of a new reader was made. Its presence stops a second one. */
+export const STARTER_LIST_MARK_KEY = "dh-todo-starter-list";
+
 type Api = (
   path: string,
   method: string,
@@ -286,5 +289,49 @@ async function carryBasecampOver(
     return answer.connected === true ? "carried" : "again";
   } catch {
     return "again";
+  }
+}
+
+/**
+ * The first list of a new reader, so that a new install does not open on an
+ * empty board. 2.x also started with one list.
+ *
+ * Rules:
+ *
+ * - After `importLegacyBoard`, and only when it brought nothing over. A list
+ *   made before the import makes the board look in use, and then the 2.x
+ *   board never comes over.
+ * - Not after a failed import. That import tries again at the next start,
+ *   and it needs an empty board to do so.
+ * - Only into an empty board, and once. A mark stops a second list.
+ *
+ * Returns true when it made the list, so the caller can read the board again.
+ */
+export async function addStarterList(
+  api: Api,
+  store: Store,
+  importResult: LegacyImportResult,
+  name: string,
+): Promise<boolean> {
+  if (importResult.outcome !== "skipped") return false;
+  if (importResult.reason === "board-in-use") return false;
+  try {
+    if (store.getItem(STARTER_LIST_MARK_KEY)) return false;
+  } catch {
+    return false;
+  }
+  try {
+    const { state } = await api("/api/todo/state", "GET");
+    const board = isRecord(state) ? state : {};
+    const empty = count(board.lists) === 0 && count(board.tasks) === 0;
+    if (empty) await api("/api/todo/lists", "POST", { name });
+    store.setItem(
+      STARTER_LIST_MARK_KEY,
+      JSON.stringify({ made: empty, at: new Date().toISOString() }),
+    );
+    return empty;
+  } catch {
+    // No mark, so the next start tries again.
+    return false;
   }
 }

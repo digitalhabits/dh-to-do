@@ -1,0 +1,183 @@
+/* The welcome screen (WelcomeScreen.tsx). The overlay, card, checkbox and
+   button come from todo.css (#eula-onboarding, kept from To-Do 2). These
+   are the parts Blocker's "Private by design" screen adds. Every rule
+   carries the id, so it wins whichever stylesheet loads first. */
+
+/* The wrapper only lends .todo-shell's tokens and theme; it draws no box. */
+.todo-shell.todo-welcome {
+  display: contents;
+}
+
+/* todo.css paints the overlay with --bg-gradient, whose --cream-section only
+   the planner defines; in the app the gradient is dropped and the board shows
+   through. A solid fill covers the whole window, as Blocker's does. */
+.todo-shell.todo-welcome #eula-onboarding.onboarding-screen {
+  background: var(--app-bg-solid);
+}
+
+/* More room below than above, so the content sits a little high, and clear of
+   the footer. */
+.todo-shell.todo-welcome #eula-onboarding .eula-onboarding-scroll {
+  padding: 8px 24px calc(8vh + 40px);
+}
+
+/* The "Made with" footer stays in view above the screen. */
+html.todo-welcome-open .todo-shell .footer {
+  z-index: 100001;
+}
+
+.todo-shell #eula-onboarding .eula-onboarding-inner {
+  width: 100%;
+  max-width: 560px;
+  /* Centred, yet scrolls from the top when the window is short. */
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Logo to the left of the title and subtitle, as in Blocker. */
+.todo-shell #eula-onboarding .welcome-onboarding-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.todo-shell #eula-onboarding .welcome-app-logo {
+  display: block;
+  flex-shrink: 0;
+  width: 52px;
+  height: auto;
+}
+
+.todo-shell #eula-onboarding .welcome-onboarding-title-text {
+  flex: 1;
+  min-width: 0;
+  margin-top: 5px;
+}
+
+.todo-shell #eula-welcome-title {
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.todo-shell #eula-onboarding .welcome-onboarding-subtitle {
+  margin: 4px 0 8px 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.todo-shell #eula-onboarding .welcome-onboarding-card {
+  margin: 0;
+  padding: 18px 20px 16px;
+}
+
+.todo-shell #eula-onboarding .eula-privacy-title {
+  margin: 0 0 6px;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--redd-navy);
+}
+
+.todo-shell #eula-onboarding .eula-privacy-lead {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.todo-shell #eula-onboarding .eula-how-we-count {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.todo-shell #eula-onboarding .eula-how-we-count summary {
+  display: inline-block;
+  cursor: pointer;
+  list-style: none;
+  color: var(--accent-color);
+}
+
+.todo-shell #eula-onboarding .eula-how-we-count summary::-webkit-details-marker {
+  display: none;
+}
+
+.todo-shell #eula-onboarding .eula-how-we-count summary::after {
+  content: "\203A";
+  display: inline-block;
+  margin-left: 4px;
+  transition: transform 0.15s ease;
+}
+
+.todo-shell #eula-onboarding .eula-how-we-count[open] summary::after {
+  transform: rotate(90deg);
+}
+
+.todo-shell #eula-onboarding .eula-how-we-count summary:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.todo-shell #eula-onboarding .eula-how-we-count p {
+  margin: 6px 0 0;
+}
+
+.todo-shell #eula-onboarding .eula-privacy-divider {
+  height: 0;
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid var(--redd-border);
+}
+
+/* Blocker's size: one step down from To-Do 2's 16px, to sit with the lead. */
+.todo-shell #eula-onboarding .legal-onboarding-checkbox-row {
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* 2px lower, to line up with the box; a transform moves nothing else. */
+.todo-shell #eula-onboarding .legal-onboarding-checkbox-text {
+  transform: translateY(2px);
+}
+
+/* The hand over the box and its text, as in Blocker: both tick the box. */
+.todo-shell #eula-onboarding .legal-onboarding-checkbox-row input,
+.todo-shell #eula-onboarding .legal-onboarding-checkbox-text {
+  cursor: pointer;
+}
+
+/* Links turn teal on hover, as in Blocker. */
+.todo-shell #eula-onboarding .legal-onboarding-link:hover {
+  color: var(--redd-teal);
+}
+
+.todo-shell #eula-onboarding .welcome-onboarding-footer {
+  padding: 4px 4px 4px;
+  text-align: center;
+}
+
+.todo-shell #eula-onboarding .welcome-footer-line {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .todo-shell #eula-welcome-title {
+    font-size: 24px;
+  }
+
+  .todo-shell #eula-onboarding .welcome-onboarding-card {
+    padding: 16px 14px 14px;
+  }
+}

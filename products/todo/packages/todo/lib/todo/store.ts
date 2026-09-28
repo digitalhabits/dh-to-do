@@ -574,29 +574,28 @@ export async function createTodoTask(input: {
   return task;
 }
 
-export async function updateTodoTask(
+/** Where a task was before a write moved it: its list and its to-do. */
+type MovedFrom = { listId: string | null; basecampId: string | null };
+
+/**
+ * The list a task leaves, read before the write; its children move with
+ * it. Null when the patch does not move it.
+ *
+ * Which list a task is on is a Basecamp fact, not only a local one: the
+ * to-do sits in that list's Basecamp list. Moving it locally and telling
+ * Basecamp nothing is what made a dragged task come back a few seconds
+ * later. The new list's sync found a task whose to-do was not in its
+ * remote list and deleted it, the old list's sync found a to-do no local
+ * task claimed and pulled it in again, and the task was back where it
+ * started with a new id and none of its board state.
+ *
+ * So read where it was before the write, for the push in pushTaskUpdate.
+ */
+async function readMoveSource(
   id: string,
   patch: TodoTaskPatch
-): Promise<TodoTask> {
-  const sets: string[] = [];
-  const values: unknown[] = [];
-  const set = (column: string, value: unknown) => {
-    values.push(value);
-    sets.push(`${column} = $${values.length}`);
-  };
-  /*
-    Which list a task is on is a Basecamp fact, not only a local one: the
-    to-do sits in that list's Basecamp list. Moving it locally and telling
-    Basecamp nothing is what made a dragged task come back a few seconds
-    later. The new list's sync found a task whose to-do was not in its
-    remote list and deleted it, the old list's sync found a to-do no local
-    task claimed and pulled it in again, and the task was back where it
-    started with a new id and none of its board state.
-
-    So read where it was before the write, for the push below.
-  */
-  let movedFrom: { listId: string | null; basecampId: string | null } | null =
-    null;
+): Promise<MovedFrom | null> {
+  let movedFrom: MovedFrom | null = null;
   if (patch.listId !== undefined) {
     const { rows } = await todoDb().query(
       "SELECT list_id, basecamp_id FROM todo_tasks WHERE id = $1",
@@ -618,6 +617,17 @@ export async function updateTodoTask(
       );
     }
   }
+  return movedFrom;
+}
+
+/** The columns a patch writes, as SQL `SET` parts and their values. */
+function taskUpdateSets(patch: TodoTaskPatch) {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  const set = (column: string, value: unknown) => {
+    values.push(value);
+    sets.push(`${column} = $${values.length}`);
+  };
   if (patch.listId !== undefined) set("list_id", patch.listId);
   if (patch.text !== undefined) set("text", patch.text);
   if (patch.notesHtml !== undefined) set("notes_html", patch.notesHtml);
@@ -663,21 +673,26 @@ export async function updateTodoTask(
     set("time_spent_seconds", patch.timeSpentSeconds);
   if (patch.position !== undefined) set("position", patch.position);
   if (patch.remindersId !== undefined) set("reminders_id", patch.remindersId);
-  if (!sets.length && patch.assigneeIds === undefined) {
-    throw new PlanError("Empty task update", 400);
-  }
-  /*
-    The write answers with the row it wrote.
+  return { sets, values };
+}
 
-    This used to write, and then read the task back to return it — three
-    round trips for a flag nobody was waiting to see again, over a pool
-    that holds one connection. `RETURNING` is the same row for the price of
-    the write.
-
-    The assignees are the one part not in that row. When they were just
-    written we already know them, because setting them answers with them;
-    only an edit that leaves them alone has to ask.
-  */
+/**
+ * The write answers with the row it wrote.
+ *
+ * This used to write, and then read the task back to return it — three
+ * round trips for a flag nobody was waiting to see again, over a pool
+ * that holds one connection. `RETURNING` is the same row for the price of
+ * the write.
+ *
+ * The assignees are the one part not in that row. When they were just
+ * written we already know them, because setting them answers with them;
+ * only an edit that leaves them alone has to ask.
+ */
+async function writeTaskRow(
+  id: string,
+  sets: string[],
+  values: unknown[]
+): Promise<Row | undefined> {
   let row: Row | undefined;
   if (sets.length) {
     values.push(id);
@@ -695,12 +710,11 @@ export async function updateTodoTask(
     );
     row = rows[0];
   }
-  if (!row) throw new PlanError("Task not found", 404);
-  const assigneeIds =
-    patch.assigneeIds !== undefined
-      ? await setTaskAssignees(id, patch.assigneeIds)
-      : ((await assigneesByTaskId([id])).get(id) ?? []);
-  let task = rowToTask(row, assigneeIds);
+  return row;
+}
+
+/** A task's people and its steps' people, kept in step after a change. */
+async function settleStepPeople(task: TodoTask, patch: TodoTaskPatch) {
   /*
     The people on a step are on the task. Assigning somebody to a subtask
     puts them on the parent too — one union, through this same function,
@@ -741,6 +755,15 @@ export async function updateTodoTask(
       );
     }
   }
+}
+
+/** Tell Basecamp: a step's change, a move, a tick, and the one PUT. */
+async function pushTaskUpdate(
+  id: string,
+  patch: TodoTaskPatch,
+  task: TodoTask,
+  movedFrom: MovedFrom | null
+): Promise<TodoTask> {
   /*
     A child is not a to-do; it is a step of one. None of the to-do pushes
     below fit it — a move, a completion, the three-field PUT would each
@@ -808,6 +831,27 @@ export async function updateTodoTask(
     });
   }
   return task;
+}
+
+/** Write a patch to one task, keep its steps in step, and tell Basecamp. */
+export async function updateTodoTask(
+  id: string,
+  patch: TodoTaskPatch
+): Promise<TodoTask> {
+  const movedFrom = await readMoveSource(id, patch);
+  const { sets, values } = taskUpdateSets(patch);
+  if (!sets.length && patch.assigneeIds === undefined) {
+    throw new PlanError("Empty task update", 400);
+  }
+  const row = await writeTaskRow(id, sets, values);
+  if (!row) throw new PlanError("Task not found", 404);
+  const assigneeIds =
+    patch.assigneeIds !== undefined
+      ? await setTaskAssignees(id, patch.assigneeIds)
+      : ((await assigneesByTaskId([id])).get(id) ?? []);
+  const task = rowToTask(row, assigneeIds);
+  await settleStepPeople(task, patch);
+  return pushTaskUpdate(id, patch, task, movedFrom);
 }
 
 /**

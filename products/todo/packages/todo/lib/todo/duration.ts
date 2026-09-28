@@ -6,6 +6,27 @@
  * is there, or the result is not a positive whole number of minutes.
  */
 export function parseDurationText(text: string): number | null {
+  const minutes = readMinutes(text);
+  return minutes != null && minutes > 0 && minutes <= 999 ? minutes : null;
+}
+
+/** The most time spent a done task takes: 1000 hours, as focus time can run over days. */
+export const MAX_SPENT_MINUTES = 60_000;
+
+/**
+ * The time spent on a done task, as typed in its box: the same words as a
+ * duration ("45", "1.5h", "1h 15m"). Nothing or 0 is 0, which clears the
+ * time. Up to MAX_SPENT_MINUTES. Null when the words cannot be read, so the
+ * time already there is kept.
+ */
+export function parseSpentText(text: string): number | null {
+  if (!text.trim()) return 0;
+  const minutes = readMinutes(text);
+  return minutes != null && minutes <= MAX_SPENT_MINUTES ? minutes : null;
+}
+
+/** Whole minutes from the words, 0 included, or null. */
+function readMinutes(text: string): number | null {
   const s = text.trim().toLowerCase().replace(/,/g, ".");
   if (!s) return null;
   const hoursThenMinutes =
@@ -20,8 +41,7 @@ export function parseDurationText(text: string): number | null {
     if (m) minutes = Number(m[1]);
   }
   if (minutes == null || !Number.isFinite(minutes)) return null;
-  const rounded = Math.round(minutes);
-  return rounded > 0 && rounded <= 999 ? rounded : null;
+  return Math.round(minutes);
 }
 
 /**
@@ -39,6 +59,19 @@ export function formatDurationShort(
   if (rest === 0) return `${hours}${hourUnit}`;
   if (rest === 30) return `${hours}.5${hourUnit}`;
   return `${hours}${hourUnit} ${rest}${minuteUnit}`;
+}
+
+/**
+ * The time spent on a done task, said as a duration is ("45m", "1.5h",
+ * "1h 15m"), and "<1m" under a minute.
+ */
+export function formatSpentTime(
+  seconds: number,
+  minuteUnit: string,
+  hourUnit: string
+): string {
+  if (seconds < 60) return `<1${minuteUnit}`;
+  return formatDurationShort(Math.round(seconds / 60), minuteUnit, hourUnit);
 }
 
 /** The four presets that cover most tasks in one click. */

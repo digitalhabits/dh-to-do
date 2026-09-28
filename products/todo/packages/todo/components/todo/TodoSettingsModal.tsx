@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Columns4, FolderTree, Map as MapIcon, SquareKanban, Timer, User } from "lucide-react";
+import { Activity, Columns4, FolderTree, Map as MapIcon, SquareKanban, Timer, User } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -16,6 +16,10 @@ import {
 } from "@/lib/todo/i18n";
 import { isStandaloneTodo } from "@/lib/todo/product-flavor";
 import { describeError } from "@/lib/todo/errors";
+import {
+  readUsagePingEnabled,
+  writeUsagePingEnabled,
+} from "@/lib/todo/usage-ping-setting";
 import {
   listenStandaloneBasecampAuth,
   startStandaloneBasecampAuth,
@@ -39,6 +43,40 @@ function InfoIcon() {
       <path d="M12 16v-4" />
       <path d="M12 8h.01" />
     </svg>
+  );
+}
+
+/** A row's name with an info button; the info opens under it as the row's hint. */
+function SettingsInfoLabel({
+  label,
+  open,
+  onToggle,
+  t,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  t: (key: string) => string;
+  /** What the hint shows when the info is open. */
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="settings-row-label-line">
+        <span className="settings-row-label">{label}</span>
+        <button
+          type="button"
+          className="info-toggle-btn settings-info-btn"
+          aria-label={t("moreInfo")}
+          aria-expanded={open}
+          onClick={onToggle}
+        >
+          <InfoIcon />
+        </button>
+      </div>
+      {open ? <div className="settings-row-hint">{children}</div> : null}
+    </>
   );
 }
 
@@ -159,6 +197,8 @@ export function TodoSettingsModal({
   const [remindersConnected, setRemindersConnected] = React.useState(false);
   const [remindersBusy, setRemindersBusy] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  // Standalone app only: the planner's To-Do tab sends no usage ping.
+  const [usagePingEnabled, setUsagePingEnabled] = React.useState(readUsagePingEnabled);
   const otherLang: TodoLang = lang === "da" ? "en" : "da";
 
   React.useEffect(() => {
@@ -295,15 +335,17 @@ export function TodoSettingsModal({
           </button>
           <div className="settings-sheet-title">{t("settings")}</div>
         </div>
-        <div className="settings-modal-header">
-          <h3 id="settings-modal-title">{t("settings")}</h3>
-          {appVersion ? (
-            <div className="settings-current-version">
-              {t("yourVersion")}: {appVersion}
-            </div>
-          ) : null}
-        </div>
+        {/* The header is in the scroll box, so it scrolls away with the
+            rows, as in Blocker; the dialog's top padding stays as a band. */}
         <div className="settings-sheet-body">
+          <div className="settings-modal-header">
+            <h3 id="settings-modal-title">{t("settings")}</h3>
+            {appVersion ? (
+              <div className="settings-current-version">
+                {t("yourVersion")} {appVersion}
+              </div>
+            ) : null}
+          </div>
           <div className="settings-stack">
             <div className="settings-feedback-footer">
               <svg className="settings-feedback-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -478,6 +520,21 @@ export function TodoSettingsModal({
                       />
                     </div>
                   </div>
+                  {/* Only where the count can run: a Mac or Windows store
+                      build, where apps/todo/src/usage-ping.ts sets the flag. */}
+                  {isStandaloneTodo() &&
+                  (window as unknown as { __TODO_USAGE_PING__?: string }).__TODO_USAGE_PING__ ? (
+                    <SettingsToggle
+                      icon={<Activity size={16} strokeWidth={2} />}
+                      label={t("sendUsageCount")}
+                      info={t("sendUsageCountInfo")}
+                      checked={usagePingEnabled}
+                      onChange={(enabled) => {
+                        setUsagePingEnabled(enabled);
+                        writeUsagePingEnabled(enabled);
+                      }}
+                    />
+                  ) : null}
                 </div>
               </div>
             </section>
@@ -538,12 +595,22 @@ export function TodoSettingsModal({
               <h4 className="settings-section-heading">{t("integrations")}</h4>
               <div className="settings-panel">
                 <div className="settings-panel-rows">
+                  {/* Each integration is one row. Its info opens under the
+                      name, as the hint of the backup row: it wraps before the
+                      button, which stays centred on the row. */}
                   {!remindersConnected ? (
-                    <div className="settings-row">
+                    <div className="settings-row settings-integration-row">
                       <div className="settings-row-copy">
-                        <span className="settings-row-label">{t("appleReminders")}</span>
+                        <SettingsInfoLabel
+                          label={t("appleReminders")}
+                          open={remindersInfoOpen}
+                          onToggle={() => setRemindersInfoOpen((v) => !v)}
+                          t={t}
+                        >
+                          {t("remindersInfo")}
+                        </SettingsInfoLabel>
                       </div>
-                      <div className="settings-row-control settings-row-actions">
+                      <div className="settings-row-control">
                         <button
                           className="settings-connect-btn"
                           type="button"
@@ -553,14 +620,6 @@ export function TodoSettingsModal({
                           {remindersBusy
                             ? t("remindersContinuing") || "Continuing..."
                             : t("remindersContinue")}
-                        </button>
-                        <button
-                          className="info-toggle-btn settings-info-btn"
-                          title={t("moreInfo")}
-                          aria-expanded={remindersInfoOpen}
-                          onClick={() => setRemindersInfoOpen((v) => !v)}
-                        >
-                          <InfoIcon />
                         </button>
                       </div>
                     </div>
@@ -582,103 +641,79 @@ export function TodoSettingsModal({
                       </div>
                     </div>
                   )}
-                  <p
-                    className={`settings-panel-info info-expandable ${remindersInfoOpen ? "" : "hidden"}`}
-                  >
-                    {t("remindersInfo")}
-                  </p>
-                  <>
-                      {!bcStatus?.connected ? (
-                        <div className="settings-row">
-                          <div className="settings-row-copy">
-                            <span className="settings-row-label">
-                              {t("connectBasecamp")}
-                            </span>
-                          </div>
-                          <div className="settings-row-control settings-row-actions">
-                            <button
-                              className="settings-connect-btn settings-connect-btn--basecamp"
-                              type="button"
-                              onClick={() => void connectBasecamp()}
-                            >
-                              {t("connect")}
-                            </button>
-                            <button
-                              className="info-toggle-btn settings-info-btn"
-                              title={t("moreInfo")}
-                              aria-expanded={basecampInfoOpen}
-                              onClick={() => setBasecampInfoOpen((v) => !v)}
-                            >
-                              <InfoIcon />
-                            </button>
-                          </div>
+                  {!bcStatus?.connected ? (
+                    <div className="settings-row settings-integration-row">
+                      <div className="settings-row-copy">
+                        <SettingsInfoLabel
+                          label={t("connectBasecamp")}
+                          open={basecampInfoOpen}
+                          onToggle={() => setBasecampInfoOpen((v) => !v)}
+                          t={t}
+                        >
+                          {t("basecampInfo")}{" "}
+                          <button
+                            type="button"
+                            className="settings-text-link"
+                            aria-expanded={manualOpen}
+                            onClick={() => setManualOpen((v) => !v)}
+                          >
+                            {t("basecampManualToken")}
+                          </button>
+                        </SettingsInfoLabel>
+                      </div>
+                      <div className="settings-row-control">
+                        <button
+                          className="settings-connect-btn settings-connect-btn--basecamp"
+                          type="button"
+                          onClick={() => void connectBasecamp()}
+                        >
+                          {t("connect")}
+                        </button>
+                      </div>
+                      {/* Under the whole row, so the button keeps its place.
+                          It opens from the info text, and closes with it. */}
+                      {basecampInfoOpen && manualOpen ? (
+                        <div className="settings-manual-auth">
+                          <input
+                            type="password"
+                            className="settings-input"
+                            placeholder={t("basecampTokenPlaceholder")}
+                            value={manualToken}
+                            onChange={(e) => setManualToken(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="modal-btn connect-btn"
+                            onClick={() => void saveManualToken()}
+                          >
+                            {t("basecampSaveToken")}
+                          </button>
                         </div>
-                      ) : (
-                        <div className="settings-row settings-connection-row">
-                          <div className="settings-row-copy">
-                            <div className="connection-status">
-                              <span className="status-dot" />
-                              <span>{t("connectedBasecamp")}</span>
-                            </div>
-                            {bcStatus.email ? (
-                              <div className="settings-account-info">
-                                {bcStatus.email}
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="settings-row-control">
-                            <button
-                              className="settings-disconnect-btn"
-                              onClick={() => void disconnectBasecamp()}
-                            >
-                              {t("disconnect")}
-                            </button>
-                          </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="settings-row settings-connection-row">
+                      <div className="settings-row-copy">
+                        <div className="connection-status">
+                          <span className="status-dot" />
+                          <span>{t("connectedBasecamp")}</span>
                         </div>
-                      )}
-                      <div
-                        className={`settings-panel-info info-expandable ${basecampInfoOpen ? "" : "hidden"}`}
-                      >
-                        <span
-                          dangerouslySetInnerHTML={{
-                            __html: t("basecampInfoHtml"),
-                          }}
-                        />
-                        {!bcStatus?.connected ? (
-                          <>
-                            {" "}
-                            <a
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setManualOpen((v) => !v);
-                              }}
-                            >
-                              Enter a token manually
-                            </a>
-                            {manualOpen ? (
-                              <div className="settings-manual-auth">
-                                <input
-                                  type="password"
-                                  className="settings-input"
-                                  placeholder="Access Token (OAuth)"
-                                  value={manualToken}
-                                  onChange={(e) =>
-                                    setManualToken(e.target.value)
-                                  }
-                                />
-                                <button
-                                  className="modal-btn connect-btn"
-                                  onClick={() => void saveManualToken()}
-                                >
-                                  Save Manual Credentials
-                                </button>
-                              </div>
-                            ) : null}
-                          </>
+                        {bcStatus.email ? (
+                          <div className="settings-account-info">
+                            {bcStatus.email}
+                          </div>
                         ) : null}
                       </div>
-                  </>
+                      <div className="settings-row-control">
+                        <button
+                          className="settings-disconnect-btn"
+                          onClick={() => void disconnectBasecamp()}
+                        >
+                          {t("disconnect")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

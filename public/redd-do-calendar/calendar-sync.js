@@ -85,9 +85,15 @@ const CalendarSync = (function () {
     // "REDD-DO" or "DH-TO-DO", in any case.
     const PLAN_MARKER = /^(redd-do|dh-to-do)/i;
 
-    // Filter events whose description starts with a plan marker
-    // AND within date range: 2 months ago to 1 year in the future
-    function filterReddDoEvents(events) {
+    /*
+     * The events that belong on the board.
+     *
+     * Marked only by default: the marker keeps a busy calendar off the
+     * board. A calendar set to show everything skips that test and keeps
+     * the dates, because a board two years wide helps nobody.
+     */
+    function filterReddDoEvents(events, options) {
+        const markedOnly = !options || options.markedOnly !== false;
         const now = new Date();
         const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, now.getDate());
         const oneYearAhead = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
@@ -95,7 +101,7 @@ const CalendarSync = (function () {
         return events.filter(event => {
             // Check description prefix
             const desc = (event.description || '').trim();
-            if (!PLAN_MARKER.test(desc)) return false;
+            if (markedOnly && !PLAN_MARKER.test(desc)) return false;
 
             // Check date range
             const eventStart = event.startDate;
@@ -204,8 +210,82 @@ const CalendarSync = (function () {
         return `${year}-${month}-${day}`;
     }
 
+    /**
+     * A feed that answers 429 is a feed that is being asked too often.
+     *
+     * An ICS address throttles, and it goes on answering 429 for a while
+     * after that. Two surfaces run this file — the Calendar tab and the
+     * planner view inside To-Do — and each of them asks on its own timer,
+     * when the window comes forward, and every time it is drawn again. So
+     * the wait is kept here: by address, not by surface, and in storage, so
+     * that a tab which opens again does not forget it and ask straight away.
+     *
+     * A press on Sync asks anyway. The reader is in front of it.
+     */
+    const ASKED_KEY = 'redd-calendar-asked';
+    /** How long to leave a feed alone after it answers 429. */
+    const THROTTLE_MS = 30 * 60 * 1000;
+    /** The least time between two asks of one address, however often we draw. */
+    const FLOOR_MS = 5 * 60 * 1000;
+
+    function askedTable() {
+        try {
+            const raw = window.localStorage.getItem(ASKED_KEY);
+            const table = raw ? JSON.parse(raw) : {};
+            return table && typeof table === 'object' ? table : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function skipped(message) {
+        const error = new Error(message);
+        error.calendarSkipped = true;
+        return error;
+    }
+
+    function askedAbout(url) {
+        const row = askedTable()[url];
+        return {
+            at: Number(row && row.at) || 0,
+            until: Number(row && row.until) || 0,
+        };
+    }
+
+    function remember(url, patch) {
+        try {
+            const table = askedTable();
+            const now = Date.now();
+            // Rows nothing waits on any more are dropped, so it cannot grow.
+            for (const [key, row] of Object.entries(table)) {
+                const at = Number(row && row.at) || 0;
+                const until = Number(row && row.until) || 0;
+                if (until < now && at < now - THROTTLE_MS) delete table[key];
+            }
+            table[url] = { ...(table[url] || {}), ...patch };
+            window.localStorage.setItem(ASKED_KEY, JSON.stringify(table));
+        } catch {
+            /* private mode: the app then asks as often as it draws */
+        }
+    }
+
     // Fetch ICS data from URL
-    async function fetchCalendarData(url) {
+    async function fetchCalendarData(url, options) {
+        const force = Boolean(options && options.force);
+        const asked = askedAbout(url);
+        const now = Date.now();
+        // A skip is not a failure: the caller keeps what the feed gave last
+        // time and says nothing, because nothing went wrong.
+        if (!force && asked.until > now) {
+            const minutes = Math.ceil((asked.until - now) / 60000);
+            throw skipped(
+                `This calendar answered 429 (too many requests). Waiting ${minutes} more minutes.`
+            );
+        }
+        if (!force && asked.at > now - FLOOR_MS) {
+            throw skipped('This calendar was read a moment ago.');
+        }
+        remember(url, { at: now });
         try {
             // Handle webcal:// protocol by converting to https://
             let fetchUrl = url;
@@ -232,28 +312,33 @@ const CalendarSync = (function () {
             const response = await fetchFn(fetchUrl, {
                 method: 'GET'
             });
+            if (response.status === 429) remember(url, { until: Date.now() + THROTTLE_MS });
+            // An answer lifts the wait: the feed is talking to us again.
+            else if (response.ok) remember(url, { until: 0 });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const icsData = await response.text();
             return icsData;
         } catch (error) {
-            console.error('[CalendarSync] Error fetching calendar:', error);
+            // The caller says which calendar it was and keeps what it had.
+            // An error here is an answer, not a fault of the page, so it is
+            // not written as one.
             throw error;
         }
     }
 
-    // Main sync function - fetches, parses, filters, and converts events
-    async function syncCalendar(url) {
-        console.log('[CalendarSync] Syncing calendar from:', url);
-
-        const icsData = await fetchCalendarData(url);
-        console.log('[CalendarSync] Fetched ICS data, length:', icsData.length);
-
-        const allEvents = parseICS(icsData);
+    /**
+     * Events to what the board draws.
+     *
+     * Where the events came from is already forgotten here: an address and a
+     * Google calendar both arrive as the same events, and the marker, the
+     * dates and the shapes are worked out the one way.
+     */
+    function itemsFromEvents(allEvents, options) {
         console.log('[CalendarSync] Parsed events:', allEvents.length);
 
-        const filteredEvents = filterReddDoEvents(allEvents);
+        const filteredEvents = filterReddDoEvents(allEvents, options);
         console.log('[CalendarSync] Filtered REDD-DO events:', filteredEvents.length);
 
         const notes = [];
@@ -281,8 +366,67 @@ const CalendarSync = (function () {
         };
     }
 
+    /** A date with no time, as the day itself and not as a moment somewhere. */
+    function dayToDate(value) {
+        const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+        if (!parts) return null;
+        return new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+    }
+
+    /**
+     * The events the server read from a Google calendar, in the shape the
+     * board works in.
+     *
+     * The server sends dates as text, because JSON has no date. A whole day
+     * is "2026-09-29" and is read as that day everywhere; an event with a
+     * time carries its own offset and is read as the moment it names. That
+     * is what parseICS does with the same two cases, so both kinds of
+     * calendar land in the same places on the board.
+     */
+    function eventsFromBoard(boardEvents) {
+        const events = [];
+        for (const event of boardEvents || []) {
+            const isAllDay = Boolean(event.isAllDay);
+            const startDate = isAllDay ? dayToDate(event.start) : new Date(event.start);
+            const endDate = isAllDay ? dayToDate(event.end) : new Date(event.end);
+            if (!startDate || Number.isNaN(startDate.getTime())) continue;
+            const end = endDate && !Number.isNaN(endDate.getTime()) ? endDate : null;
+            events.push({
+                uid: event.uid,
+                summary: event.summary || '',
+                description: event.description || '',
+                startDate,
+                endDate: end,
+                isAllDay,
+                location: event.location || '',
+                // The same count as an ICS feed gives: an end is the morning
+                // after, so a single day comes out as one.
+                durationDays: end ? Math.ceil((end - startDate) / (1000 * 60 * 60 * 24)) : 1
+            });
+        }
+        return events;
+    }
+
+    /** What the board draws for one Google calendar the server read. */
+    function syncBoardEvents(boardEvents, options) {
+        return itemsFromEvents(eventsFromBoard(boardEvents), options);
+    }
+
+    // Main sync function - fetches, parses, filters, and converts events
+    async function syncCalendar(url, options) {
+        console.log('[CalendarSync] Syncing calendar from:', url);
+
+        const icsData = await fetchCalendarData(url, options);
+        console.log('[CalendarSync] Fetched ICS data, length:', icsData.length);
+
+        return itemsFromEvents(parseICS(icsData), options);
+    }
+
     return {
         syncCalendar,
+        syncBoardEvents,
+        eventsFromBoard,
+        itemsFromEvents,
         fetchCalendarData,
         parseICS,
         filterReddDoEvents,

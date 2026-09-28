@@ -1,15 +1,17 @@
-Get back to that thing you meant to do. Digital Habits: To-Do keeps you on track with simple, beautiful task lists and powerful features built for distraction-free productivity:
+Get back to that thing you meant to do. Digital Habits: To-Do keeps you on track with simple, beautiful task lists and features built for distraction-free work:
 
-- Focus Mode: pop out your task in a floating window, complete with a timer
-- Minimalistic to-do lists: use tabs to manage multiple lists (e.g. Work, Personal) of tasks organised by context
-- Stay on track: assign time to tasks and see time spent on tasks in a collapsible history
-- Built-in integrations with your tools: sync tasks two-way with Apple Reminders and Basecamp (Google Tasks integration coming soon!)
-- Calming, Danish-style calendar view: month/week view of tasks and goals, with calendar integration
-- Board view: organise your tasks in columns for Today, Soon (-ish) and Backlog. Make 'Today' a satisfying and simple full-screen view with one click
-- Subtasks for big tasks: break big and complicated tasks up into subtasks that make it easy to stay on track
-- Data backup and restore: export and import your data for backup or moving to another machine
+- Focus Mode: pop your task out into a floating window with a timer, with up to two open at a time
+- Simple lists: use tabs for your lists (e.g. Work, Personal), and gather tabs into groups. Turn groups on in Settings
+- Tasks with the details you need: subtasks, due dates, and notes with pictures
+- Stay on track: give tasks a time and see the time you spent on each
+- Board View: sort your tasks into Backlog, Soon (-ish) and Today, and press Start on Today for a calm, full-screen view that takes you through them one by one. Turn it on in Settings
+- Work with others: assign tasks to people and filter the board by person. Turn it on in Settings
+- Calendar View: a calm, Danish-style month or week calendar of your tasks and goals, with your own calendars linked in. Turn it on in Settings
+- Sync two ways with Basecamp, and with Apple Reminders on a Mac (Google Tasks integration coming soon!)
+- Light and dark themes, in English or Danish
+- Back up and restore: export your data, pictures included, and import it on another computer
 
-The source code of Digital Habits: To-Do is public, and the app collects zero user data.
+The source code of Digital Habits: To-Do is public, and the app collects no personal data. It sends one anonymous count a day, with an ID that changes every month, so we know how many people use it. You can turn this off in Settings.
 Source code: https://github.com/digitalhabits/dh-to-do
 
 Cheers,

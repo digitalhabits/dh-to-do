@@ -1,6 +1,6 @@
 {
   "name": "digital-habits-todo",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
   "description": "Digital Habits: To-Do — standalone desktop app (SQLite via Tauri).",
@@ -14,6 +14,7 @@
     "build": "node ../../scripts/copy-trix.mjs && node ../../scripts/copy-todo-calendar.mjs && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "node tests/run.mjs",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
     "app:build:mas": "node scripts/build-mas-package.cjs",
@@ -38,6 +39,9 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.25.0",
+    "happy-dom": "^20.12.0",
+    "sql.js": "^1.14.2",
     "typescript": "^5.7.3",
     "vite": "^6.0.7"
   }

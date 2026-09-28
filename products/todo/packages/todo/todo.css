@@ -97,6 +97,8 @@
     --focus-btn-bg: #1e2d3e;
     --focus-btn-bg-hover: #2c3f55;
     --focus-btn-text: #ffffff;
+    /* The ring around the Today Start button. Green on the navy pill. */
+    --start-btn-ring: var(--accent-primary);
 
     /* Status */
     --danger: #d4605a;
@@ -166,6 +168,9 @@
     --focus-btn-bg: #4ec0b0;
     --focus-btn-bg-hover: #6ad0c1;
     --focus-btn-text: #0c1620;
+    /* In the dark the pill is the green itself, so a green ring would be
+       the pill again. Light, to stand off both the pill and the page. */
+    --start-btn-ring: #ffffff;
 
     /* Status */
     --danger: #e07b75;
@@ -305,6 +310,21 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+/*
+ * The Calendar's "Calendars" popover (plan.css, shared with the planner).
+ *
+ * It stays under its button, its right edge on the button's, at every width:
+ * plan.css stretches it from edge to edge under 768px, and it jumped from one
+ * place to the other as the window changed. Its width is the shell's, not the
+ * window's (100vw), which is wider than the shell in a split pane.
+ */
+.todo-shell #plan-mode .plan-calendar-popover {
+    left: auto;
+    /* 12px of room on each side, at the narrowest. */
+    width: min(420px, calc(100% - 24px));
+    max-width: none;
 }
 
 /* Centered content column — caps the width on wide windows so the task list
@@ -569,7 +589,8 @@ html.redd-native-shell .todo-shell .title-bar {
     padding: 4px 10px;
     background: transparent;
     border-radius: 4px;
-    cursor: grab;
+    /* A hand, as the view switcher: the fist is for a drag (.dragging). */
+    cursor: pointer;
     font-size: 11px;
     font-weight: 600;
     white-space: nowrap;
@@ -582,10 +603,6 @@ html.redd-native-shell .todo-shell .title-bar {
     letter-spacing: 0.5px;
     user-select: none;
     -webkit-user-select: none;
-}
-
-.todo-shell .group-tab:active {
-    cursor: grabbing;
 }
 
 .todo-shell .group-tab:hover {
@@ -731,7 +748,8 @@ html.redd-native-shell .todo-shell .title-bar {
     padding: 6px 12px 6px 8px;
     background: transparent;
     border-radius: 6px 6px 0 0;
-    cursor: grab;
+    /* A hand, as the view switcher: the fist is for a drag. */
+    cursor: pointer;
     font-size: 13px;
     font-weight: 500;
     line-height: 1.2;
@@ -750,14 +768,13 @@ html.redd-native-shell .todo-shell .title-bar {
     font-weight: 600;
 }
 
-.todo-shell .tab:active {
-    cursor: grabbing;
-}
-
+/* During a drag the fist is everywhere, as in the view switcher: over other
+   rows the hand would say "click" in the middle of a move. */
 .todo-shell.is-reordering,
 .todo-shell.is-reordering * {
     user-select: none !important;
     -webkit-user-select: none !important;
+    cursor: grabbing !important;
 }
 
 .todo-shell .tab.tab-colorized {
@@ -804,15 +821,24 @@ html.redd-native-shell .todo-shell .title-bar {
     color: var(--text-primary);
 }
 
+/* As a group tab's close button: a 16px circle, 6px after the name and
+   4px from the tab's edge. In the flow, so the selected tab, the only one
+   with the button, is wider by it, as a selected group tab is. */
 .todo-shell .tab-close {
-    margin-left: 2px;
-    margin-right: -12px;
-    padding: 2px 6px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 -8px 0 6px;
+    padding: 0;
+    flex-shrink: 0;
     background: transparent;
     border: none;
     border-radius: 50%;
-    color: inherit;
+    color: var(--text-tertiary);
     font-size: 12px;
+    line-height: 1;
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.2s ease, color 0.2s ease, background 0.2s ease;
@@ -820,7 +846,7 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 .todo-shell .tab:hover .tab-close {
-    opacity: 0.7;
+    opacity: 1;
 }
 
 .todo-shell .tab-close:hover {
@@ -1107,7 +1133,8 @@ html.redd-native-shell .todo-shell .title-bar {
        overhang, to make room for the pill of the first card. With 20px here
        and a 34px overhang that room ran 14px past this box, and the pill of
        the first card lost its top. */
-    padding: max(20px, calc(var(--task-pill-overhang) + 6px)) 20px 16px;
+    --list-column-top: max(20px, calc(var(--task-pill-overhang) + 6px));
+    padding: var(--list-column-top) 20px 16px;
     border-radius: 14px;
     background: #f4f1ec;
     box-sizing: border-box;
@@ -1123,12 +1150,21 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .task-area.list-column > .tasks-container {
     padding: var(--task-pill-overhang) 2px 0;
     margin: calc(-1 * var(--task-pill-overhang)) -2px 0;
+    /* The cards' pills (z-index 7) stack among the cards only. Without this
+       a favourite's heart rose over the add-task box (z-index 5), and over
+       the Board View note that the box holds. */
+    isolation: isolate;
 }
 
-/* An open menu may reach past the column, as it may past the list. */
-.todo-shell .task-area.list-column:has(.has-open-menu),
-.todo-shell .task-area.list-column:has(.has-open-list-picker) {
-    overflow: visible;
+/* The words on an empty list ("Add a task below", "No matching tasks",
+   "No favourites yet") stay where they are when the window narrows. The
+   narrow tile gives the first card more room on top, for its pill
+   (--task-pill-overhang on .todo-tile-compact). The words have no pill, so
+   they take that room back, and do not move down 12px at the width where
+   the board stacks. */
+.todo-shell .task-area.list-column > .tasks-container > .list-search-empty,
+.todo-shell .task-area.list-column > .tasks-container > .favourites-empty {
+    margin-top: calc(20px - var(--list-column-top));
 }
 
 .todo-shell .task-area.list-column > .add-task-container {
@@ -1605,6 +1641,19 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell.todo-w-stack .list-board > .board-column-today {
     flex: 1 1 auto;
     width: 100%;
+}
+
+/* Stacked, Someday keeps the look of its rail in the wide board, no ground
+   and a dashed edge, open or folded: in the cream of the other sections it
+   no longer read as the one set apart. */
+.todo-shell.todo-w-stack .list-board > .board-column-someday {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
+    border-style: dashed;
+}
+
+.todo-shell[data-theme="dark"].todo-w-stack .list-board > .board-column-someday {
+    border-color: color-mix(in srgb, #fff 10%, transparent);
 }
 
 .todo-shell.todo-w-stack .board-column.is-rail {
@@ -2243,17 +2292,16 @@ html.redd-native-shell .todo-shell .title-bar {
     font-style: normal !important;
 }
 
+/* A hand, as the view switcher. The fist shows once a drag has begun:
+   the shell is .is-reordering then, and a dragged row is .dragging. */
 .todo-shell .task-item:not(.completed-task) {
-    cursor: grab;
+    cursor: pointer;
 }
 
-.todo-shell .task-item:not(.completed-task):active {
-    cursor: grabbing;
-}
-
+/* A done row keeps the light edge of an open card, so the rows of the
+   pile read apart: each is mostly empty space. */
 .todo-shell .task-item.completed-task {
     background: var(--bg-subtle);
-    border-color: transparent;
     box-shadow: none;
 }
 
@@ -2644,10 +2692,19 @@ html.redd-native-shell .todo-shell .title-bar {
     display: flex;
 }
 
+/*
+ * The card under the pointer, or with a menu open, stands over the others.
+ *
+ * A hovered card is lifted with a transform, which makes it a layer of its
+ * own: its pill's z-index 7 then counts only inside the card, and another
+ * card's favourite heart (z-index 7, later on the page) was drawn over the
+ * pill. Above 7, the whole card and its pill come first.
+ */
+.todo-shell .task-item:hover,
+.todo-shell .task-item:focus-within,
 .todo-shell .task-item.has-open-menu,
 .todo-shell .task-item.has-open-list-picker {
-    /* Paint above later sibling cards (same stacking context). */
-    z-index: 5;
+    z-index: 8;
 }
 
 /* Freeze hover-induced row motion while menu is open to prevent flicker. */
@@ -2994,12 +3051,12 @@ html.redd-native-shell .todo-shell .title-bar {
     border-radius: 999px;
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+    /* No fade: moving "Me" must clear the last one at once. */
 }
 
+/* Only the person who is "Me" shows it at rest; other rows show it on hover. */
 .todo-shell .people-editor-row:hover .people-editor-me,
 .todo-shell .people-editor-me:focus-visible,
-.todo-shell .people-editor-me.is-offered,
 .todo-shell .people-editor-me.is-me {
     opacity: 1;
 }
@@ -3158,9 +3215,12 @@ html.redd-native-shell .todo-shell .title-bar {
     color: var(--redd-coral);
 }
 
+/* The lighter fill alone was a shade from the rest one, so the button
+   gave no answer to the pointer. A soft ring of its own colour does. */
 .todo-shell .focus-btn:hover {
     background: var(--focus-btn-bg-hover);
     border-color: var(--focus-btn-bg-hover);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-btn-bg) 22%, transparent);
 }
 
 .todo-shell .focus-btn svg {
@@ -3241,8 +3301,9 @@ html.redd-native-shell .todo-shell .title-bar {
     container-name: done-task;
 }
 
+/* The row, not the actions, is what the hover buttons below are placed in. */
 .todo-shell .done-tasks .task-actions {
-    position: relative;
+    position: static;
 }
 
 .todo-shell .done-tasks .hover-actions {
@@ -3265,6 +3326,39 @@ html.redd-native-shell .todo-shell .title-bar {
     border-radius: 0;
     background: none;
     box-shadow: none;
+}
+
+/* In an All view a done row's buttons sit on its second line, out of the
+   flow, so the date and the row's height stay put. They hang from the first
+   line, not the whole row, so open notes do not move them. */
+.todo-shell .done-tasks .task-main-row-all {
+    position: relative;
+}
+
+.todo-shell .done-tasks .task-main-row-all .task-actions {
+    position: absolute;
+    top: 15px;
+    bottom: -12px;
+    right: 0;
+    padding-right: 0;
+    align-items: center;
+}
+
+.todo-shell .done-tasks .task-main-row-all .always-actions > .task-meta.actual-time:last-child {
+    padding-right: 0;
+}
+
+/* The duration and notes buttons answer as the menu button does: a darker
+   icon on the hover ground. The teal is for a live task's row. */
+.todo-shell .done-tasks .task-meta.add-time:hover,
+.todo-shell .done-tasks .notes-btn:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.todo-shell .done-tasks .task-meta.add-time {
+    border-radius: 4px;
 }
 
 .todo-shell .done-tasks .task-item:hover .task-actions,
@@ -3291,19 +3385,10 @@ html.redd-native-shell .todo-shell .title-bar {
     bottom: 100%;
 }
 
-/* Menus paint above add-task (z-index 5), stay below sticky footer (z-index 100). */
-.todo-shell .tasks-container:has(.has-open-menu),
-.todo-shell .tasks-container:has(.has-open-list-picker),
-.todo-shell .done-container:has(.has-open-menu),
-.todo-shell .done-container:has(.has-open-list-picker) {
-    z-index: 10;
-    overflow: visible;
-}
-
-.todo-shell .done-tasks:has(.has-open-menu),
-.todo-shell .done-tasks:has(.has-open-list-picker) {
-    overflow: visible;
-}
+/* A task's menus open in MenuPortal, over the page, so the list, the column
+   and the done pile keep their clip while one is open. They once turned it
+   off to let an in-place menu out, and every task past the fold then spilled
+   over the add-task box, the Done row and the footer. */
 
 .todo-shell .done-tasks .task-menu-item {
     min-width: 0;
@@ -3756,6 +3841,17 @@ html.redd-native-shell .todo-shell .title-bar {
     background: var(--border-color-strong);
 }
 
+/* The Calendars popover's help scrolls, and shows that it does: the rules
+   above hide every scrollbar in the shell. A thin one, on the popover's right edge. */
+.todo-shell .plan-calendar-help-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.todo-shell .plan-calendar-help-content::-webkit-scrollbar-thumb {
+    background: var(--border-color-strong);
+    border-radius: 3px;
+}
+
 /* Tabs specific scrollbar */
 .todo-shell .tabs::-webkit-scrollbar {
     height: 0px;
@@ -3833,6 +3929,10 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 .todo-shell .delete-all-btn {
+    /* A button takes the system font, not the page's: in it "Clear all"
+       sat on another baseline than the count beside it. */
+    font-family: inherit;
+    line-height: inherit;
     font-size: 12px;
     color: var(--text-tertiary);
     background: transparent;
@@ -3996,6 +4096,38 @@ html.redd-native-shell .todo-shell .title-bar {
     backdrop-filter: blur(4px);
 }
 
+/*
+  A dialog under the window's own bar, as in Blocker (Mac store app only).
+
+  The window's buttons float over the page there. With a dialog open, a
+  plain strip the height of Blocker's bar stays at the top, not dimmed, so
+  the buttons sit on the window and the window can still be dragged by it;
+  the dim and the dialog start under it.
+*/
+.todo-shell .dialog-title-strip {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: var(--app-bg);
+    box-shadow: inset 0 -1px 0 rgba(30, 45, 62, 0.08);
+    z-index: 2200;
+}
+
+.todo-shell[data-theme="dark"] .dialog-title-strip {
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.todo-shell.mac-window:has(.modal-overlay) .dialog-title-strip {
+    display: block;
+}
+
+.todo-shell.mac-window .modal-overlay {
+    top: 30px;
+}
+
 .todo-shell #confirm-modal {
     /* Over the expanded card too — the card asks its own questions. */
     z-index: 2100;
@@ -4058,9 +4190,14 @@ html.redd-native-shell .todo-shell .title-bar {
     margin-bottom: 4px;
 }
 
+/* As in Blocker: the heading font, bold, in navy. */
 .todo-shell #settings-modal-title {
     margin: 0;
-    font-weight: 400;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 1.45rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--redd-navy);
 }
 
 .todo-shell .settings-current-version {
@@ -4087,7 +4224,8 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .settings-section-heading {
     margin: 0;
     padding: 0 2px;
-    font-family: 'Inter', sans-serif;
+    /* Blocker's section label font: Inter draws these caps heavier. */
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.08em;
@@ -4154,7 +4292,8 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell #settings-modal .settings-row-control:has(.language-picker),
 .todo-shell #settings-modal .settings-row-control:has(#theme-select),
-.todo-shell #settings-modal .settings-row-control:has(.settings-zoom-control) {
+.todo-shell #settings-modal .settings-row-control:has(.settings-zoom-control),
+.todo-shell #settings-modal .settings-row-control.settings-blocklists-io-btns {
     width: var(--settings-control-width);
     flex-shrink: 0;
 }
@@ -4176,25 +4315,16 @@ html.redd-native-shell .todo-shell .title-bar {
     width: 100%;
 }
 
-.todo-shell #settings-modal .settings-row-control.settings-blocklists-io-btns {
-    width: auto;
-    max-width: 100%;
-    justify-self: end;
-}
-
+/* Export over Import, one control wide, as in Blocker. */
 .todo-shell .settings-blocklists-io-btns {
     display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
+    flex-direction: column;
     gap: 6px;
-    min-width: 0;
-    justify-content: flex-end;
 }
 
 .todo-shell #settings-modal .settings-blocklists-io-btn {
-    flex: 0 1 auto;
+    width: 100%;
     min-width: 0;
-    width: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4228,8 +4358,8 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell #settings-modal .settings-select {
     display: block;
     box-sizing: border-box;
-    /* Match language row: 12px + 22px flag + 8px gap before label text. */
-    padding: 8px 38px 8px 42px;
+    /* Left-aligned, as in Blocker: the word starts where the flag does. */
+    padding: 8px 38px 8px 12px;
     border: 1px solid var(--border-color-medium);
     border-radius: 8px;
     background-color: var(--modal-bg);
@@ -4485,6 +4615,13 @@ html.redd-native-shell .todo-shell .title-bar {
     margin: 0;
 }
 
+/* The info icon sits as close to its name as the feature icon does on the
+   other side: the button's 4px padding made that gap 2px wider. */
+.todo-shell .settings-row-label-line .settings-info-hover-wrap,
+.todo-shell .settings-row-label-line > .settings-info-btn {
+    margin-left: -2px;
+}
+
 .todo-shell .settings-row-label-line {
     display: inline-flex;
     align-items: center;
@@ -4507,31 +4644,36 @@ html.redd-native-shell .todo-shell .title-bar {
     min-width: 0;
 }
 
-.todo-shell .settings-info-hover-wrap {
+/*
+  The info tooltip of a setting, as the CSS help in Focus.
+
+  Only the icon opens it: a pointer beside or above the icon is on the row,
+  and must not read the info of another setting. The tooltip takes no
+  pointer, so it never widens that area.
+
+  It hangs from the row, not the icon, 8px over the name. It starts where
+  the row's content starts, as every tooltip of the list does, and may run to
+  the row's right edge but never past it, at any window width. It is only as
+  wide as its words, up to 20rem.
+*/
+.todo-shell #settings-modal .settings-row:has(.settings-info-hover-wrap) {
     position: relative;
+}
+
+.todo-shell .settings-info-hover-wrap {
     display: inline-flex;
     flex-shrink: 0;
 }
 
-/* Invisible bridge so the cursor can reach the tooltip without losing hover */
-.todo-shell .settings-info-hover-wrap::before {
-    content: '';
-    position: absolute;
-    left: -4px;
-    right: -4px;
-    bottom: 100%;
-    height: 14px;
-    background: transparent;
-}
-
 .todo-shell .settings-info-hover-wrap .settings-info-tooltip {
     position: absolute;
-    left: 0;
-    right: auto;
-    bottom: calc(100% + 8px);
-    width: max(220px, 16rem);
-    max-width: min(280px, calc(100vw - 48px));
-    padding: 10px 12px;
+    left: 14px;
+    /* The row's top padding is 12px: 8px over the name is 4px into the row. */
+    bottom: calc(100% - 4px);
+    width: max-content;
+    max-width: min(20rem, calc(100% - 14px));
+    box-sizing: border-box;
+    padding: 8px 10px;
     border: 1px solid var(--border-color-medium);
     border-radius: 8px;
     background: var(--modal-bg);
@@ -4544,35 +4686,23 @@ html.redd-native-shell .todo-shell .title-bar {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    user-select: text;
-    -webkit-user-select: text;
     transition: opacity 0.15s ease, visibility 0.15s ease;
     z-index: 100;
-}
-
-.todo-shell .settings-info-hover-wrap .settings-info-tooltip::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
-    height: 10px;
-    background: transparent;
 }
 
 .todo-shell[data-theme="dark"] .settings-info-hover-wrap .settings-info-tooltip {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-.todo-shell .settings-info-hover-wrap:hover .settings-info-tooltip,
-.todo-shell .settings-info-hover-wrap:focus-within .settings-info-tooltip {
+.todo-shell .settings-info-hover-wrap:has(svg:hover) .settings-info-tooltip,
+.todo-shell .settings-info-hover-wrap:has(.settings-info-btn:focus-visible) .settings-info-tooltip {
     opacity: 1;
     visibility: visible;
-    pointer-events: auto;
 }
 
-.todo-shell #settings-modal .settings-section:has(.settings-info-hover-wrap:hover),
-.todo-shell #settings-modal .settings-section:has(.settings-info-hover-wrap:focus-within) {
+.todo-shell #settings-modal .settings-section:has(.settings-info-hover-wrap svg:hover),
+.todo-shell #settings-modal .settings-section:has(.settings-info-btn:focus-visible),
+.todo-shell #settings-modal .settings-section:has(.settings-info-tooltip[style*="visible"]) {
     position: relative;
     z-index: 10;
 }
@@ -4682,9 +4812,35 @@ html.redd-native-shell .todo-shell .title-bar {
     background: var(--redd-coral-soft);
 }
 
+.todo-shell .settings-integration-row .settings-connect-btn {
+    /* Continue and Connect are one width. And a whole 28px tall: at their
+       own 27.6px the name beside them was centred on a part of a pixel, and
+       WebKit then drew its info icon 1px off the icons of the other rows. */
+    min-width: 84px;
+    height: 28px;
+    box-sizing: border-box;
+}
+
+.todo-shell .settings-text-link {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: var(--accent-primary);
+    cursor: pointer;
+}
+
+.todo-shell .settings-text-link:hover {
+    text-decoration: underline;
+}
+
+/* The token box is a line of its own under the row: it spans both columns,
+   so the Connect button stays centred on the name and its text. */
 .todo-shell .settings-manual-auth {
-    padding: 12px 14px;
-    border-top: 1px solid var(--border-color-medium);
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .todo-shell .enforcement-switch {
@@ -10244,23 +10400,42 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .calendar-task-popover {
     position: fixed;
     z-index: 900;
-    padding: 22px 10px 10px;
-    border-radius: 16px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-subtle);
-    box-shadow:
-        0 2px 4px rgba(30, 45, 62, 0.06),
-        0 16px 40px rgba(30, 45, 62, 0.22);
+    /* No frame: the task's own card is the popover. The top keeps room for the hover bubble. */
+    padding: 22px 0 0;
     animation: calendar-task-popover-in 0.14s ease-out;
+    /* The empty room lies over the task when the card opens under it (see
+       calendarPopoverPlace): clicks there go through to the calendar. */
+    pointer-events: none;
 }
 
-/* The add-task box has no hover bubble, so it needs no room for one. */
+.todo-shell .calendar-task-popover > * {
+    pointer-events: auto;
+}
+
+/* The add-task box has a frame, on a solid ground: the calendar showed
+   through it when a button in it took the focus. */
 .todo-shell .calendar-task-popover.calendar-task-popover--new {
-    padding-top: 10px;
+    padding: 10px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    background: var(--modal-bg);
+    box-shadow:
+        0 2px 4px rgba(30, 45, 62, 0.06),
+        0 8px 24px rgba(30, 45, 62, 0.14);
+}
+
+/* The box stays solid with the focus in its date or time popup, which is
+   drawn outside it: it was white only while it held the focus. */
+.todo-shell .calendar-task-popover .input-wrapper {
+    background: var(--modal-bg);
 }
 
 .todo-shell .calendar-task-popover .task-item {
     margin: 0;
+    background: var(--modal-bg);
+    box-shadow:
+        0 2px 4px rgba(30, 45, 62, 0.06),
+        0 8px 24px rgba(30, 45, 62, 0.14);
 }
 
 @keyframes calendar-task-popover-in {

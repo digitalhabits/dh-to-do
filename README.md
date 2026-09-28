@@ -69,9 +69,10 @@ important events.
 
 The app is based on more than ten years of research on digital distraction
 led by Dr Ulrik Lyngs at the universities of Oxford and Copenhagen. The source
-code is public, the app collects no data, and your tasks stay in a file on
-your computer. It syncs two ways with Apple
-Reminders and Basecamp, if you want that.
+code is public, and the app collects no personal data, only an anonymous
+daily usage count that you can turn off. Your tasks stay in a file on your
+computer. It syncs two ways with Basecamp, and with Apple Reminders on a Mac,
+if you want that.
 
 The tasks, the names and the mail in the pictures are invented.
 
@@ -101,6 +102,7 @@ pnpm install
 pnpm --dir apps/todo app:dev      # run the desktop app
 pnpm --dir apps/todo dev          # the interface in a browser, on port 3472
 pnpm --dir apps/todo typecheck
+pnpm --dir apps/todo test       # the tests, the page mounted on an in-memory board among them
 pnpm --dir apps/todo app:build    # a release build, signed only if you have set up signing
 ```
 

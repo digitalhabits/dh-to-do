@@ -7,6 +7,9 @@ import { TodoPage } from "@/components/todo/TodoPage";
 import { todoHostApi } from "@/lib/todo/standalone-api";
 import { TODO_APP_VERSION } from "@/lib/todo/version";
 
+import { startUsagePing } from "./usage-ping";
+import { WelcomeScreen } from "./WelcomeScreen";
+
 import "react-quill-new/dist/quill.snow.css";
 import "react-quill-new/dist/quill.bubble.css";
 import "@/todo.css";
@@ -50,6 +53,11 @@ if (isFocusWindow) {
   // Lets standalone.css drop the opaque page background: the panel is a
   // transparent window with its own rounded bar.
   document.documentElement.classList.add("focus-window");
+} else {
+  // Anonymous daily usage count. The main window sends it; the focus
+  // windows are the same install and would only count it twice. Only a
+  // store build sets VITE_TODO_STORE, and a dev server is never counted.
+  startUsagePing(import.meta.env.PROD ? import.meta.env.VITE_TODO_STORE : undefined);
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -59,6 +67,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <TodoPage initialState={null} appVersion={TODO_APP_VERSION} />
+        <WelcomeScreen alwaysShow={import.meta.env.DEV} />
         <Toaster position="bottom-center" richColors closeButton />
       </>
     )}

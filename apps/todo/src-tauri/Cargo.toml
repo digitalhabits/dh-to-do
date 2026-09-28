@@ -1,6 +1,6 @@
 [package]
 name = "digital-habits-todo"
-version = "3.0.0"
+version = "3.1.0"
 description = "Digital Habits: To-Do — standalone Mac/Windows app (SQLite via Tauri)"
 authors = ["Digital Habits"]
 license = ""
@@ -42,7 +42,7 @@ tempfile = "3"
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 block2 = "0.6"
-objc2 = "0.6"
+objc2 = { version = "0.6", features = ["exception"] }
 objc2-event-kit = { version = "0.3", features = ["EKEventStore", "EKReminder", "EKCalendar", "EKCalendarItem", "EKSource"] }
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSCalendar", "NSDate", "NSError", "NSObject", "NSString", "NSURL"] }
 objc2-app-kit = { version = "0.3", features = ["NSWorkspace"] }

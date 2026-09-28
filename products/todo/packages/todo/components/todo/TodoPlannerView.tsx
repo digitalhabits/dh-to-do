@@ -31,6 +31,11 @@ import {
 } from "@/lib/todo/calendar-tasks";
 import { TaskAssignMenu } from "@/components/todo/TodoPeopleEditor";
 import { colourForPerson, initialsOf, shortPersonName } from "@/lib/todo/people";
+import type {
+  CalendarFeed,
+  CalendarSource,
+  PickableAccount,
+} from "@/lib/plan/calendar-board";
 import type { TodoList, TodoPerson, TodoTask } from "@/lib/todo/types";
 
 const ASSET_BASE = "/redd-do-calendar";
@@ -59,8 +64,11 @@ declare global {
           onPickGoalPerson?: (
             request: {
               anchorEl: HTMLElement;
+              /** Everybody the goal is for, in the order they were picked. */
+              assigneeIds?: string[];
+              /** The first of them, for a host that knows one person only. */
               assigneeId: string | null;
-              onPick: (personId: string | null) => void;
+              onPick: (people: string[]) => void;
               onLeave: () => void;
             } | null,
           ) => void;
@@ -92,6 +100,37 @@ declare global {
             startMinutes: number | null;
             anchor: { left: number; top: number; right: number; bottom: number };
           }) => void;
+          /**
+           * The accounts and calendars the picker offers. Left out, the
+           * reader pastes a calendar address instead. The To-Do tab leaves
+           * it out: its calendars are the reader's own, not the team's, and
+           * that store does not exist yet.
+           */
+          onListCalendarChoices?: () => Promise<PickableAccount[]>;
+          /**
+           * The events of the calendars given, in one answer. The board
+           * says which: it knows a calendar as soon as it is picked.
+           */
+          onReadCalendarEvents?: (
+            sources: CalendarSource[],
+          ) => Promise<CalendarFeed[]>;
+          /**
+           * What the board draws besides calendars, each with a name and
+           * whether it is on. The To-Do tab passes none: the application
+           * deadlines belong to the planner's own Calendar tab.
+           */
+          boardSources?: {
+            id: string;
+            name: string;
+            detail?: string;
+            colour?: string;
+            shown?: boolean;
+          }[];
+          /** The reader turned one of those on or off. */
+          onBoardSourceToggle?: (
+            id: string,
+            shown: boolean,
+          ) => Promise<void> | void;
         },
       ) => void;
       destroy: () => void;
@@ -235,14 +274,29 @@ export type PlannerPerson = {
   shortName: string;
 };
 
-/** The goal card asks who the goal is for. `onPick(null)` is nobody. */
+/**
+ * The goal card asks who the goal is for. A goal can be for several people,
+ * so `onPick` takes the whole list. An empty list is nobody.
+ */
 export type GoalPersonRequest = {
   anchorEl: HTMLElement;
+  /** Everybody the goal is for now, in the order they were picked. */
+  assigneeIds?: string[];
+  /** The first of them, for a host that knows one person only. */
   assigneeId: string | null;
-  onPick: (personId: string | null) => void;
+  onPick: (people: string[]) => void;
   /** "Edit people…" was chosen: the card keeps what it has and closes. */
   onLeave: () => void;
 };
+
+/** Who the goal is for while its menu is up: the question and the answer. */
+type GoalPick = { request: GoalPersonRequest; people: string[] };
+
+function goalPickOf(request: GoalPersonRequest): GoalPick {
+  const people =
+    request.assigneeIds ?? (request.assigneeId ? [request.assigneeId] : []);
+  return { request, people: [...people] };
+}
 
 export function TodoPlannerView({
   lang,
@@ -280,7 +334,7 @@ export function TodoPlannerView({
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   /** The goal card's question, while the assign menu is up for it. */
-  const [goalPick, setGoalPick] = React.useState<GoalPersonRequest | null>(null);
+  const [goalPick, setGoalPick] = React.useState<GoalPick | null>(null);
 
   // The script is started once for each language. It reads the newest people
   // and the newest callback through these, so a change to either does not
@@ -389,7 +443,9 @@ export function TodoPlannerView({
           // A second press on the card's button puts the menu away.
           onPickGoalPerson: (request) =>
             setGoalPick((open) =>
-              request && open?.anchorEl === request.anchorEl ? null : request
+              !request || open?.request.anchorEl === request.anchorEl
+                ? null
+                : goalPickOf(request)
             ),
         });
       } catch (err) {
@@ -411,22 +467,25 @@ export function TodoPlannerView({
   return (
     <>
       <div id="plan-mode" ref={containerRef} className="todo-plan-view" />
-      {/* Who a goal is for: the menu a task is assigned from. A goal is for
-          one person, so a pick closes the menu, and a pick of the person it
-          has takes the person away. */}
+      {/* Who a goal is for: the menu a task is assigned from. A goal can be
+          for several people, so the menu stays open and each name goes on or
+          off, the way it does for a task. */}
       <TaskAssignMenu
         open={goalPick != null}
-        anchorEl={goalPick?.anchorEl ?? null}
+        anchorEl={goalPick?.request.anchorEl ?? null}
         people={people}
-        assigneeIds={goalPick?.assigneeId ? [goalPick.assigneeId] : []}
+        assigneeIds={goalPick?.people ?? []}
         t={t}
         onToggle={(personId) => {
           if (!goalPick) return;
-          goalPick.onPick(goalPick.assigneeId === personId ? null : personId);
-          setGoalPick(null);
+          const next = goalPick.people.includes(personId)
+            ? goalPick.people.filter((other) => other !== personId)
+            : [...goalPick.people, personId];
+          goalPick.request.onPick(next);
+          setGoalPick({ ...goalPick, people: next });
         }}
         onEditPeople={() => {
-          goalPick?.onLeave();
+          goalPick?.request.onLeave();
           setGoalPick(null);
           onEditPeople();
         }}

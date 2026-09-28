@@ -265,9 +265,7 @@ pub fn open_focus_popout(
   {
     // Two focus panels at most (see focus_slots).
     for stale in give_way {
-      if let Ok(panel) = app.get_webview_panel(&stale) {
-        panel.hide();
-      }
+      hide_focus_panel(&app, &stale);
       if let Some(win) = app.get_webview_window(&stale) {
         let _ = win.hide();
       }
@@ -467,9 +465,7 @@ pub fn enter_fullscreen_focus(
   }
 
   #[cfg(target_os = "macos")]
-  if let Ok(panel) = app.get_webview_panel(&panel_label) {
-    panel.hide();
-  }
+  hide_focus_panel(&app, &panel_label);
   if let Some(panel_window) = app.get_webview_window(&panel_label) {
     let _ = panel_window.hide();
   }
@@ -538,9 +534,7 @@ pub fn exit_fullscreen_focus_to_home(
 
   let panel_label = focus_popout_label(&task_id);
   #[cfg(target_os = "macos")]
-  if let Ok(panel) = app.get_webview_panel(&panel_label) {
-    panel.hide();
-  }
+  hide_focus_panel(&app, &panel_label);
   if let Some(panel_window) = app.get_webview_window(&panel_label) {
     let _ = panel_window.hide();
   }
@@ -565,9 +559,7 @@ pub fn close_focus_popout(
   }
   #[cfg(target_os = "macos")]
   {
-    if let Ok(panel) = app.get_webview_panel(window.label()) {
-      panel.hide();
-    }
+    hide_focus_panel(&app, window.label());
     let hidden = window.hide().map_err(|e| e.to_string());
     // The tick and the home button come through here. With the main window
     // closed, this was the last thing on screen: the app comes back.
@@ -578,6 +570,43 @@ pub fn close_focus_popout(
   {
     let _ = app;
     window.close().map_err(|e| e.to_string())
+  }
+}
+
+/// Hide the focus panel `label`, safely.
+///
+/// Hiding the key panel made AppKit's shared colour panel throw and quit
+/// the app, so the key goes to another window first. If AppKit throws
+/// there still, it is a warning, not a crash.
+#[cfg(target_os = "macos")]
+fn hide_focus_panel(app: &tauri::AppHandle, label: &str) {
+  let Ok(panel) = app.get_webview_panel(label) else {
+    return;
+  };
+  if panel.as_panel().isKeyWindow() {
+    hand_key_on(app, label);
+  }
+  let hid = objc2::exception::catch(std::panic::AssertUnwindSafe(|| panel.hide()));
+  if let Err(err) = hid {
+    log::warn!("[focus] hiding the panel {label} threw: {err:?}");
+  }
+}
+
+/// Give the key window to another visible focus panel, or to the main window.
+#[cfg(target_os = "macos")]
+fn hand_key_on(app: &tauri::AppHandle, closing: &str) {
+  let other = app.webview_windows().into_iter().find_map(|(label, win)| {
+    (label != closing && label.starts_with("focus-") && win.is_visible().unwrap_or(false))
+      .then(|| app.get_webview_panel(&label).ok())
+      .flatten()
+  });
+  if let Some(panel) = other {
+    panel.make_key_window();
+    return;
+  }
+  if let Some(main) = app.get_webview_window("main") {
+    let _ = main.show();
+    let _ = main.set_focus();
   }
 }
 
