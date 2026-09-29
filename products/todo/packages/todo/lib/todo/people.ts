@@ -41,6 +41,11 @@ function nameParts(name: string): string[] {
   return parts;
 }
 
+/** The first name, past any title: "Dr Vera Holm" is "Vera". */
+export function firstNameOf(name: string): string {
+  return nameParts(name)[0] ?? name.trim();
+}
+
 export function initialsOf(name: string): string {
   const parts = nameParts(name);
   if (parts.length === 0) return "?";

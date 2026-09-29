@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { clampToMenuArea, menuArea } from "@/lib/todo/menu-area";
+
 import {
   getAllListIconIds,
   isListIconPresetId,
@@ -108,10 +110,12 @@ export function ListAppearancePicker({
       padding,
       Math.min(top, window.innerHeight - popRect.height - padding)
     );
-    let left = rect.right - popRect.width;
-    left = Math.max(
-      padding,
-      Math.min(left, window.innerWidth - popRect.width - padding)
+    // Inside the board, not only the window: see menu-area.
+    const left = clampToMenuArea(
+      rect.right - popRect.width,
+      popRect.width,
+      menuArea(swatch),
+      padding
     );
     popover.style.top = `${top}px`;
     popover.style.left = `${left}px`;

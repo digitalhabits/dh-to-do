@@ -131,6 +131,32 @@ const FOCUS_POPOUT_STACK_GAP: f64 = 12.0;
 
 /// A focus window that exists and is on screen. A hidden NSPanel reports
 /// itself not visible, and a closed window (other platforms) is gone.
+/// Windows 11: round the corners like the macOS panel (8px) and drop the 1px
+/// system border, which sat next to the note's own. Windows 10 ignores both.
+#[cfg(windows)]
+fn round_without_border(window: &tauri::WebviewWindow) {
+  use windows::Win32::Graphics::Dwm::{
+    DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+  };
+  let Ok(hwnd) = window.hwnd() else { return };
+  let round = DWMWCP_ROUND;
+  let no_border: u32 = 0xFFFF_FFFE; // DWMWA_COLOR_NONE
+  unsafe {
+    let _ = DwmSetWindowAttribute(
+      hwnd,
+      DWMWA_WINDOW_CORNER_PREFERENCE,
+      &round as *const _ as *const std::ffi::c_void,
+      std::mem::size_of_val(&round) as u32,
+    );
+    let _ = DwmSetWindowAttribute(
+      hwnd,
+      DWMWA_BORDER_COLOR,
+      &no_border as *const _ as *const std::ffi::c_void,
+      std::mem::size_of_val(&no_border) as u32,
+    );
+  }
+}
+
 fn focus_window_is_showing(app: &tauri::AppHandle, label: &str) -> bool {
   app
     .get_webview_window(label)
@@ -233,14 +259,23 @@ fn focus_page_url(
   tauri::WebviewUrl::App(url.into())
 }
 
+/// Off the main thread, two clicks can reach the commands below at once. One
+/// window is made at a time, so two opens cannot take the same slot or build
+/// the same window twice.
+#[cfg(not(target_os = "macos"))]
+static FOCUS_BUILD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Open (or re-target) the floating focus window for a task.
 ///
-/// Must stay a sync Tauri command: on macOS it builds an NSPanel, and AppKit
-/// requires that on the main thread. Async commands run on a tokio worker.
+/// Must stay a sync Tauri command on macOS: it builds an NSPanel, and AppKit
+/// requires that on the main thread. Elsewhere it runs on a worker thread:
+/// on Windows, building a webview on the main thread inside a command call
+/// deadlocks WebView2, and the whole app freezes.
 ///
 /// `user_agent` is accepted so the call matches the planner shell. The
 /// bundled page does not need it, so it is ignored.
-#[tauri::command]
+#[cfg_attr(target_os = "macos", tauri::command)]
+#[cfg_attr(not(target_os = "macos"), tauri::command(async))]
 pub fn open_focus_popout(
   app: tauri::AppHandle,
   window: tauri::WebviewWindow,
@@ -251,6 +286,8 @@ pub fn open_focus_popout(
   duration_minutes: Option<f64>,
 ) -> Result<(), String> {
   let _ = user_agent;
+  #[cfg(not(target_os = "macos"))]
+  let _one_at_a_time = FOCUS_BUILD.lock().unwrap_or_else(|e| e.into_inner());
   let label = focus_popout_label(&task_id);
   // Read before the slot is taken: the second window goes under the first.
   let (slot, give_way) = take_focus_slot(&app, &label);
@@ -363,6 +400,13 @@ pub fn open_focus_popout(
 
     let popout = WebviewWindowBuilder::new(&app, &label, url)
       .title(title.clone())
+      // The sticky-note colour (todo.css), so nothing shows white or black
+      // before the page paints.
+      .background_color(if slot == 2 {
+        tauri::window::Color(0xc6, 0xf0, 0x8c, 0xff)
+      } else {
+        tauri::window::Color(0xff, 0xf9, 0xc4, 0xff)
+      })
       .inner_size(FOCUS_POPOUT_WIDTH, FOCUS_POPOUT_HEIGHT)
       .min_inner_size(280.0, FOCUS_POPOUT_MIN_HEIGHT)
       .resizable(true)
@@ -375,6 +419,8 @@ pub fn open_focus_popout(
     if let Some((x, y)) = under_first {
       let _ = popout.set_position(tauri::LogicalPosition::new(x, y));
     }
+    #[cfg(windows)]
+    round_without_border(&popout);
     let _ = popout.set_focus();
     let _ = window;
     Ok(())
@@ -402,8 +448,10 @@ fn resolve_app_url(
 /// Hand the running focus session off to a distraction-free fullscreen
 /// window (redd-do's enter_fullscreen_focus_handoff): remember the panel's
 /// geometry, open `focusfs-*` fullscreen with the elapsed session time, and
-/// hide the mini panel.
-#[tauri::command]
+/// hide the mini panel. Off the main thread except on macOS, like
+/// open_focus_popout.
+#[cfg_attr(target_os = "macos", tauri::command)]
+#[cfg_attr(not(target_os = "macos"), tauri::command(async))]
 pub fn enter_fullscreen_focus(
   app: tauri::AppHandle,
   window: tauri::WebviewWindow,
@@ -416,6 +464,8 @@ pub fn enter_fullscreen_focus(
   use tauri::WebviewWindowBuilder;
 
   let _ = user_agent;
+  #[cfg(not(target_os = "macos"))]
+  let _one_at_a_time = FOCUS_BUILD.lock().unwrap_or_else(|e| e.into_inner());
   let fullscreen_label = fullscreen_focus_label(&task_id);
   // The panel that asks is the panel to hide. Its label has the task it was
   // opened for, and the panel's own switcher can have moved it to another
@@ -473,8 +523,11 @@ pub fn enter_fullscreen_focus(
 }
 
 /// Return from fullscreen focus to the mini panel, restored to where it sat
-/// before the handoff (redd-do's exit_fullscreen_focus_handoff).
-#[tauri::command]
+/// before the handoff (redd-do's exit_fullscreen_focus_handoff). Off the main
+/// thread except on macOS: it can build the panel, and it takes the same
+/// slot lock as open_focus_popout.
+#[cfg_attr(target_os = "macos", tauri::command)]
+#[cfg_attr(not(target_os = "macos"), tauri::command(async))]
 pub fn exit_fullscreen_focus(
   app: tauri::AppHandle,
   window: tauri::WebviewWindow,

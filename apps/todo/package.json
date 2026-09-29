@@ -1,6 +1,6 @@
 {
   "name": "digital-habits-todo",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "private": true,
   "type": "module",
   "description": "Digital Habits: To-Do — standalone desktop app (SQLite via Tauri).",

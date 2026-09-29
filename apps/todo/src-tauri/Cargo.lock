@@ -862,7 +862,7 @@ dependencies = [
 
 [[package]]
 name = "digital-habits-todo"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -891,6 +891,7 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+ "windows",
 ]
 
 [[package]]

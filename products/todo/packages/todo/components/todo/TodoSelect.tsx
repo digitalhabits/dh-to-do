@@ -3,6 +3,8 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 
+import { clampToMenuArea, menuArea } from "@/lib/todo/menu-area";
+
 export type TodoSelectOption = { value: string; label: string };
 
 const THEME_VARS = [
@@ -85,15 +87,12 @@ export function TodoSelect({
     const gap = 6;
     const padding = 8;
     const rect = trigger.getBoundingClientRect();
-    const vw = window.innerWidth;
     const vh = window.innerHeight;
     const width = rect.width;
 
     dropdown.style.width = `${width}px`;
-    dropdown.style.left = `${Math.max(
-      padding,
-      Math.min(rect.left, vw - width - padding)
-    )}px`;
+    // Inside the board, not only the window: see menu-area.
+    dropdown.style.left = `${clampToMenuArea(rect.left, width, menuArea(trigger), padding)}px`;
     dropdown.style.maxHeight = "";
 
     const menuHeight = dropdown.scrollHeight;

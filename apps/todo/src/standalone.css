@@ -14,3 +14,22 @@ html.focus-window body,
 html.focus-window #root {
   background: transparent;
 }
+
+/* Windows: the focus window is opaque, and Windows 11 rounds it and adds the
+   shadow itself (focus.rs). The bar's own rounded border and shadow would
+   sit inside that as a second edge. */
+html.platform-windows .todo-shell.focus-panel-window,
+html.platform-windows .todo-shell.focus-panel-window .app-container,
+html.platform-windows .todo-shell.focus-panel-window .focus-container {
+  border-radius: 0;
+}
+
+html.platform-windows .todo-shell.focus-panel-window:not(.is-fullscreen) .focus-container:not(.fullscreen) {
+  border: none;
+  box-shadow: none;
+}
+
+/* Windows shows scrollbars all the time; macOS only while scrolling. */
+html.platform-windows .todo-shell.focus-panel-window .focus-task-switch-tabs {
+  scrollbar-width: none;
+}

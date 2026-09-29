@@ -3,6 +3,8 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 
+import { clampToMenuArea, menuArea } from "@/lib/todo/menu-area";
+
 /**
  * A pop-up menu rendered on `document.body`.
  *
@@ -64,10 +66,12 @@ export function MenuPortal({
         pad,
         Math.min(top, window.innerHeight - menuRect.height - pad)
       );
-      let left = align === "right" ? rect.right - menuRect.width : rect.left;
-      left = Math.max(
-        pad,
-        Math.min(left, window.innerWidth - menuRect.width - pad)
+      // Inside the board, not only the window: see menu-area.
+      const left = clampToMenuArea(
+        align === "right" ? rect.right - menuRect.width : rect.left,
+        menuRect.width,
+        menuArea(anchorEl),
+        pad
       );
       setCoords({ top, left });
     };

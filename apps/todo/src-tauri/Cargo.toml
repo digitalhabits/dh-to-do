@@ -1,6 +1,6 @@
 [package]
 name = "digital-habits-todo"
-version = "3.1.0"
+version = "3.1.1"
 description = "Digital Habits: To-Do — standalone Mac/Windows app (SQLite via Tauri)"
 authors = ["Digital Habits"]
 license = ""
@@ -38,6 +38,11 @@ tauri-plugin-deep-link = "2"
 
 [dev-dependencies]
 tempfile = "3"
+
+# The focus window's rounded corners on Windows 11 (focus.rs). Same version
+# as Tauri's, so the window handle types match.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

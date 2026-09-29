@@ -26,13 +26,9 @@ import { ClockIcon, NotesIcon } from "@/components/todo/task-icons";
 import type { AddTaskComposerModel } from "@/components/todo/use-add-task-composer";
 import { pendingAttachments } from "@/lib/todo/basecamp-richtext";
 import { formatDurationShort } from "@/lib/todo/duration";
+import { firstNameOf } from "@/lib/todo/people";
 import { ListIcon, listInitials, resolveListIconId } from "@/lib/todo/list-icons";
 import { formatDueOn, notesHtmlIsEmpty, type SubtaskDraft } from "@/lib/todo/task-draft";
-
-/** The first name, as the assign menu shows it. */
-export function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
-}
 
 /** Keep focus where it is: a chip is a tool, not a place to land. */
 export function keepFocus(event: React.MouseEvent) {
@@ -69,7 +65,7 @@ export function composerAssignChip(c: AddTaskComposerModel) {
           <>
             <TaskAssigneeStack people={assignees} size={18} />
             <span className="composer-chip-label">
-              {assignees.map((person) => firstName(person.name)).join(", ")}
+              {assignees.map((person) => firstNameOf(person.name)).join(", ")}
             </span>
           </>
         ) : (

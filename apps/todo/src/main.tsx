@@ -53,6 +53,9 @@ if (isFocusWindow) {
   // Lets standalone.css drop the opaque page background: the panel is a
   // transparent window with its own rounded bar.
   document.documentElement.classList.add("focus-window");
+  // Windows draws the panel's rounded corners and shadow (focus.rs), so
+  // standalone.css drops the bar's own.
+  if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("platform-windows");
 } else {
   // Anonymous daily usage count. The main window sends it; the focus
   // windows are the same install and would only count it twice. Only a

@@ -10,6 +10,7 @@ import {
   shortPersonName,
 } from "@/lib/todo/people";
 import type { TodoPerson, TodoPersonCandidate } from "@/lib/todo/types";
+import { clampToMenuArea, menuArea } from "@/lib/todo/menu-area";
 
 export function TodoPersonAvatar({
   name,
@@ -159,10 +160,12 @@ export function TaskAssignMenu({
         pad,
         Math.min(top, window.innerHeight - menuRect.height - pad)
       );
-      let left = rect.right - menuRect.width;
-      left = Math.max(
-        pad,
-        Math.min(left, window.innerWidth - menuRect.width - pad)
+      // Inside the board, not only the window: see menu-area.
+      const left = clampToMenuArea(
+        rect.right - menuRect.width,
+        menuRect.width,
+        menuArea(anchorEl),
+        pad
       );
       setCoords({ top, left });
     };
