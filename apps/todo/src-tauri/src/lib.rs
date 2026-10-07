@@ -1,6 +1,8 @@
 mod commands;
 mod db;
 mod focus;
+#[cfg(target_os = "linux")]
+mod linux_update;
 #[cfg(target_os = "macos")]
 mod menu;
 mod oauth;
@@ -62,6 +64,10 @@ pub fn run() {
       if let Err(err) = menu::install(app) {
         log::warn!("menu: {err}");
       }
+
+      // Linux has no store, so the AppImage updates itself.
+      #[cfg(target_os = "linux")]
+      linux_update::start(app.handle());
 
       // Deep link fallback from Amplify (reddtodo://oauth-callback?...)
       #[cfg(desktop)]

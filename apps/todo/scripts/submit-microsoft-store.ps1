@@ -19,10 +19,11 @@
 #      metadata must be applied *after* this step)
 #   3. submission get → stamp What's new + listing description + mark
 #      superseded packages PendingDelete → submission update
-#   4. msstore submission publish  (commit for certification)
-#   5. msstore submission status, until Partner Center has checked the commit
+#   4. submission get again → stop if What's new or description differ
+#   5. msstore submission publish  (commit for certification)
+#   6. msstore submission status, until Partner Center has checked the commit
 #
-# With -DraftOnly, steps 4 and 5 are left out, and the draft stays open.
+# With -DraftOnly, steps 5 and 6 are left out, and the draft stays open.
 
 param(
     [Parameter(Mandatory = $true)]
@@ -78,6 +79,32 @@ function Get-StoreSubmissionJson([string]$OutPath) {
     if ($proc.ExitCode -ne 0) {
         throw "msstore submission get exited with code $($proc.ExitCode)"
     }
+}
+
+# `submission get` output has spinner text and wrapped lines; the Node helper
+# gets the JSON out of it.
+function Read-StoreSubmissionJson([string]$Path) {
+    $helper = (Join-Path $ProjectRoot 'scripts\store-submission-json.cjs') -replace '\\', '/'
+    $json = node -e "const fs=require('fs');const {extractJson}=require('$helper');process.stdout.write(JSON.stringify(extractJson(fs.readFileSync(process.argv[1],'utf8'))))" $Path
+    Assert-CommandOk "Reading JSON from $Path"
+    return ($json | Out-String | ConvertFrom-Json)
+}
+
+# Languages whose What's new or description in $Got are not the ones in $Sent.
+function Get-ListingTextMismatches($Sent, $Got) {
+    $norm = { param($s) ([string]$s -replace "`r`n", "`n").Trim() }
+    $bad = @()
+    foreach ($lang in $Sent.listings.PSObject.Properties) {
+        $want = $lang.Value.baseListing ?? $lang.Value
+        $gotListing = $Got.listings.($lang.Name)
+        $have = $gotListing.baseListing ?? $gotListing
+        foreach ($field in 'releaseNotes', 'description') {
+            if ((& $norm $want.$field) -cne (& $norm $have.$field)) {
+                $bad += "$($lang.Name) ($field)"
+            }
+        }
+    }
+    return $bad
 }
 
 if (-not $ProductId) {
@@ -185,8 +212,8 @@ Write-Host "Uploading $bundleOut to Store product $ProductId (no commit)…" -Fo
 msstore publish $bundleOut -id $ProductId -nc
 Assert-CommandOk 'msstore publish -nc'
 
-$notesStamped = $false
-$packagesCleaned = $false
+# A failure here stops the run: a commit without the new texts puts the old
+# What's new and description live again.
 try {
     Write-Host "Fetching draft submission for $ProductId…" -ForegroundColor Cyan
     Get-StoreSubmissionJson $submissionJson
@@ -200,26 +227,35 @@ try {
     # Full update (not updateMetadata) so ApplicationPackages FileStatus is applied.
     msstore submission update $ProductId $meta
     Assert-CommandOk 'msstore submission update'
-    $notesStamped = $true
-    $packagesCleaned = $true
-    Write-Host 'Draft updated: release notes + description stamped; superseded packages PendingDelete.' -ForegroundColor Green
 } catch {
-    Write-Warning "Draft metadata/package cleanup failed ($_). Committing upload as-is — remove old packages in Partner Center if needed."
     if (Test-Path -LiteralPath $submissionJson) {
         Write-Host '--- head of submission.json ---' -ForegroundColor Yellow
         Get-Content -LiteralPath $submissionJson -TotalCount 30 | Write-Host
     }
+    throw "The texts did not go into the draft ($_). Nothing was committed."
 }
 
+# Read the draft back. An exit code of 0 does not prove the texts are in it.
+$readbackJson = "$submissionJson.readback"
+Get-StoreSubmissionJson $readbackJson
+$sent = Read-StoreSubmissionJson $patchedJson
+$mismatches = @(Get-ListingTextMismatches $sent (Read-StoreSubmissionJson $readbackJson))
+if ($mismatches.Count -gt 0) {
+    throw "The draft does not have the new texts for: $($mismatches -join ', '). Nothing was committed."
+}
+$listingCount = @($sent.listings.PSObject.Properties).Count
+Write-Host "Verified: What's new and description on $listingCount listing(s). Superseded packages PendingDelete." -ForegroundColor Green
+
 if ($DraftOnly) {
-    if (-not $notesStamped) {
-        throw 'The texts did not go into the draft (see the warning above). Nothing was committed.'
-    }
     Write-Host ''
+    Write-Host '--- What''s new in the draft ---' -ForegroundColor Cyan
+    (Get-Content -LiteralPath $WhatsNewFile -Raw -Encoding utf8).Trim() | Write-Host
+    Write-Host '---' -ForegroundColor Cyan
+    Write-Warning 'Partner Center can bring back the old texts. Reload the Store listing page before you add pictures, and check the What''s new before you press Submit.'
     Write-Host 'Draft only: nothing was committed. In Partner Center, open the submission that is in draft:' -ForegroundColor Green
     Write-Host '  1. Packages: wait until the new bundle says "Validated".'
-    Write-Host '  2. Store listings: put in the pictures and the logos by hand.'
-    Write-Host '  3. Press "Submit for certification".'
+    Write-Host '  2. Store listings: reload the page, then put in the pictures and the logos by hand.'
+    Write-Host '  3. Check that the What''s new is the text above, then press "Submit for certification".'
     exit 0
 }
 
@@ -249,4 +285,4 @@ if (-not $state) {
     throw 'Partner Center did not finish its check of the commit in 15 minutes. Open the submission in Partner Center: the package can be "Paused" there.'
 }
 
-Write-Host "In Partner Center the submission is now: $state. notesStamped=$notesStamped packagesCleaned=$packagesCleaned" -ForegroundColor Green
+Write-Host "In Partner Center the submission is now: $state." -ForegroundColor Green

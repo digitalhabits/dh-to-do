@@ -180,6 +180,15 @@ export async function standaloneTodoApi(
     }
   }
 
+  // Deleted lists, kept with their tasks (store.deleteTodoList).
+  if (pathname === "/api/todo/lists/deleted") {
+    if (upper === "GET") return { lists: await store.listDeletedTodoLists() };
+    if (upper === "POST") {
+      await store.restoreTodoList(String(payload.id));
+      return { ok: true };
+    }
+  }
+
   if (pathname === "/api/todo/lists") {
     if (upper === "POST") {
       const list = await store.createTodoList(

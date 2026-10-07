@@ -318,10 +318,28 @@ const PlanModule = (function () {
     }
 
     // The week view scrolls sideways by the day. It draws one more day at each
-    // side of the seven, out of sight, so a day can slide in. A narrow window
-    // scrolls its seven days in the old way, with no hidden days.
+    // side of the seven, out of sight, so a day can slide in. At every width:
+    // a narrow window used to scroll a wide week in the old way, and since
+    // the week fits any width (plan.css), that left it with no sideways
+    // scroll at all.
+    /*
+      Which events of a calendar a view shows: only those marked for the
+      board, or all of them. Months and the week each have their own say,
+      because a week has room for a whole diary and fourteen months do not.
+      The week follows the months until it is set (cal.showAllWeek).
+    */
+    function calendarShowsAll(cal, view) {
+        if (view === 'week' && typeof cal.showAllWeek === 'boolean') return cal.showAllWeek;
+        return cal.showAll === true;
+    }
+
+    /** Whether a sync must read every event: one of the views shows all. */
+    function calendarReadsAll(cal) {
+        return calendarShowsAll(cal, 'months') || calendarShowsAll(cal, 'week');
+    }
+
     function weekCarouselOn() {
-        return !window.matchMedia('(max-width: 900px)').matches;
+        return true;
     }
 
     function weekRenderedRange() {
@@ -453,6 +471,9 @@ const PlanModule = (function () {
     // for that, a task moves up and down in its own day.
     let taskTimes = {};
     let changeTaskDue = null;
+    // The host saves a Roadmap band moved or made longer here: (id, start, end),
+    // ISO dates. With none, the bands stay where they are.
+    let changeRoadmapItem = null;
     // The host opens a task for editing (a double click on it here), beside
     // the place it is given.
     let openTask = null;
@@ -471,7 +492,7 @@ const PlanModule = (function () {
      *
      *   listCalendarChoices — () => Promise<[{ email, calendars: [{ id, name,
      *                         primary }], error }]>; what the picker offers
-     *   readCalendarEvents  — (sources) => Promise<[{ id, events, error }]>;
+     *   readCalendarEvents  — (sources, { full }) => Promise<[{ id, events, error }]>;
      *                         the events of the calendars given, in one
      *                         answer, because the board draws them together.
      *                         The board says which, rather than the host
@@ -658,7 +679,107 @@ const PlanModule = (function () {
         el.appendChild(document.createTextNode(task.name));
         // With a class name it is the week's all-day row, where it can be dragged too.
         setupTaskOpen(el, task, Boolean(className));
+        if (!className && changeTaskDue) makeMonthTaskMovable(el, task);
         return el;
+    }
+
+    /*
+     * A task in a month day can be dragged to another day, which gives it that
+     * due date (the host writes it; see moveTaskToDay). A press that does not
+     * move is still a click, and opens the task. A copy of the task follows
+     * the pointer, on the body, and the day it would go to is marked.
+     */
+    const TASK_DRAG_THRESHOLD = 5;
+
+    function makeMonthTaskMovable(el, task) {
+        el.classList.add('calendar-task--moves');
+        el.addEventListener('mousedown', (event) => event.stopPropagation());
+        el.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0 || isDragInProgress) return;
+            event.stopPropagation();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            let ghost = null;
+            let overRow = null;
+
+            const markRow = (row) => {
+                if (row === overRow) return;
+                if (overRow) overRow.classList.remove('is-task-drop-target');
+                if (row) row.classList.add('is-task-drop-target');
+                overRow = row;
+            };
+            const onMove = (ev) => {
+                if (!ghost) {
+                    if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < TASK_DRAG_THRESHOLD) return;
+                    isDragInProgress = true;
+                    ghost = taskDragGhost(el);
+                    document.body.appendChild(ghost);
+                    el.classList.add('is-being-moved');
+                    if (container) container.classList.add('is-dragging-task');
+                }
+                ev.preventDefault();
+                ghost.style.left = `${ev.clientX + 10}px`;
+                ghost.style.top = `${ev.clientY - 12}px`;
+                const key = roadmapDayAtPoint(ev.clientX, ev.clientY);
+                markRow(key && container
+                    ? container.querySelector(`.plan-day-row[data-date-key="${key}"]`)
+                    : null);
+            };
+            const onUp = () => {
+                document.removeEventListener('pointermove', onMove, true);
+                document.removeEventListener('pointerup', onUp, true);
+                document.removeEventListener('pointercancel', onUp, true);
+                if (!ghost) return;
+                ghost.remove();
+                el.classList.remove('is-being-moved');
+                if (container) container.classList.remove('is-dragging-task');
+                const key = overRow ? overRow.dataset.dateKey : null;
+                markRow(null);
+                isDragInProgress = false;
+                // The click that ends a drag is not a click to open the task.
+                const swallow = (ce) => {
+                    ce.preventDefault();
+                    ce.stopPropagation();
+                };
+                el.addEventListener('click', swallow, { capture: true, once: true });
+                setTimeout(() => el.removeEventListener('click', swallow, { capture: true }), 0);
+                if (key && key !== task.dateKey) {
+                    pushMoveHistory({ kind: 'task', id: task.id, dateKey: task.dateKey });
+                    moveTaskToDay(task, key);
+                    renderFreeformElements();
+                }
+            };
+            document.addEventListener('pointermove', onMove, true);
+            document.addEventListener('pointerup', onUp, true);
+            document.addEventListener('pointercancel', onUp, true);
+        });
+    }
+
+    /** The copy that follows the pointer. It lives on the body, outside the
+     *  calendar's styles, so it carries its look with it. */
+    function taskDragGhost(el) {
+        const look = getComputedStyle(el);
+        const ghost = el.cloneNode(true);
+        ghost.className = 'plan-task-drag-ghost';
+        Object.assign(ghost.style, {
+            position: 'fixed',
+            zIndex: '100000',
+            pointerEvents: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            background: '#fff',
+            boxShadow: '0 4px 14px rgba(30, 45, 62, 0.18)',
+            color: look.color,
+            font: look.font,
+            whiteSpace: 'nowrap',
+            maxWidth: '260px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+        });
+        return ghost;
     }
 
     // One application deadline, as one item of a month day (see renderMonthDays).
@@ -697,7 +818,7 @@ const PlanModule = (function () {
     let CALENDARS_KEY; // Array of {id, name, url, fontFamily, fontColor, lineColor}
     let CALENDAR_LAST_SYNC_KEY;
     let CALENDAR_CUSTOM_KEY; // Shared: where the reader moved or relabelled calendar events
-    let CALENDAR_EVENTS_KEY; // This device only: the events as last fetched, for the first paint
+    let CALENDAR_EVENTS_KEY; // This device only: the events as last fetched, for the first paint (IndexedDB)
 
     function applyStoragePrefix(prefix) {
         STORAGE_PREFIX = prefix;
@@ -722,6 +843,15 @@ const PlanModule = (function () {
     let calendarLastSync = null;
     // The events as fetched, and what the reader changed on them: see loadCalendarItems.
     let calendarEventsCache = { notes: [], lines: [] };
+    // Set when a sync has put fresh events on screen, so the copy read
+    // from IndexedDB, which can answer after it, does not go over them.
+    let calendarEventsFresh = false;
+    // Counts the inits, so an answer for a calendar since closed is dropped.
+    let calendarEventsGeneration = 0;
+    // The read of the kept copy, while it is under way. A sync waits for it:
+    // a calendar the sync cannot read keeps what is on screen, and before
+    // the copy is in, that is nothing, which the sync would then keep.
+    let calendarEventsLoading = Promise.resolve();
     let calendarCustomisations = { notes: {}, lines: {} };
     // Syncing on its own: see startCalendarAutoSync.
     let syncCalendarsNow = null;
@@ -759,6 +889,9 @@ const PlanModule = (function () {
         calendars = [];
         calendarLastSync = null;
         calendarEventsCache = { notes: [], lines: [] };
+        calendarEventsFresh = false;
+        calendarEventsGeneration += 1;
+        calendarEventsLoading = Promise.resolve();
         calendarCustomisations = { notes: {}, lines: {} };
         calendarErrors = {};
         lastCalendarFeeds = {};
@@ -790,6 +923,7 @@ const PlanModule = (function () {
         addGoalPerson = typeof opts.onAddPerson === 'function' ? opts.onAddPerson : null;
         pickGoalPerson = typeof opts.onPickGoalPerson === 'function' ? opts.onPickGoalPerson : null;
         changeTaskDue = typeof opts.onTaskDueChange === 'function' ? opts.onTaskDueChange : null;
+        changeRoadmapItem = typeof opts.onRoadmapItemChange === 'function' ? opts.onRoadmapItemChange : null;
         openTask = typeof opts.onTaskOpen === 'function' ? opts.onTaskOpen : null;
         createTask = typeof opts.onTaskCreate === 'function' ? opts.onTaskCreate : null;
         listCalendarChoices =
@@ -1177,6 +1311,87 @@ const PlanModule = (function () {
      */
     const CALENDAR_FEED_FLOOR_MS = 5 * 60 * 1000;
 
+    /*
+      The events as last fetched, kept in IndexedDB.
+
+      They were in localStorage, which holds about 5 MB for the whole page.
+      Fourteen months of a busy calendar shown whole ("All events") filled
+      it: every sync's save failed, the copy stayed at an old state, and the
+      board opened on events that had since been deleted, until a sync
+      came. IndexedDB holds far more. The copy is this device's only, and a
+      calendar that cannot open it simply starts empty until the first sync.
+    */
+    const CALENDAR_EVENTS_DB = 'dh-plan-calendar-events';
+    const CALENDAR_EVENTS_STORE = 'events';
+    let calendarEventsDb = null;
+
+    function openCalendarEventsDb() {
+        if (calendarEventsDb) return calendarEventsDb;
+        calendarEventsDb = new Promise((resolve, reject) => {
+            if (typeof indexedDB === 'undefined') {
+                reject(new Error('no IndexedDB'));
+                return;
+            }
+            const req = indexedDB.open(CALENDAR_EVENTS_DB, 1);
+            req.onupgradeneeded = () => req.result.createObjectStore(CALENDAR_EVENTS_STORE);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+        // A failed open is tried again next time, not remembered.
+        calendarEventsDb.catch(() => { calendarEventsDb = null; });
+        return calendarEventsDb;
+    }
+
+    function calendarEventsRequest(mode, act) {
+        return openCalendarEventsDb().then(db => new Promise((resolve, reject) => {
+            const tx = db.transaction(CALENDAR_EVENTS_STORE, mode);
+            const req = act(tx.objectStore(CALENDAR_EVENTS_STORE));
+            tx.oncomplete = () => resolve(req.result);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+        }));
+    }
+
+    function keepCalendarEvents(key, value) {
+        return calendarEventsRequest('readwrite', store => store.put(value, key));
+    }
+
+    function readKeptCalendarEvents(key) {
+        return calendarEventsRequest('readonly', store => store.get(key));
+    }
+
+    function isEventsCopy(value) {
+        return Boolean(value) && Array.isArray(value.notes) && Array.isArray(value.lines);
+    }
+
+    // The events on screen: the reader's own items stay, the events are
+    // these, with the reader's changes to them put back on.
+    function putCalendarEventsOnScreen(notes, lines) {
+        const events = window.PlanCalendarEvents;
+        freeformNotes = events.splitCalendarItems(freeformNotes).own
+            .concat(events.applyCustomisations(notes, calendarCustomisations.notes));
+        freeformLines = events.splitCalendarItems(freeformLines).own
+            .concat(events.applyCustomisations(lines, calendarCustomisations.lines));
+    }
+
+    /*
+      The kept copy, once the page has drawn. Not over events a sync has
+      brought in the meantime, and not into a calendar opened since.
+    */
+    function loadKeptCalendarEvents() {
+        const key = CALENDAR_EVENTS_KEY;
+        const generation = calendarEventsGeneration;
+        calendarEventsLoading = readKeptCalendarEvents(key).then(kept => {
+            if (!isEventsCopy(kept)) return;
+            if (generation !== calendarEventsGeneration || calendarEventsFresh || !isInitialized) return;
+            calendarEventsCache = { notes: kept.notes, lines: kept.lines };
+            putCalendarEventsOnScreen(kept.notes, kept.lines);
+            renderFreeformElements();
+        }).catch(e => {
+            console.warn('[Plan] Could not read the calendar events kept on this device:', e);
+        });
+    }
+
     function readStoredJson(key, fallback) {
         try {
             const raw = localStorage.getItem(key);
@@ -1199,9 +1414,28 @@ const PlanModule = (function () {
             notes: { ...events.legacyCustomisations(notes.calendar, 'note'), ...stored.notes },
             lines: { ...events.legacyCustomisations(lines.calendar, 'line'), ...stored.lines },
         };
+        // A copy an older version kept in localStorage: shown at once, moved
+        // to IndexedDB, and taken out of localStorage to give the room back.
+        // Otherwise IndexedDB's copy follows once read (loadKeptCalendarEvents).
         const cached = readStoredJson(CALENDAR_EVENTS_KEY, null);
-        calendarEventsCache = cached && Array.isArray(cached.notes) && Array.isArray(cached.lines)
+        if (cached !== null) {
+            const key = CALENDAR_EVENTS_KEY;
+            const move = isEventsCopy(cached) ? keepCalendarEvents(key, cached) : Promise.resolve();
+            move.then(() => {
+                try { localStorage.removeItem(key); } catch { /* nothing kept */ }
+            }).catch(e => {
+                console.warn('[Plan] Could not move the calendar events to IndexedDB:', e);
+            });
+        }
+        // A refresh (the server's state came in) re-reads the notes but not
+        // the events: the ones in hand are as new as there are.
+        const inHand = cached === null &&
+            (calendarEventsFresh || calendarEventsCache.notes.length > 0 || calendarEventsCache.lines.length > 0);
+        if (cached === null && !inHand) loadKeptCalendarEvents();
+        calendarEventsCache = isEventsCopy(cached)
             ? { notes: cached.notes, lines: cached.lines }
+            : inHand
+            ? calendarEventsCache
             : {
                 // Nothing fetched on this device yet: show what the notes held
                 // until the first sync, which starts as the calendar opens.
@@ -1229,18 +1463,13 @@ const PlanModule = (function () {
             setTimeout(() => { if (isInitialized) showCalendarItems(notes, lines); }, 1000);
             return;
         }
-        const events = window.PlanCalendarEvents;
         rememberCalendarCustomisations();
         calendarEventsCache = { notes, lines };
-        try {
-            localStorage.setItem(CALENDAR_EVENTS_KEY, JSON.stringify(calendarEventsCache));
-        } catch (e) {
+        calendarEventsFresh = true;
+        keepCalendarEvents(CALENDAR_EVENTS_KEY, calendarEventsCache).catch(e => {
             console.warn('[Plan] Could not keep calendar events on this device:', e);
-        }
-        freeformNotes = events.splitCalendarItems(freeformNotes).own
-            .concat(events.applyCustomisations(notes, calendarCustomisations.notes));
-        freeformLines = events.splitCalendarItems(freeformLines).own
-            .concat(events.applyCustomisations(lines, calendarCustomisations.lines));
+        });
+        putCalendarEventsOnScreen(notes, lines);
         renderFreeformElements();
     }
 
@@ -1283,6 +1512,79 @@ const PlanModule = (function () {
         if (undoStack.length > MAX_HISTORY) undoStack.shift();
         redoStack = [];
         updateUndoRedoButtons();
+    }
+
+    /*
+     * Besides the notes and lines, two things can be moved here that belong
+     * to the host: a Roadmap band (its dates) and a task (its due day). Each
+     * move is one step of the same history, holding where the thing was, so
+     * Cmd+Z and the undo button take it back as they do a note.
+     */
+    function pushMoveHistory(step) {
+        undoStack.push(step);
+        if (undoStack.length > MAX_HISTORY) undoStack.shift();
+        redoStack = [];
+        updateUndoRedoButtons();
+    }
+
+    /** The step that puts back what is there now, for the other stack. */
+    function stepForNow(step) {
+        if (step.kind === 'roadmap') {
+            const data = roadmapData();
+            const item = data && data.items.find(i => i.id === step.id);
+            return item ? { kind: 'roadmap', id: step.id, start: item.start, end: item.end } : null;
+        }
+        if (step.kind === 'task') {
+            const task = calendarTasks.find(t => t.id === step.id);
+            return task ? { kind: 'task', id: step.id, dateKey: task.dateKey } : null;
+        }
+        return { notes: JSON.parse(JSON.stringify(freeformNotes)), lines: JSON.parse(JSON.stringify(freeformLines)) };
+    }
+
+    function applyStep(step) {
+        if (step.kind === 'roadmap') {
+            const data = roadmapData();
+            const item = data && data.items.find(i => i.id === step.id);
+            if (!item) return;
+            item.start = step.start;
+            item.end = step.end;
+            renderRoadmapBands();
+            if (changeRoadmapItem) {
+                Promise.resolve()
+                    .then(() => changeRoadmapItem(item.id, item.start, item.end))
+                    .catch(err => console.warn('[Plan] Could not save the roadmap entry:', err));
+            }
+            return;
+        }
+        if (step.kind === 'task') {
+            const task = calendarTasks.find(t => t.id === step.id);
+            if (!task) return;
+            moveTaskToDay(task, step.dateKey);
+            renderFreeformElements();
+            return;
+        }
+        freeformNotes = step.notes;
+        freeformLines = step.lines;
+        saveData();
+        renderFreeformElements();
+    }
+
+    /** Undo or redo one step. False when there was none. */
+    function stepHistory(direction) {
+        const from = direction === 'undo' ? undoStack : redoStack;
+        const to = direction === 'undo' ? redoStack : undoStack;
+        // A band or task gone since (deleted on its own tab) is passed over.
+        while (from.length) {
+            const step = from.pop();
+            const back = stepForNow(step);
+            if (!back) continue;
+            to.push(back);
+            applyStep(step);
+            updateUndoRedoButtons();
+            return true;
+        }
+        updateUndoRedoButtons();
+        return false;
     }
 
     function updateUndoRedoButtons() {
@@ -2866,6 +3168,7 @@ const PlanModule = (function () {
     }
 
     function renderWeekView(grid) {
+        weekRoadmapEntries = weekRoadmapItems();
         const { first, last } = weekRenderedRange();
         const carousel = first < 0;
         grid.classList.toggle('plan-week-grid--carousel', carousel);
@@ -2882,6 +3185,8 @@ const PlanModule = (function () {
         // A new gutter starts with no shift. Once it is drawn, the observer
         // lines it up (it reports once on observe) and again on each resize.
         requestAnimationFrame(watchWeekHourGutter);
+        requestAnimationFrame(drawWeekRoadmap);
+        requestAnimationFrame(updateWeekHeadCover);
     }
 
     // ---- Sideways scroll, a day at a time ----
@@ -2970,6 +3275,9 @@ const PlanModule = (function () {
         headerSpacer.className = 'plan-week-time-gutter-header';
         gutter.appendChild(headerSpacer);
 
+        const roadmapSpacer = weekRoadmapSpace();
+        if (roadmapSpacer) gutter.appendChild(roadmapSpacer);
+
         const dayGoalsSpacer = document.createElement('div');
         dayGoalsSpacer.className = 'plan-week-day-goals-spacer';
         gutter.appendChild(dayGoalsSpacer);
@@ -3012,6 +3320,9 @@ const PlanModule = (function () {
             <span class="plan-week-day-name" title="${weekdayFullLabels[weekday]} ${date.getDate()}">${weekdayLabels[weekday]} ${date.getDate()}</span>
         `;
         col.appendChild(header);
+
+        const roadmapSpace = weekRoadmapSpace();
+        if (roadmapSpace) col.appendChild(roadmapSpace);
 
         const dayGoals = document.createElement('div');
         dayGoals.className = 'plan-week-day-goals';
@@ -3189,6 +3500,11 @@ const PlanModule = (function () {
         return el;
     }
 
+    /** An event's padding and border, and one line of its name: plan.css. */
+    const WEEK_EVENT_CHROME = 10;
+    const WEEK_EVENT_CHROME_SHORT = 4;
+    const WEEK_EVENT_LINE = 15;
+
     function createWeekTimedEvent(note) {
         const el = document.createElement('div');
         el.className =
@@ -3226,9 +3542,22 @@ const PlanModule = (function () {
         const titleEl = document.createElement('span');
         titleEl.className = 'plan-week-event-title';
         titleEl.textContent = noteDisplayText(note);
+        /*
+          The name first, as Apple's calendar has it, in as many whole lines
+          as the event's height holds. The time comes after it, and only
+          when a line is left: plan.css wraps it into a second column, out
+          of sight, when it does not fit. Cut mid-line, a short event showed
+          its time and the top halves of a word.
+        */
+        // Under a line and its padding (a quarter of an hour): less padding,
+        // so the one line shows whole.
+        const short = height < WEEK_EVENT_CHROME + WEEK_EVENT_LINE;
+        if (short) el.classList.add('plan-week-event--short');
+        const room = height - (short ? WEEK_EVENT_CHROME_SHORT : WEEK_EVENT_CHROME);
+        titleEl.style.webkitLineClamp = String(Math.max(1, Math.floor(room / WEEK_EVENT_LINE)));
 
-        el.appendChild(timeEl);
         el.appendChild(titleEl);
+        el.appendChild(timeEl);
 
         if (note.source === 'calendar') {
             el.title = `From calendar: ${note.calendarName || 'Unknown'}`;
@@ -3238,6 +3567,8 @@ const PlanModule = (function () {
     }
 
     function renderWeekFreeformElements(isVisible) {
+        // The strip's bars are placed by the days' sizes, which a resize changes.
+        drawWeekRoadmap();
         weekNotesVisible = isVisible;
         freeformNotes.filter(isVisible).forEach((note) => {
             if (!note.dateKey || !isDateInVisibleWeek(note.dateKey)) return;
@@ -3532,10 +3863,16 @@ const PlanModule = (function () {
             const visibleCalendarIds = calendars.filter(c => c.visible !== false).map(c => c.id);
 
             // Filter function to check if item should be shown
+            const view = calendarViewMode === 'week' ? 'week' : 'months';
             const isVisible = item => {
                 if (item.source !== 'calendar') return true; // User items always visible
-                const visible = visibleCalendarIds.includes(item.calendarId);
-                return visible;
+                if (!visibleCalendarIds.includes(item.calendarId)) return false;
+                // An unmarked event, read because one view shows all: shown
+                // only in a view that does. One kept from before the mark was
+                // recorded has none, and shows.
+                if (item.marked !== false) return true;
+                const cal = calendars.find(c => c.id === item.calendarId);
+                return Boolean(cal) && calendarShowsAll(cal, view);
             };
 
             if (calendarViewMode === 'week') {
@@ -3691,6 +4028,426 @@ const PlanModule = (function () {
             if (expanded) row.classList.add('is-expanded');
             noteArea.appendChild(wrap);
         });
+
+        renderRoadmapBands();
+    }
+
+    /*
+     * The Roadmap's planner entries as bands down the month columns. The host
+     * puts them on window.PlanRoadmap, as
+     *   { items: [{ id, title, category, start, end }], categories: [{ id, label }] }
+     * with ISO dates. The Planner's Calendar tab does; the To-Do app does not,
+     * and then nothing is drawn and the header has no Roadmap chip.
+     *
+     * A band sits against the column's right edge on its days. Bands that
+     * overlap stack leftwards, the one that began first at the edge. The days
+     * under a band keep room for it, so their notes stop short of it. Which
+     * bands show is kept on this device.
+     */
+    const ROADMAP_BAND_WIDTH = 18;
+    const ROADMAP_BAND_GAP = 3;
+    const ROADMAP_BAND_EDGE = 4;
+    const ROADMAP_EYE_OPEN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+    const ROADMAP_EYE_SHUT_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
+
+    function roadmapData() {
+        const data = window.PlanRoadmap;
+        return data && Array.isArray(data.items) ? data : null;
+    }
+
+    function roadmapViewKey() {
+        return STORAGE_PREFIX + 'roadmap-bands';
+    }
+
+    /** { shown, hidden: [category ids] }. Shown, all of it, until changed. */
+    function readRoadmapView() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(roadmapViewKey()) || 'null');
+            return {
+                shown: !saved || saved.shown !== false,
+                hidden: saved && Array.isArray(saved.hidden) ? saved.hidden : [],
+            };
+        } catch (e) {
+            return { shown: true, hidden: [] };
+        }
+    }
+
+    function writeRoadmapView(view) {
+        try {
+            localStorage.setItem(roadmapViewKey(), JSON.stringify(view));
+        } catch (e) {
+            /* private window: the choice lasts this visit */
+        }
+    }
+
+    function renderRoadmapBands() {
+        container.querySelectorAll('.plan-roadmap-band').forEach(el => el.remove());
+        container.querySelectorAll('.plan-day-row.has-roadmap-band').forEach(row => {
+            row.classList.remove('has-roadmap-band');
+            row.style.removeProperty('--plan-band-room');
+        });
+        const data = roadmapData();
+        if (!data || calendarViewMode === 'week') return;
+        const view = readRoadmapView();
+        if (!view.shown) return;
+        const labels = new Map((data.categories || []).map(c => [c.id, c.label]));
+        const items = data.items.filter(item =>
+            item && item.start && item.end && !view.hidden.includes(item.category));
+        if (!items.length) return;
+
+        container.querySelectorAll('.plan-month-column').forEach(col => {
+            const days = col.querySelector('.plan-days-container');
+            const rows = Array.from(col.querySelectorAll('.plan-day-row[data-date-key]'));
+            if (!days || !rows.length) return;
+            const first = rows[0].dataset.dateKey;
+            const last = rows[rows.length - 1].dataset.dateKey;
+
+            const bands = items
+                .filter(item => item.start <= last && item.end >= first)
+                .map(item => {
+                    const end = item.end < item.start ? item.start : item.end;
+                    return {
+                        item,
+                        from: item.start < first ? first : item.start,
+                        to: end > last ? last : end,
+                    };
+                })
+                .sort((a, b) => a.item.start.localeCompare(b.item.start) ||
+                    b.item.end.localeCompare(a.item.end));
+
+            // Lane 0 is at the edge. A band takes the first lane free on its first day.
+            const laneEnds = [];
+            bands.forEach(band => {
+                let lane = laneEnds.findIndex(end => end < band.from);
+                if (lane === -1) {
+                    lane = laneEnds.length;
+                    laneEnds.push(band.to);
+                } else {
+                    laneEnds[lane] = band.to;
+                }
+                band.lane = lane;
+            });
+
+            // Room first, then measure: the room can change a row's height.
+            const room = new Map();
+            bands.forEach(band => {
+                rows.forEach(row => {
+                    const key = row.dataset.dateKey;
+                    if (key < band.from || key > band.to) return;
+                    room.set(row, Math.max(room.get(row) || 0, band.lane + 1));
+                });
+            });
+            room.forEach((lanes, row) => {
+                row.classList.add('has-roadmap-band');
+                row.style.setProperty('--plan-band-room',
+                    `${ROADMAP_BAND_EDGE + lanes * (ROADMAP_BAND_WIDTH + ROADMAP_BAND_GAP)}px`);
+            });
+
+            const byKey = new Map(rows.map(row => [row.dataset.dateKey, row]));
+            bands.forEach(band => {
+                const top = byKey.get(band.from);
+                const bottom = byKey.get(band.to);
+                if (!top || !bottom) return;
+                const item = band.item;
+                const el = document.createElement('div');
+                el.className = 'plan-roadmap-band' +
+                    (item.category ? ` is-${item.category}` : '') +
+                    (item.start < first ? ' continues-before' : '') +
+                    (item.end > last ? ' continues-after' : '');
+                const startY = top.offsetTop;
+                el.style.top = `${startY + 2}px`;
+                el.style.height = `${bottom.offsetTop + bottom.offsetHeight - startY - 4}px`;
+                el.style.width = `${ROADMAP_BAND_WIDTH}px`;
+                el.style.right = `${ROADMAP_BAND_EDGE + band.lane * (ROADMAP_BAND_WIDTH + ROADMAP_BAND_GAP)}px`;
+                const category = labels.get(item.category);
+                el.title = `${item.title}${category ? ` · ${category}` : ''}\n${item.start} – ${item.end}`;
+                const label = document.createElement('span');
+                label.className = 'plan-roadmap-band-label';
+                label.textContent = item.title;
+                el.appendChild(label);
+                if (changeRoadmapItem) makeRoadmapBandMovable(el, item, {
+                    // Its ends can be taken only where they are: not where
+                    // the band runs on from, or into, another month. A
+                    // milestone is one day, and only moves.
+                    start: item.kind !== 'milestone' && item.start >= first,
+                    end: item.kind !== 'milestone' && item.end <= last,
+                });
+                days.appendChild(el);
+            });
+        });
+    }
+
+    /*
+     * The Roadmap in the week view. Days run across here, so the bands turn
+     * horizontal: a strip under the day headers, one lane per entry, as the
+     * all-day row is a strip of its own. Each day keeps room for the strip
+     * (and the hours column too, so the hours stay level), and the bars are
+     * drawn over that room on one layer, across the gaps between the days.
+     * An entry that began before the week starts with "‹"; one that goes on
+     * after it ends with "until <day> ›".
+     */
+    const WEEK_ROADMAP_LANE = 22;
+    const WEEK_ROADMAP_GAP = 3;
+    let weekRoadmapEntries = [];
+
+    function weekVisibleKeys() {
+        return { from: formatDateKey(weekStartDate), to: formatDateKey(addDays(weekStartDate, 6)) };
+    }
+
+    /** The entries the week shows, in start order, the switch and categories obeyed. */
+    function weekRoadmapItems() {
+        const data = roadmapData();
+        if (!data) return [];
+        const view = readRoadmapView();
+        if (!view.shown) return [];
+        const { from, to } = weekVisibleKeys();
+        return data.items
+            .filter(item => item && item.start && item.end && !view.hidden.includes(item.category))
+            .filter(item => item.start <= to && item.end >= from)
+            .sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end));
+    }
+
+    /** The room for the strip, the same in every day and in the hours column. */
+    function weekRoadmapSpace() {
+        if (!weekRoadmapEntries.length) return null;
+        const space = document.createElement('div');
+        space.className = 'plan-week-roadmap-space';
+        space.style.height = `${weekRoadmapEntries.length * (WEEK_ROADMAP_LANE + WEEK_ROADMAP_GAP) + WEEK_ROADMAP_GAP * 2}px`;
+        return space;
+    }
+
+    function shortDay(dateKey) {
+        const d = parseDateKey(dateKey);
+        const months = currentLanguage === 'da' ? MONTHS_DA : MONTHS_EN;
+        return `${months[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+    }
+
+    /*
+      The days' heads stay at the top while the hours scroll (plan.css), and
+      the roadmap bars are drawn on a layer above the days. So the layer is
+      cut where the stuck heads cover the grid, and a bar goes under a head
+      rather than over it. In the calendar's own pixels: scrollTop and
+      offsetTop are both unzoomed (see rectOf).
+    */
+    function updateWeekHeadCover() {
+        if (!container || calendarViewMode !== 'week' || !calendarContainer) return;
+        const grid = container.querySelector('.plan-calendar-grid.plan-week-grid');
+        const head = grid && grid.querySelector('.plan-week-day-column .plan-week-day-header');
+        if (!grid || !head) return;
+        const cover = Math.max(0, calendarContainer.scrollTop - grid.offsetTop + head.offsetHeight);
+        grid.style.setProperty('--week-head-cover', `${cover}px`);
+        // The hour labels too: one would stand beside the heads, level with
+        // the days' names. Cut in the labels' own place in the grid.
+        const hours = grid.querySelector('.plan-week-time-hours');
+        if (hours) {
+            const from = hours.offsetTop + (hours.offsetParent === grid ? 0 : hours.offsetParent.offsetTop);
+            const cut = Math.max(0, cover - from);
+            hours.style.clipPath = cut ? `inset(${cut}px -40px 0 -40px)` : '';
+        }
+    }
+
+    function drawWeekRoadmap() {
+        if (!container || calendarViewMode !== 'week') return;
+        const grid = container.querySelector('.plan-calendar-grid.plan-week-grid');
+        if (!grid) return;
+        grid.querySelectorAll('.plan-week-roadmap-layer').forEach(el => el.remove());
+        if (!weekRoadmapEntries.length) return;
+        const { from, to } = weekVisibleKeys();
+        const columnFor = key => grid.querySelector(`.plan-week-day-column[data-date-key="${key}"]`);
+        // The layer moves with the days when they scroll sideways (see the
+        // carousel rules in plan.css): one day's width, then the scroll.
+        grid.style.setProperty('--week-step', `${weekColumnStep()}px`);
+        const layer = document.createElement('div');
+        layer.className = 'plan-week-roadmap-layer';
+        const data = roadmapData();
+        const labels = new Map(((data && data.categories) || []).map(c => [c.id, c.label]));
+        weekRoadmapEntries.forEach((item, lane) => {
+            const startKey = item.start < from ? from : item.start;
+            const endKey = item.end > to ? to : item.end;
+            const first = columnFor(startKey);
+            const last = columnFor(endKey);
+            const space = first && first.querySelector('.plan-week-roadmap-space');
+            if (!first || !last || !space) return;
+            const bar = document.createElement('div');
+            bar.className = 'plan-week-roadmap-bar' + (item.category ? ` is-${item.category}` : '') +
+                (item.start < from ? ' continues-before' : '') + (item.end > to ? ' continues-after' : '');
+            bar.style.left = `${first.offsetLeft}px`;
+            bar.style.width = `${last.offsetLeft + last.offsetWidth - first.offsetLeft}px`;
+            bar.style.top = `${first.offsetTop + space.offsetTop + WEEK_ROADMAP_GAP + lane * (WEEK_ROADMAP_LANE + WEEK_ROADMAP_GAP)}px`;
+            bar.style.height = `${WEEK_ROADMAP_LANE}px`;
+            const category = labels.get(item.category);
+            bar.title = `${item.title}${category ? ` · ${category}` : ''}\n${item.start} – ${item.end}`;
+            const name = document.createElement('span');
+            name.className = 'plan-week-roadmap-name';
+            name.textContent = `${item.start < from ? '‹ ' : ''}${item.title}`;
+            bar.appendChild(name);
+            if (item.end > to) {
+                const until = document.createElement('span');
+                until.className = 'plan-week-roadmap-until';
+                until.textContent = `${currentLanguage === 'da' ? 'til' : 'until'} ${shortDay(item.end)} ›`;
+                bar.appendChild(until);
+            }
+            layer.appendChild(bar);
+        });
+        grid.appendChild(layer);
+    }
+
+    /*
+     * A band can be taken and moved to other days, the length kept, or taken
+     * by its top or bottom end to start or end on another day. It follows
+     * the pointer day by day, across months too, and is saved when let go.
+     */
+    function roadmapDayAtPoint(x, y) {
+        for (const el of document.elementsFromPoint(x, y)) {
+            const row = el.closest && el.closest('.plan-day-row[data-date-key]');
+            if (row && container && container.contains(row)) return row.dataset.dateKey;
+        }
+        return null;
+    }
+
+    function roadmapDaysBetween(fromKey, toKey) {
+        return Math.round((parseDateKey(toKey) - parseDateKey(fromKey)) / 86400000);
+    }
+
+    function makeRoadmapBandMovable(el, item, ends) {
+        el.classList.add('is-movable');
+        const edge = which => {
+            const handle = document.createElement('div');
+            handle.className = `plan-roadmap-band-edge is-${which}`;
+            handle.title = which === 'start' ? 'Drag to start on another day' : 'Drag to end on another day';
+            handle.addEventListener('pointerdown', e => startRoadmapDrag(e, item, which));
+            el.appendChild(handle);
+        };
+        if (ends.start) edge('start');
+        if (ends.end) edge('end');
+        el.addEventListener('pointerdown', e => startRoadmapDrag(e, item, 'move'));
+        // The calendar's own handlers must not take these as a press on the days.
+        ['mousedown', 'click', 'dblclick'].forEach(type =>
+            el.addEventListener(type, e => e.stopPropagation()));
+    }
+
+    function startRoadmapDrag(e, item, mode) {
+        if (e.button !== 0 || isDragInProgress) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const original = { start: item.start, end: item.end };
+        const grabKey = roadmapDayAtPoint(e.clientX, e.clientY) || item.start;
+        isDragInProgress = true;
+        container.classList.add('is-dragging-roadmap', `roadmap-drag-${mode}`);
+
+        const onMove = ev => {
+            const key = roadmapDayAtPoint(ev.clientX, ev.clientY);
+            if (!key) return;
+            let start = original.start;
+            let end = original.end;
+            if (mode === 'move') {
+                const shift = roadmapDaysBetween(grabKey, key);
+                start = formatDateKey(addDays(parseDateKey(original.start), shift));
+                end = formatDateKey(addDays(parseDateKey(original.end), shift));
+            } else if (mode === 'start') {
+                start = key > original.end ? original.end : key;
+            } else {
+                end = key < original.start ? original.start : key;
+            }
+            if (start === item.start && end === item.end) return;
+            item.start = start;
+            item.end = end;
+            renderRoadmapBands();
+        };
+        const onUp = () => {
+            document.removeEventListener('pointermove', onMove, true);
+            document.removeEventListener('pointerup', onUp, true);
+            document.removeEventListener('pointercancel', onUp, true);
+            isDragInProgress = false;
+            if (container) container.classList.remove('is-dragging-roadmap', `roadmap-drag-${mode}`);
+            if (item.start === original.start && item.end === original.end) return;
+            pushMoveHistory({ kind: 'roadmap', id: item.id, start: original.start, end: original.end });
+            Promise.resolve()
+                .then(() => changeRoadmapItem(item.id, item.start, item.end))
+                .catch(err => {
+                    console.warn('[Plan] Could not save the roadmap entry:', err);
+                    item.start = original.start;
+                    item.end = original.end;
+                    if (container) renderRoadmapBands();
+                });
+        };
+        document.addEventListener('pointermove', onMove, true);
+        document.addEventListener('pointerup', onUp, true);
+        document.addEventListener('pointercancel', onUp, true);
+    }
+
+    /**
+     * New Roadmap entries from the host (it changed on the Roadmap tab, or a
+     * band was saved). Not while a band is being dragged: the drag's own
+     * dates win until it is let go.
+     */
+    function setRoadmap(data) {
+        if (isDragInProgress) return;
+        window.PlanRoadmap = data;
+        if (!container) return;
+        renderRoadmapToggle();
+        if (calendarViewMode === 'week') {
+            renderCalendar();
+            renderFreeformElements();
+            return;
+        }
+        renderRoadmapBands();
+    }
+
+    /**
+     * The Roadmap chip at the end of the calendar chips: its eye or its name
+     * shows or hides every band, and a category in it shows or hides that one.
+     */
+    function renderRoadmapToggle() {
+        if (!container) return;
+        const toggles = container.querySelector('.plan-calendar-toggles');
+        if (!toggles) return;
+        toggles.querySelectorAll('.plan-roadmap-toggle').forEach(el => el.remove());
+        const data = roadmapData();
+        if (!data) return;
+        const view = readRoadmapView();
+        const change = next => {
+            writeRoadmapView(next);
+            renderRoadmapToggle();
+            // The week keeps room for the strip: more or fewer lanes is a new week.
+            if (calendarViewMode === 'week') renderCalendar();
+            renderFreeformElements();
+        };
+
+        const chip = document.createElement('div');
+        chip.className = 'plan-calendar-toggle plan-roadmap-toggle' + (view.shown ? '' : ' hidden-cal');
+        const all = document.createElement('button');
+        all.type = 'button';
+        all.className = 'plan-roadmap-all';
+        all.title = view.shown ? 'Hide the Roadmap from the calendar' : 'Show the Roadmap on the calendar';
+        all.innerHTML = `<span class="calendar-toggle-eye">${view.shown ? ROADMAP_EYE_OPEN_SVG : ROADMAP_EYE_SHUT_SVG}</span><span class="calendar-name">Roadmap</span>`;
+        all.addEventListener('click', e => {
+            e.stopPropagation();
+            change({ ...view, shown: !view.shown });
+        });
+        chip.appendChild(all);
+
+        (data.categories || []).forEach(category => {
+            const off = view.hidden.includes(category.id);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `plan-roadmap-cat is-${category.id}` + (off ? ' is-off' : '');
+            button.disabled = !view.shown;
+            button.title = off ? `Show ${category.label}` : `Hide ${category.label}`;
+            button.setAttribute('aria-pressed', String(!off));
+            const dot = document.createElement('span');
+            dot.className = 'plan-roadmap-dot';
+            button.append(dot, document.createTextNode(category.label));
+            button.addEventListener('click', e => {
+                e.stopPropagation();
+                const hidden = off
+                    ? view.hidden.filter(id => id !== category.id)
+                    : [...view.hidden, category.id];
+                change({ ...view, hidden });
+            });
+            chip.appendChild(button);
+        });
+        toggles.appendChild(chip);
     }
 
     function createDayMoreButton(dateKey, count, expanded) {
@@ -5024,6 +5781,7 @@ const PlanModule = (function () {
         setupDayMenu();
         setupWeekPress();
 
+        calendarContainer.addEventListener('scroll', updateWeekHeadCover, { passive: true });
         calendarContainer.addEventListener('scroll', () => {
             clearTimeout(scrollTimeout);
             // Canvas scrolls with content naturally, no need to re-render lines
@@ -6119,21 +6877,8 @@ const PlanModule = (function () {
 
     function setupToolbarListeners() {
         // Undo/Redo
-        container.querySelector('.plan-undo-btn').addEventListener('click', () => {
-            if (undoStack.length === 0) return;
-            redoStack.push({ notes: JSON.parse(JSON.stringify(freeformNotes)), lines: JSON.parse(JSON.stringify(freeformLines)) });
-            const prev = undoStack.pop();
-            freeformNotes = prev.notes; freeformLines = prev.lines;
-            saveData(); renderFreeformElements(); updateUndoRedoButtons();
-        });
-
-        container.querySelector('.plan-redo-btn').addEventListener('click', () => {
-            if (redoStack.length === 0) return;
-            undoStack.push({ notes: JSON.parse(JSON.stringify(freeformNotes)), lines: JSON.parse(JSON.stringify(freeformLines)) });
-            const next = redoStack.pop();
-            freeformNotes = next.notes; freeformLines = next.lines;
-            saveData(); renderFreeformElements(); updateUndoRedoButtons();
-        });
+        container.querySelector('.plan-undo-btn').addEventListener('click', () => stepHistory('undo'));
+        container.querySelector('.plan-redo-btn').addEventListener('click', () => stepHistory('redo'));
 
         // Calendar sync buttons
         const calendarSyncAllBtn = container.querySelector('.plan-calendar-sync-all-btn');
@@ -6315,41 +7060,78 @@ const PlanModule = (function () {
             return item;
         }
 
-        /** Marked only, or everything the calendar holds. */
-        function calendarShowRow(cal) {
-            const row = document.createElement('div');
-            row.className = 'plan-calendar-item-show';
-            const label = document.createElement('span');
-            label.className = 'plan-calendar-item-show-label';
-            label.textContent = 'Show';
-            row.appendChild(label);
+        /**
+         * Show only the events marked for the board ("dh-to-do" at the
+         * start of the description), or everything the calendar holds, in
+         * one view ('months' or 'week'). The settings list and a chip's
+         * menu both set it here.
+         */
+        function setCalendarShowAll(cal, view, showAll) {
+            if (calendarShowsAll(cal, view) === showAll) return;
+            const readAllBefore = calendarReadsAll(cal);
+            if (view === 'week') {
+                cal.showAllWeek = showAll;
+            } else {
+                // The week follows the months until it is set, so it is set
+                // now, to what it shows: a change to the months is not one
+                // to the week.
+                if (typeof cal.showAllWeek !== 'boolean') cal.showAllWeek = calendarShowsAll(cal, 'week');
+                cal.showAll = showAll;
+            }
+            localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+            renderCalendarList();
+            if (calendarReadsAll(cal) !== readAllBefore) {
+                // Asked again, because which events are read has changed
+                // and the answer is not in what we kept.
+                void syncAllCalendars({ force: true });
+            } else {
+                // The events are in hand; only what this view shows changed.
+                renderFreeformElements();
+            }
+        }
 
+        /** "Marked dh-to-do" or "All events", for one view. */
+        function calendarShowChoices(cal, view, onChange) {
             const group = document.createElement('div');
             group.className = 'plan-calendar-show-group';
             const options = [
-                { words: 'Marked only', showAll: false },
-                { words: 'All events', showAll: true },
+                { words: 'Marked dh-to-do', showAll: false, title: 'Only events whose description starts with dh-to-do' },
+                { words: 'All events', showAll: true, title: 'Every event in this calendar' },
             ];
-            for (const option of options) {
+            const buttons = options.map(option => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'plan-calendar-show-choice';
                 button.textContent = option.words;
-                if (Boolean(cal.showAll) === option.showAll) button.classList.add('is-on');
+                button.title = option.title;
+                button.classList.toggle('is-on', calendarShowsAll(cal, view) === option.showAll);
                 button.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    if (Boolean(cal.showAll) === option.showAll) return;
-                    cal.showAll = option.showAll;
-                    localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
-                    renderCalendarList();
-                    // Asked again, because which events belong on the board
-                    // has changed and the answer is not in what we kept.
-                    void syncAllCalendars({ force: true });
+                    const live = liveCalendar(cal);
+                    setCalendarShowAll(live, view, option.showAll);
+                    buttons.forEach((b, i) =>
+                        b.classList.toggle('is-on', options[i].showAll === option.showAll));
+                    if (onChange) onChange();
                 });
                 group.appendChild(button);
+                return button;
+            });
+            return group;
+        }
+
+        /** Marked only, or everything the calendar holds, per view. */
+        function calendarShowRow(cal) {
+            const box = document.createElement('div');
+            for (const [view, words] of [['months', 'Months'], ['week', 'Week']]) {
+                const row = document.createElement('div');
+                row.className = 'plan-calendar-item-show';
+                const label = document.createElement('span');
+                label.className = 'plan-calendar-item-show-label';
+                label.textContent = words;
+                row.append(label, calendarShowChoices(cal, view));
+                box.appendChild(row);
             }
-            row.appendChild(group);
-            return row;
+            return box;
         }
 
         /** A square of the calendar's colour, which brings the palette out. */
@@ -6694,6 +7476,9 @@ const PlanModule = (function () {
             if (calendarStatus) calendarStatus.textContent = 'Syncing...';
 
             try {
+                // The copy kept on this device first, if it is still being
+                // read: it is what a calendar that cannot be read keeps.
+                await calendarEventsLoading;
                 // The events stay on screen while the new ones are fetched; the
                 // reader's changes to them are put back on the new copies.
                 const previousNotes = calendarEventsCache.notes;
@@ -6742,7 +7527,13 @@ const PlanModule = (function () {
                                     name: c.name,
                                     accountEmail: c.accountEmail,
                                     calendarId: c.calendarId,
+                                    // The host leaves out what is not marked
+                                    // unless the calendar shows all.
+                                    showAll: calendarReadsAll(c),
                                 })),
+                            // A press of sync asks for every window whole;
+                            // otherwise the host reads what changed.
+                            { full: Boolean(options && options.force) },
                         );
                         feeds = {};
                         for (const feed of answered || []) {
@@ -6758,7 +7549,7 @@ const PlanModule = (function () {
 
                 for (const cal of calendars) {
                     try {
-                        const reading = { ...(options || {}), markedOnly: cal.showAll !== true };
+                        const reading = { ...(options || {}), markedOnly: !calendarReadsAll(cal) };
                         const result = cal.kind === 'google'
                             ? readPickedCalendar(CalendarSync, cal, feeds, reading)
                             : await CalendarSync.syncCalendar(cal.url, reading);
@@ -6947,6 +7738,94 @@ const PlanModule = (function () {
             }
         }
 
+        let closeCalendarChipMenu = null;
+
+        /**
+         * The calendar as it is now. A sync reads the list from storage
+         * again, which makes new objects, so a menu or a rename that began
+         * before it would write to a copy nobody keeps.
+         */
+        function liveCalendar(cal) {
+            return calendars.find(c => c.id === cal.id) || cal;
+        }
+        let calendarChipMenuFor = null;
+
+        /** A chip's menu: rename the calendar, and which of its events show. */
+        function openCalendarChipMenu(chip, cal, startRename) {
+            const wasOpenHere = closeCalendarChipMenu && calendarChipMenuFor === cal.id;
+            if (closeCalendarChipMenu) closeCalendarChipMenu();
+            // A second press on the same name puts the menu away.
+            if (wasOpenHere) return;
+
+            const menu = document.createElement('div');
+            menu.className = 'plan-calendar-chip-menu';
+            menu.setAttribute('role', 'menu');
+
+            const rename = document.createElement('button');
+            rename.type = 'button';
+            rename.className = 'plan-calendar-chip-menu-item';
+            rename.setAttribute('role', 'menuitem');
+            rename.textContent = 'Rename…';
+            rename.addEventListener('click', e => {
+                e.stopPropagation();
+                closeCalendarChipMenu();
+                startRename();
+            });
+
+            // Which events show, in each view: the week has room for a
+            // whole diary when the months do not.
+            const showRows = [['months', 'Months'], ['week', 'Week']].map(([view, words]) => {
+                const label = document.createElement('div');
+                label.className = 'plan-calendar-chip-menu-label';
+                label.textContent = `Show in ${words}`;
+                return [label, calendarShowChoices(cal, view)];
+            }).flat();
+
+            menu.append(rename, ...showRows);
+            /*
+              On the calendar itself, not in the chip: in a narrow window
+              the chips are a row that scrolls sideways, and a menu inside
+              it was cut off at the row's edge. Placed under the chip by
+              measuring, in unzoomed pixels (see rectOf), and kept inside
+              the calendar.
+            */
+            container.appendChild(menu);
+            const place = () => {
+                const parent = menu.offsetParent || container;
+                const from = rectOf(parent);
+                const at = rectOf(chip);
+                const edges = rectOf(container);
+                const width = rectOf(menu).width;
+                const margin = 8;
+                let left = Math.min(at.left, edges.right - margin - width);
+                left = Math.max(left, edges.left + margin);
+                menu.style.left = `${left - from.left + parent.scrollLeft}px`;
+                menu.style.top = `${at.bottom + 6 - from.top + parent.scrollTop}px`;
+            };
+            place();
+
+            const onOutside = ev => {
+                if (!menu.contains(ev.target)) closeCalendarChipMenu();
+            };
+            const onKey = ev => {
+                if (ev.key === 'Escape') closeCalendarChipMenu();
+            };
+            calendarChipMenuFor = cal.id;
+            closeCalendarChipMenu = () => {
+                menu.remove();
+                calendarChipMenuFor = null;
+                document.removeEventListener('click', onOutside, true);
+                document.removeEventListener('keydown', onKey, true);
+                closeCalendarChipMenu = null;
+            };
+            // After this click, so it does not close the menu it opened.
+            setTimeout(() => {
+                if (!menu.isConnected) return;
+                document.addEventListener('click', onOutside, true);
+                document.addEventListener('keydown', onKey, true);
+            }, 0);
+        }
+
         // Render calendar visibility toggles in the navbar as chips with eye icons
         function renderCalendarToggles() {
             // With no calendar there is nothing to sync, so the sync button goes.
@@ -6967,7 +7846,8 @@ const PlanModule = (function () {
 
                 const chip = document.createElement('div');
                 chip.className = 'plan-calendar-toggle' + (cal.visible ? '' : ' hidden-cal');
-                chip.title = 'Toggle visibility • Click name to rename';
+                chip.dataset.calId = cal.id;
+                chip.title = 'Eye: show or hide • Name: rename, and which events show';
 
                 // Build chip inner HTML
                 const calColor = cal.fontColor || '#4a90e2';
@@ -7126,12 +8006,23 @@ const PlanModule = (function () {
                     }, 0);
                 });
 
-                // Click to rename calendar
+                /*
+                  The name opens a menu: rename, and which events show.
+                  It used to start a rename on a click, and "show every
+                  event, or only the marked ones" was only in the
+                  calendars settings, far from the week it changes.
+                */
                 const nameSpan = chip.querySelector('.calendar-name');
-                nameSpan.addEventListener('click', e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-
+                /*
+                  The chip on screen when the rename starts, which need not
+                  be this one: a choice made in the menu syncs the
+                  calendars, and that draws the chips again.
+                */
+                const startRename = () => {
+                    const nameSpan =
+                        togglesContainer.querySelector(
+                            `.plan-calendar-toggle[data-cal-id="${CSS.escape(String(cal.id))}"] .calendar-name`
+                        ) || chip.querySelector('.calendar-name');
                     nameSpan.contentEditable = 'true';
                     nameSpan.focus();
 
@@ -7145,11 +8036,12 @@ const PlanModule = (function () {
                     const finishEdit = () => {
                         nameSpan.contentEditable = 'false';
                         const newName = nameSpan.textContent.trim();
-                        if (newName && newName !== cal.name) {
-                            cal.name = newName;
+                        const target = liveCalendar(cal);
+                        if (newName && newName !== target.name) {
+                            target.name = newName;
                             localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
                         } else {
-                            nameSpan.textContent = cal.name || 'Calendar';
+                            nameSpan.textContent = target.name || 'Calendar';
                         }
                     };
 
@@ -7163,10 +8055,17 @@ const PlanModule = (function () {
                             nameSpan.blur();
                         }
                     });
+                };
+                nameSpan.addEventListener('click', e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (nameSpan.isContentEditable) return;
+                    openCalendarChipMenu(chip, cal, startRename);
                 });
 
                 togglesContainer.appendChild(chip);
             });
+            renderRoadmapToggle();
         }
 
         // Formatting buttons (bold, italic, underline)
@@ -7343,26 +8242,17 @@ const PlanModule = (function () {
         onCalendarKeyDown = e => {
             if (!isInitialized) return;
             // Undo: Cmd/Ctrl + Z
-            if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
                 e.preventDefault();
-                if (undoStack.length > 0) {
-                    redoStack.push({ notes: JSON.parse(JSON.stringify(freeformNotes)), lines: JSON.parse(JSON.stringify(freeformLines)) });
-                    const prev = undoStack.pop();
-                    freeformNotes = prev.notes; freeformLines = prev.lines;
-                    saveData(); renderFreeformElements(); updateUndoRedoButtons();
-                }
+                stepHistory('undo');
                 return;
             }
 
-            // Redo: Cmd/Ctrl + Shift + Z
-            if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+            // Redo: Cmd/Ctrl + Shift + Z. With Shift held the key comes as
+            // a capital Z, which the old check never matched.
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && e.shiftKey) {
                 e.preventDefault();
-                if (redoStack.length > 0) {
-                    undoStack.push({ notes: JSON.parse(JSON.stringify(freeformNotes)), lines: JSON.parse(JSON.stringify(freeformLines)) });
-                    const next = redoStack.pop();
-                    freeformNotes = next.notes; freeformLines = next.lines;
-                    saveData(); renderFreeformElements(); updateUndoRedoButtons();
-                }
+                stepHistory('redo');
                 return;
             }
 
@@ -7407,10 +8297,11 @@ const PlanModule = (function () {
         updateViewModeButtons();
         renderCalendar();
         renderWeekGoals();
+        renderRoadmapToggle();
         scheduleLayoutRefresh();
     }
 
-    return { init, destroy, refresh, setPeople, setTasks, setTaskTime, setLinkableTasks, setMe };
+    return { init, destroy, refresh, setPeople, setTasks, setTaskTime, setLinkableTasks, setMe, setRoadmap };
 })();
 
 // Expose globally so React (or other host code) can call init/destroy.

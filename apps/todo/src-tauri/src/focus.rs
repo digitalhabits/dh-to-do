@@ -89,6 +89,15 @@ const FOCUS_POPOUT_WIDTH: f64 = 320.0;
 /// Default height — matches redd-do (focus-bar is 48px; a little chrome room).
 const FOCUS_POPOUT_HEIGHT: f64 = 56.0;
 const FOCUS_POPOUT_MIN_HEIGHT: f64 = 48.0;
+/// The widest the mini panel can ever be. With no limit, a drag or a
+/// double-click (macOS zooms a window there) made it fill the screen: a
+/// one-line bar on a screen of empty yellow. Once the page has measured
+/// itself, `set_focus_popout_height` holds it to its content, inside this.
+const FOCUS_POPOUT_MAX_WIDTH: f64 = 720.0;
+/// The narrowest: room for the bar's buttons.
+const FOCUS_POPOUT_MIN_WIDTH: f64 = 280.0;
+/// How much taller than its content the panel can be drawn out.
+const FOCUS_POPOUT_ROOM: f64 = 80.0;
 
 #[derive(Clone, Copy)]
 struct FocusWindowGeometry {
@@ -174,16 +183,14 @@ pub fn any_focus_window_showing(app: &tauri::AppHandle) -> bool {
   })
 }
 
-/// Bring the main window back when it was closed with a focus window open.
-/// A main window that is on screen is left as it is, so a tick in the focus
-/// window does not pull the app to the front over other work.
-#[cfg(target_os = "macos")]
+/// Bring the main window to the front: shown again when it was closed with
+/// a focus window open, and focused when it was behind other windows. A
+/// tick or the home button ends the focus, so the app comes back to it
+/// (changed 2026-10-04; until then a main window on screen was left behind).
 pub fn show_main_window(app: &tauri::AppHandle) {
   if let Some(main_window) = app.get_webview_window("main") {
-    if !main_window.is_visible().unwrap_or(true) {
-      let _ = main_window.show();
-      let _ = main_window.set_focus();
-    }
+    let _ = main_window.show();
+    let _ = main_window.set_focus();
   }
 }
 
@@ -334,6 +341,10 @@ pub fn open_focus_popout(
         280.0,
         FOCUS_POPOUT_MIN_HEIGHT,
       )));
+      let _ = existing.set_max_size(Some(tauri::LogicalSize::new(
+        FOCUS_POPOUT_MAX_WIDTH,
+        FOCUS_POPOUT_MAX_HEIGHT,
+      )));
       // Reload the local page so it remounts with a fresh timer session.
       let _ = existing.navigate(resolve_app_url(&existing, url)?);
       return Ok(());
@@ -355,6 +366,7 @@ pub fn open_focus_popout(
           .resizable(true)
           .inner_size(FOCUS_POPOUT_WIDTH, FOCUS_POPOUT_HEIGHT)
           .min_inner_size(280.0, FOCUS_POPOUT_MIN_HEIGHT)
+          .max_inner_size(FOCUS_POPOUT_MAX_WIDTH, FOCUS_POPOUT_MAX_HEIGHT)
       })
       .build()
       .map_err(|e| e.to_string())?;
@@ -394,6 +406,8 @@ pub fn open_focus_popout(
     if let Some(existing) = app.get_webview_window(&label) {
       let _ = existing.navigate(resolve_app_url(&existing, url)?);
       let _ = existing.show();
+      #[cfg(target_os = "linux")]
+      let _ = existing.set_always_on_top(true);
       let _ = existing.set_focus();
       return Ok(());
     }
@@ -409,6 +423,7 @@ pub fn open_focus_popout(
       })
       .inner_size(FOCUS_POPOUT_WIDTH, FOCUS_POPOUT_HEIGHT)
       .min_inner_size(280.0, FOCUS_POPOUT_MIN_HEIGHT)
+          .max_inner_size(FOCUS_POPOUT_MAX_WIDTH, FOCUS_POPOUT_MAX_HEIGHT)
       .resizable(true)
       .decorations(false)
       .always_on_top(true)
@@ -421,6 +436,10 @@ pub fn open_focus_popout(
     }
     #[cfg(windows)]
     round_without_border(&popout);
+    // Some Linux window managers drop "keep above" when it is asked before
+    // the window is on screen. Ask again once it is.
+    #[cfg(target_os = "linux")]
+    let _ = popout.set_always_on_top(true);
     let _ = popout.set_focus();
     let _ = window;
     Ok(())
@@ -550,7 +569,11 @@ pub fn exit_fullscreen_focus(
   if let Ok(mut store) = fullscreen_handoff_geometry().lock() {
     if let Some(geometry) = store.remove(&task_id) {
       if let Some(restored) = app.get_webview_window(&focus_popout_label(&task_id)) {
-        let _ = restored.set_size(tauri::LogicalSize::new(geometry.width, geometry.height));
+        // A size kept from before the limits stays inside them.
+        let _ = restored.set_size(tauri::LogicalSize::new(
+          geometry.width.min(FOCUS_POPOUT_MAX_WIDTH),
+          geometry.height.min(FOCUS_POPOUT_MAX_HEIGHT),
+        ));
         let _ = restored.set_position(tauri::LogicalPosition::new(geometry.x, geometry.y));
       }
     }
@@ -614,15 +637,16 @@ pub fn close_focus_popout(
   {
     hide_focus_panel(&app, window.label());
     let hidden = window.hide().map_err(|e| e.to_string());
-    // The tick and the home button come through here. With the main window
-    // closed, this was the last thing on screen: the app comes back.
+    // The tick and the home button come through here: the focus is over,
+    // and the main window comes to the front (shown again if it was closed).
     show_main_window(&app);
     hidden
   }
   #[cfg(not(target_os = "macos"))]
   {
-    let _ = app;
-    window.close().map_err(|e| e.to_string())
+    let closed = window.close().map_err(|e| e.to_string());
+    show_main_window(&app);
+    closed
   }
 }
 
@@ -672,13 +696,16 @@ const FOCUS_POPOUT_MAX_HEIGHT: f64 = 640.0;
 /// window to grow before either one is visible. redd-do does the same over
 /// `set-focus-window-height`.
 ///
-/// The panel measures itself and calls this for its own window. Width stays
-/// as it is, so a window the user resized keeps that width. The planner
+/// The panel measures itself and calls this for its own window, with the
+/// width its bar wants (`max_width`). That size is also the largest the
+/// window may be: a window the user narrowed keeps its width, and one
+/// dragged wider than its content goes back to it. The planner
 /// shell carries the same command against its hosted page.
 #[tauri::command]
 pub fn set_focus_popout_height(
   window: tauri::WebviewWindow,
   height: f64,
+  max_width: Option<f64>,
 ) -> Result<(), String> {
   if !window.label().starts_with("focus") {
     return Err("Not a focus popout window".into());
@@ -692,14 +719,33 @@ pub fn set_focus_popout_height(
     .map_err(|e| e.to_string())?
     .to_logical::<f64>(scale);
   let target = height.clamp(FOCUS_POPOUT_MIN_HEIGHT, FOCUS_POPOUT_MAX_HEIGHT);
-  if (size.height - target).abs() < 1.0 {
+  // The widest is what the bar holds on one line, plus air (the page
+  // measures it). A page from before sends none: then the cap.
+  let max_width = max_width
+    .filter(|w| w.is_finite())
+    .map(|w| w.clamp(FOCUS_POPOUT_MIN_WIDTH, FOCUS_POPOUT_MAX_WIDTH))
+    .unwrap_or(FOCUS_POPOUT_MAX_WIDTH);
+  // The height: never less than the content, so nothing is cut off, and
+  // up to FOCUS_POPOUT_ROOM more, so the window can be drawn out a little
+  // both ways. A height the reader chose inside that is kept; when the
+  // content grows past it (the task list opens), the window grows.
+  // The limits first, so the size set below is inside them.
+  let tallest = (target + FOCUS_POPOUT_ROOM).min(FOCUS_POPOUT_MAX_HEIGHT.max(target));
+  let _ = window.set_min_size(Some(tauri::LogicalSize::new(FOCUS_POPOUT_MIN_WIDTH, target)));
+  let _ = window.set_max_size(Some(tauri::LogicalSize::new(max_width, tallest)));
+  let width = size.width.clamp(FOCUS_POPOUT_MIN_WIDTH, max_width);
+  let height = size.height.clamp(target, tallest);
+  if (size.height - height).abs() < 1.0 && (size.width - width).abs() < 1.0 {
     return Ok(());
   }
   log::info!(
-    "focus panel: fit {}px -> {target}px",
-    size.height.round()
+    "focus panel: fit {}x{}px -> {}x{}px",
+    size.width.round(),
+    size.height.round(),
+    width.round(),
+    height.round()
   );
   window
-    .set_size(tauri::LogicalSize::new(size.width, target))
+    .set_size(tauri::LogicalSize::new(width, height))
     .map_err(|e| e.to_string())
 }

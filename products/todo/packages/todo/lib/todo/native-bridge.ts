@@ -248,13 +248,15 @@ export async function notifyFocusPanelTask(taskId: string): Promise<void> {
  * which is the bar alone, so an open task list or the notes editor falls
  * outside it and stays invisible. The panel measures its own content and
  * calls this, which is what redd-do does with `set-focus-window-height`.
- * A no-op outside the shell or in an older shell build.
+ * `maxWidth`, the bar's natural width, is the widest the window may be
+ * made; the height is its tallest. A no-op outside the shell or in an
+ * older shell build (which also ignores `maxWidth`).
  */
-export async function setFocusPopoutHeight(height: number): Promise<void> {
+export async function setFocusPopoutHeight(height: number, maxWidth?: number): Promise<void> {
   const invoke = tauriInvoke();
   if (!invoke) return;
   try {
-    await invoke("set_focus_popout_height", { height });
+    await invoke("set_focus_popout_height", { height, maxWidth: maxWidth ?? null });
   } catch {
     /* older shell: no command */
   }

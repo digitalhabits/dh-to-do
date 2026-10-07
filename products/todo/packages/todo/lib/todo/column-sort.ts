@@ -112,8 +112,13 @@ export function columnComparator(
   };
 }
 
-/** Each column's order, kept per device. */
-export const COLUMN_SORT_KEY = "redd-plan-todo-column-sort";
+/**
+ * Each column's order, kept per device. A new key on 2026-10-04: until
+ * then a drop from another column put a sorted column on Manual, so most
+ * kept Manuals were not picked. The old key is not read, and every column
+ * starts again on due date.
+ */
+export const COLUMN_SORT_KEY = "redd-plan-todo-column-sort-2";
 
 /** The words key of each order's name, in the header and in its menu. */
 export const SORT_LABEL_KEY: Record<ColumnSort, string> = {

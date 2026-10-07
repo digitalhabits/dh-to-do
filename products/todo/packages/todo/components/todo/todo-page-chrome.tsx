@@ -337,6 +337,7 @@ export function renderListSearch(m: TodoPageModel) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        {m.boardExtension?.renderToolbar({ allTab: m.isAllListsView }) ?? null}
       </div>
       {view === "favourites" && searchGroups.length > 0 ? (
         <div className="list-search-tabs" role="tablist">

@@ -121,6 +121,7 @@ export function composerDueChip(c: AddTaskComposerModel) {
     draft,
     patch,
     closeDue,
+    calendarEnabled,
   } = c;
   return (
     <span className="composer-chip-wrap">
@@ -163,6 +164,14 @@ export function composerDueChip(c: AddTaskComposerModel) {
           closeDue();
         }}
         onClose={closeDue}
+        calendar={
+          calendarEnabled
+            ? {
+                checked: draft.showOnCalendar,
+                onChange: (checked) => patch({ showOnCalendar: checked }),
+              }
+            : undefined
+        }
         lang={lang}
         t={t}
       />

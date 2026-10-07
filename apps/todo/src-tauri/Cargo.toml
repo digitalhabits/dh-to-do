@@ -1,7 +1,7 @@
 [package]
 name = "digital-habits-todo"
-version = "3.1.1"
-description = "Digital Habits: To-Do — standalone Mac/Windows app (SQLite via Tauri)"
+version = "3.1.3"
+description = "Digital Habits: To-Do — standalone Mac, Windows and Linux app (SQLite via Tauri)"
 authors = ["Digital Habits"]
 license = ""
 repository = "https://github.com/digitalhabits/dh-to-do"
@@ -43,6 +43,11 @@ tempfile = "3"
 # as Tauri's, so the window handle types match.
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+
+# The AppImage updates itself (linux_update.rs). The stores update the
+# Mac and Windows apps.
+[target.'cfg(target_os = "linux")'.dependencies]
+tauri-plugin-updater = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

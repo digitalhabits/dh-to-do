@@ -702,7 +702,6 @@
 }
 
 .today-session-check {
-  /* Over the controls: see the note on them. */
   position: relative;
   z-index: 1;
   width: 22px;
@@ -796,30 +795,6 @@ textarea.today-session-edit.today-session-now-title {
   color: var(--danger);
 }
 
-/* Every control on a row waits for the pointer — a session is for the work,
-   not for its marks, so even an avatar or a duration stays out of the way
-   until the row is under the pointer. */
-/* In the running block the cluster joins the row of buttons when the pointer
-   is on the block, and takes no room at all until then. Held in the flow it
-   would push Done, Skip, Pause and the clock off centre, and those four are
-   what the row is for. */
-.today-session-controls.is-inline {
-  display: none;
-  position: static;
-  transform: none;
-  /* In the flow, the cap above would squeeze the cluster for nothing: it
-     is there to keep an overlaid box off the tick. */
-  max-width: none;
-  padding-left: 0;
-  background: transparent;
-}
-
-.today-session-now:hover .today-session-controls.is-inline {
-  display: flex;
-  opacity: 1;
-  pointer-events: auto;
-}
-
 /* What a task carries sits at the far end of its row and holds that place.
    The controls come over it when the pointer arrives, so nothing shifts. */
 .today-session-marks {
@@ -836,41 +811,62 @@ textarea.today-session-edit.today-session-now-title {
 }
 
 /*
- * The controls come over the row from the right, which is room the marks
- * were holding. On a narrow pane there is not that much room: four buttons
- * are as wide as the row, and what they came over was the tick — the first
- * answer the row offers, and the one thing on it that must never be hidden.
- *
- * So the box is as wide as its buttons and no wider, and it may not reach
- * further left than where the words start — the row's padding, the tick and
- * the gap. Held open from there to the far edge instead, it painted the
- * row's own colour over the whole line, and a task went blank under the
- * pointer: the words were still there, behind a box the width of the row.
+ * A waiting task wears .task-item, as the task in hand does, for the board
+ * card's corner pill and row of chips and their hover rules. Not the board
+ * card's look: the row keeps its own. Its tick, words and marks are one
+ * line inside it, and the chips come under that line.
  */
-.today-session-controls {
-  position: absolute;
-  right: 18px;
-  max-width: calc(100% - 54px - 18px);
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding-left: 10px;
-  border-radius: 10px;
-  /* The row's own colour, so what it covers does not show through. */
-  background: var(--task-bg);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
+.todo-shell .today-session-task.task-item,
+.todo-shell .today-session-task.task-item:hover {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: none;
+  transform: none;
+  cursor: grab;
 }
 
-.today-session-task:hover .today-session-controls,
-.today-session-controls:focus-within,
-/* Except the focus button, while its window stands open. */
-.today-session-controls:has(.today-session-focus.is-open) {
+.todo-shell .today-session-task.task-item.is-dragging {
+  cursor: grabbing;
+}
+
+.today-session-task-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/*
+ * Who, when and which list: on the board a card shows them at rest. In
+ * the session they wait for the pointer (or the caret, or an open menu of
+ * theirs), under the words and under Skip and the clock, so at rest a
+ * task is its name and its time. They open downwards rather than appear,
+ * so the rows under them move and do not jump.
+ */
+.todo-shell .today-session .task-item > .task-meta-row {
+  min-height: 0;
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.18s ease, margin-top 0.18s ease, opacity 0.18s ease;
+}
+
+.todo-shell .today-session .task-item:is(:hover, :focus-within, .has-open-menu) > .task-meta-row {
+  max-height: 40px;
+  margin-top: 8px;
   opacity: 1;
-  pointer-events: auto;
+  overflow: visible;
+}
+
+/* Under the tick's line, the chips start where the words do: the tick and
+   the gap, 22 + 14. */
+.todo-shell .today-session-task.task-item > .task-meta-row {
+  padding-left: 36px;
 }
 
 .today-session-duration {
@@ -882,9 +878,6 @@ textarea.today-session-edit.today-session-now-title {
   cursor: pointer;
 }
 
-
-
-.today-session-controls,
 .today-session-check {
   cursor: default;
 }
@@ -1029,6 +1022,41 @@ textarea.today-session-edit.today-session-now-title {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
+/* The task in hand wears .task-item as well, so the board card's controls
+   (the corner pill, the row of chips) and their hover rules apply to it
+   as they do on the board. Not the board card's look, which this card has
+   its own of: no lift on hover, no edge, no gap under it. */
+.todo-shell .today-session-now.is-card.task-item,
+.todo-shell .today-session-now.is-card.task-item:hover {
+  margin: 0;
+  border: none;
+  padding: 16px 18px;
+  gap: 10px;
+  border-radius: 14px;
+  background: var(--task-bg);
+  box-shadow: 0 10px 24px rgba(30, 45, 62, 0.1);
+  transform: none;
+  cursor: auto;
+}
+
+.todo-shell[data-theme="dark"] .today-session-now.is-card.task-item,
+.todo-shell[data-theme="dark"] .today-session-now.is-card.task-item:hover {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* The chips start under the name, as on the board, in line with Skip
+   below them (the same 40px in, and less on a narrow pane). */
+.todo-shell .today-session .today-session-now.task-item > .task-meta-row {
+  /* The card's own 10px gap is above it; at rest that gap would hang
+     there with nothing under it. */
+  margin-top: -10px;
+  padding-left: 40px;
+}
+
+.todo-shell .today-session .today-session-now.task-item:is(:hover, :focus-within, .has-open-menu) > .task-meta-row {
+  margin-top: 0;
+}
+
 /* The box and the name, in the row the queue's own rows are built as —
    the same 14px between them, so the two boxes line up down the card. */
 .today-session-now-head {
@@ -1117,15 +1145,28 @@ textarea.today-session-edit.today-session-now-title {
     padding-left: 0;
   }
 
-  .today-session-task {
+  .todo-shell .today-session .today-session-now.task-item > .task-meta-row {
+    padding-left: 0;
+  }
+
+  .today-session-task,
+  .todo-shell .today-session-task.task-item,
+  .todo-shell .today-session-task.task-item:hover {
     gap: 10px;
     padding: 12px;
   }
 
-  /* Still the row's padding, plus the tick, plus the gap — 12 + 22 + 10. */
-  .today-session-controls {
-    right: 12px;
-    max-width: calc(100% - 44px - 12px);
+  .todo-shell .today-session-task.task-item,
+  .todo-shell .today-session-task.task-item:hover {
+    gap: 0;
+  }
+
+  .today-session-task-line {
+    gap: 10px;
+  }
+
+  .todo-shell .today-session-task.task-item > .task-meta-row {
+    padding-left: 32px;
   }
 
   .today-session-add {
@@ -1161,4 +1202,171 @@ textarea.today-session-edit.today-session-now-title {
 
 .today-session-subtasks-toggle:hover {
   color: var(--text-primary);
+}
+
+/* The Done row: DONE, a rule, the period switcher, the count, the time and
+   the sparkline, and Clear all at the far end. See done-summary.tsx. */
+/* The heading takes the row, so a press anywhere on it folds the pile. With
+   the summary beside it, it is as wide as its word. */
+.todo-shell .done-heading-row:has(.done-overview) .done-heading {
+  flex: 0 0 auto;
+  padding-right: 0;
+}
+
+.todo-shell .done-overview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-left: 12px;
+  margin-left: 4px;
+  border-left: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.todo-shell .done-heading-row .delete-all-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.todo-shell .done-period-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--border-color);
+}
+
+.todo-shell .done-period-switch button {
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 1px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.todo-shell .done-period-switch button:hover {
+  color: var(--text-primary);
+}
+
+.todo-shell .done-period-switch button.is-on {
+  background: var(--input-surface);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(30, 45, 62, 0.08);
+}
+
+.todo-shell .done-overview-count {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.todo-shell .done-overview-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 18px of bars, the end labels under them. */
+.todo-shell .done-sparkline {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.todo-shell .done-spark-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+}
+
+.todo-shell .done-spark-bar {
+  width: 5px;
+  flex-shrink: 0;
+  border-radius: 1.5px;
+  background: var(--text-tertiary);
+  opacity: 0.55;
+}
+
+.todo-shell .done-spark-bars.is-dense {
+  gap: 1px;
+}
+
+.todo-shell .done-spark-bars.is-dense .done-spark-bar {
+  width: 3px;
+}
+
+/* A part with nothing done is a dot; a part still to come, a faint stub. */
+.todo-shell .done-spark-bar.is-empty {
+  height: 3px;
+  opacity: 0.35;
+}
+
+.todo-shell .done-spark-bar.is-future {
+  height: 2px;
+  opacity: 0.18;
+}
+
+.todo-shell .done-spark-bar.is-current {
+  background: var(--accent-primary);
+  opacity: 1;
+}
+
+.todo-shell .done-spark-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  line-height: 10px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* In a narrow pile the sparkline goes first, then the time. */
+@container (max-width: 520px) {
+  .todo-shell .done-sparkline {
+    display: none;
+  }
+}
+
+/* The pile's top edge: drag it up for a taller pile. */
+.todo-shell .done-resizer {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  touch-action: none;
+}
+
+.todo-shell .done-container:hover > .done-resizer,
+.todo-shell .done-resizer.dragging {
+  opacity: 1;
+}
+
+.todo-shell .done-resizer::after {
+  content: "";
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-color-strong, rgba(30, 45, 62, 0.2));
+}
+
+/* The Done pile is what the narrow-pile rule above measures. */
+.todo-shell .done-container {
+  container-type: inline-size;
 }

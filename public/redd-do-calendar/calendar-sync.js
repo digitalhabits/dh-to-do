@@ -345,14 +345,18 @@ const CalendarSync = (function () {
         const lines = [];
 
         for (const event of filteredEvents) {
+            // Whether the event carries the marker. A calendar can show every
+            // event in one view and only the marked ones in the other, so the
+            // board reads them all and each view looks at this.
+            const marked = PLAN_MARKER.test((event.description || '').trim());
             // Multi-day all-day events become lines
             if (event.isAllDay && event.durationDays > 1) {
                 const line = convertToLine(event);
-                if (line) lines.push(line);
+                if (line) lines.push({ ...line, marked });
             } else {
                 // Single-day or timed events become notes
                 const note = convertToNote(event);
-                if (note) notes.push(note);
+                if (note) notes.push({ ...note, marked });
             }
         }
 

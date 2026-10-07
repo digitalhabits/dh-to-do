@@ -27,6 +27,7 @@ import {
 } from "@/lib/todo/focus-session";
 import { buildFocusSwitcher } from "@/lib/todo/focus-switcher";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
+import { focusBarNaturalWidth } from "@/lib/todo/focus-panel-width";
 import {
   FOCUS_TIMER_ALWAYS_KEY,
   FOCUS_TIMER_PREF_MESSAGE,
@@ -144,6 +145,8 @@ export function TodoFocusPanel({
     () => Date.now() - initialElapsedMs
   );
   const [notesOpen, setNotesOpen] = React.useState(false);
+  /* How many lines of the name the window has room for; null shows all. */
+  const [nameLines, setNameLines] = React.useState<number | null>(null);
   const [notesDraft, setNotesDraft] = React.useState("");
   const [switchOpen, setSwitchOpen] = React.useState(false);
   const [switchQuery, setSwitchQuery] = React.useState("");
@@ -182,6 +185,7 @@ export function TodoFocusPanel({
   /* The window itself, for the Tab walk over its buttons. */
   const shellRef = React.useRef<HTMLDivElement | null>(null);
   const barRef = React.useRef<HTMLDivElement | null>(null);
+  const nameRef = React.useRef<HTMLDivElement | null>(null);
   const switchMenuRef = React.useRef<HTMLDivElement | null>(null);
   const notesRef = React.useRef<HTMLDivElement | null>(null);
   const draggedRef = React.useRef(false);
@@ -710,6 +714,14 @@ export function TodoFocusPanel({
    * opens the panel at the height of the bar, so an open task list or the
    * notes editor draws outside the window and nothing appears to happen.
    * A fullscreen focus window owns the whole screen and needs none of this.
+   *
+   * The height sent is the bar with the name on one line, so the panel
+   * opens as small as it always did. The shell takes it as the least the
+   * window may be, with a little more allowed, and the bar's natural width
+   * (the name on one line, plus air) as the widest. A window with no
+   * largest size could be dragged or zoomed to fill the screen. Drawn
+   * taller, the window shows more lines of the name; drawn narrower, the
+   * name is cut off sooner.
    */
   React.useEffect(() => {
     if (fullscreen) return;
@@ -722,18 +734,40 @@ export function TodoFocusPanel({
       // squeezed still reports what it wants to be.
       const natural = (el: HTMLElement | null) =>
         el ? Math.max(el.offsetHeight, el.scrollHeight) : 0;
-      const bar = barRef.current?.offsetHeight || 48;
       const menu = natural(switchMenuRef.current);
       const notes = natural(notesRef.current);
       const open = menu + notes;
+      const openHeight = open > 0 ? open + FOCUS_PANEL_CONTENT_GAP * 2 : 0;
+      /*
+        The bar asks for the name on one line, as the panel always opened.
+        The shell lets the window be drawn taller than that (and wider, up
+        to the name on one line), and the name shows as many lines as the
+        window has room for. scrollHeight is the whole name, clamped or not.
+      */
+      const bar = barRef.current;
+      const name = nameRef.current;
+      let barHeight = bar?.offsetHeight || 48;
+      if (bar && name) {
+        const barStyle = getComputedStyle(bar);
+        const padding =
+          (Number.parseFloat(barStyle.paddingTop) || 0) +
+          (Number.parseFloat(barStyle.paddingBottom) || 0);
+        const lineHeight = Number.parseFloat(getComputedStyle(name).lineHeight) || 24;
+        const allLines = Math.max(1, Math.round(name.scrollHeight / lineHeight));
+        const room = Math.floor((window.innerHeight - openHeight - padding) / lineHeight);
+        const lines = Math.max(1, room);
+        setNameLines(lines >= allLines ? null : lines);
+        barHeight = Math.max(48, Math.ceil(padding + lineHeight));
+      }
       const target = Math.min(
-        Math.max(
-          bar + (open > 0 ? open + FOCUS_PANEL_CONTENT_GAP * 2 : 0),
-          FOCUS_PANEL_MIN_HEIGHT
-        ),
+        Math.max(barHeight + openHeight, FOCUS_PANEL_MIN_HEIGHT),
         FOCUS_PANEL_MAX_HEIGHT
       );
-      void setFocusPopoutHeight(target);
+      const width =
+        barRef.current && nameRef.current
+          ? focusBarNaturalWidth(barRef.current, nameRef.current)
+          : undefined;
+      void setFocusPopoutHeight(target, width);
     };
 
     // Measure after the browser lays the new panel out, not during render.
@@ -746,15 +780,22 @@ export function TodoFocusPanel({
     */
     const observer =
       typeof ResizeObserver === "function" ? new ResizeObserver(fit) : null;
+    // The bar too: the name wraps when the window narrows, and the bar
+    // grows. A new name changes the width the bar wants.
+    if (barRef.current) observer?.observe(barRef.current);
+    if (nameRef.current) observer?.observe(nameRef.current);
     if (switchMenuRef.current) observer?.observe(switchMenuRef.current);
     if (notesRef.current) observer?.observe(notesRef.current);
+    // A taller window has room for more of the name.
+    window.addEventListener("resize", fit);
 
     return () => {
       stopped = true;
       window.cancelAnimationFrame(frame);
       observer?.disconnect();
+      window.removeEventListener("resize", fit);
     };
-  }, [fullscreen, switchOpen, notesOpen]);
+  }, [fullscreen, switchOpen, notesOpen, displayTitle]);
 
   /**
    * Drag the panel from anywhere on it, which is what redd-do does on macOS.
@@ -832,7 +873,23 @@ export function TodoFocusPanel({
           onClickCapture={swallowClickAfterDrag}
         >
           <div className="focus-bar" ref={barRef}>
-            <div className="focus-task-name">{displayTitle}</div>
+            <div
+              className="focus-task-name"
+              ref={nameRef}
+              title={nameLines ? displayTitle : undefined}
+              style={
+                nameLines && !fullscreen
+                  ? {
+                      display: "-webkit-box",
+                      WebkitBoxOrient: "vertical",
+                      WebkitLineClamp: nameLines,
+                      overflow: "hidden",
+                    }
+                  : undefined
+              }
+            >
+              {displayTitle}
+            </div>
             {showTimer ? (
               <div className={`focus-timer ${overtime ? "overtime" : ""}`}>
                 {timerText}

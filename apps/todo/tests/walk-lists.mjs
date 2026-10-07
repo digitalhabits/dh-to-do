@@ -41,7 +41,10 @@ export async function walkLists(page) {
   const { makeT } = await import("@/lib/todo/i18n");
   const t = makeT("en");
   const { board, call } = page;
-  const lists = () => board.query("SELECT id, name, group_id FROM todo_lists ORDER BY name");
+  // The lists on the board: a deleted list is kept, with its tasks, until
+  // it is brought back from Settings (see the store's deleteTodoList).
+  const lists = () =>
+    board.query("SELECT id, name, group_id FROM todo_lists WHERE deleted_at IS NULL ORDER BY name");
   const listNamed = (name) => lists().find((l) => l.name === name) ?? null;
 
   const kitchen = (await call("/api/todo/lists", "POST", { name: "Kitchen" })).list;

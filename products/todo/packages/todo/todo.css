@@ -5362,11 +5362,13 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell .focus-bar {
     width: 100%;
-    height: 48px;
+    /* At least the one-line bar; taller when the name wraps. */
+    min-height: 48px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 14px;
+    padding: 12px 14px;
     position: relative;
     flex-shrink: 0;
     -webkit-app-region: drag;
@@ -5656,10 +5658,13 @@ html.redd-native-shell .todo-shell .title-bar {
     font-size: 18px;
     font-weight: 400;
     flex: 1;
+    min-width: 0;
     text-align: left;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    /* The whole name, on as many lines as it takes: a cut-off name in the
+       one window meant to keep the task in view hid the task. */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
     margin-right: 8px;
     user-select: none;
     -webkit-user-select: none;

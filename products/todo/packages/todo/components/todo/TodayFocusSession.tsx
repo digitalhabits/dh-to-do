@@ -4,7 +4,6 @@ import * as React from "react";
 import { Pause, Play } from "lucide-react";
 
 import { NotesIcon } from "@/components/todo/task-icons";
-import { TaskAssignMenu, TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
 import { focusTimerShown, formatFocusTime } from "@/lib/todo/focus-time";
 import {
@@ -16,20 +15,16 @@ import {
   waitForElement,
 } from "@/lib/todo/task-celebration";
 import type { makeT } from "@/lib/todo/i18n";
-import type { TodoPerson, TodoTask } from "@/lib/todo/types";
+import type { TodoTask } from "@/lib/todo/types";
 
 /** How often the running task's time is written back, as in the focus panel. */
 const PERSIST_INTERVAL_MS = 30000;
 
 export type TodaySessionHandlers = {
-  /** Pop the task out into the floating focus window, or close that window. */
-  onToggleFocus: (task: TodoTask) => void;
   /** Open or close the board's notes editor for this task. */
   onToggleNotes: (task: TodoTask) => void;
   /** The board's notes editor for this task, or null when it is shut. */
   renderNotes: (task: TodoTask) => React.ReactNode;
-  onToggleAssignee: (taskId: string, personId: string) => void;
-  onEditPeople: () => void;
   /** Minutes the task is expected to take, or null to clear it. */
   onSetDuration: (task: TodoTask, minutes: number | null) => void;
   /** Mark the running task done. The board keeps the record. */
@@ -46,8 +41,6 @@ export type TodaySessionHandlers = {
   onPersistTime: (taskId: string, totalSeconds: number) => void;
   /** Save a new name for the task. */
   onEditText: (task: TodoTask, text: string) => void;
-  /** Open the task as the full-window expanded card, over the session. */
-  onExpand: (task: TodoTask) => void;
   /** Tick a subtask of the task in hand, or take the tick back. */
   onToggleSubtask: (subtask: TodoTask) => void;
   onExit: () => void;
@@ -65,27 +58,22 @@ export function TodayFocusSession({
   tasks,
   t,
   handlers,
-  canPopOut,
-  focusTaskIds,
-  people,
-  assignEnabled = true,
   timerAlways = true,
   subtasksOf,
+  renderChrome,
 }: {
   /** Every task of the session, running order first, done ones included. */
   tasks: TodoTask[];
   /** A task's subtasks, open ones first, as the board orders them. */
   subtasksOf: (taskId: string) => TodoTask[];
+  /**
+   * The board card's controls for this task: the corner pill and the row
+   * under the words (taskCardChrome), so the task in hand has them in the
+   * same places as on the board.
+   */
+  renderChrome: (task: TodoTask) => { utilityPill: React.ReactNode; metaRow: React.ReactNode; anyOpen: boolean };
   t: ReturnType<typeof makeT>;
   handlers: TodaySessionHandlers;
-  /** Only a desktop shell has a window to pop a task into. */
-  canPopOut: boolean;
-  /** Tasks whose floating focus window is open. */
-  focusTaskIds: Set<string>;
-  /** The board's roster, for the assign menu. */
-  people: TodoPerson[];
-  /** Off, a task has no assign button. The setting is in TodoSettingsModal. */
-  assignEnabled?: boolean;
   /** Off: the timer shows only for a task with a duration. */
   timerAlways?: boolean;
 }) {
@@ -424,6 +412,8 @@ export function TodayFocusSession({
     handlersRef.current.onAddTask(text, null);
   }
 
+  const runningChrome = running ? renderChrome(running) : null;
+
   return (
     <div
       className="today-session"
@@ -462,7 +452,9 @@ export function TodayFocusSession({
             be read first. Only while there is one — the cheer at the end of
             a session is a line on the card, not a card of its own.
           */
-          className={`today-session-now${running ? " is-card" : ""}`}
+          className={`today-session-now${running ? " is-card task-item" : ""}${
+            runningChrome?.anyOpen ? " has-open-menu" : ""
+          }`}
           ref={celebrationRef}
         >
           {allDone ? (
@@ -514,6 +506,8 @@ export function TodayFocusSession({
                   </h2>
                 )}
               </div>
+              {/* The board card's corner pill, where the board has it. */}
+              {runningChrome?.utilityPill}
               <div className="today-session-now-actions">
                 {open.length > 1 ? (
                   <button
@@ -536,13 +530,6 @@ export function TodayFocusSession({
                   )}
                   {pausedAt === null ? t("sessionPause") : t("sessionStart")}
                 </button>
-                {running.expectedDurationMinutes != null ? (
-                  <SessionDuration
-                    task={running}
-                    t={t}
-                    handlers={handlersRef}
-                  />
-                ) : null}
                 {focusTimerShown(timerAlways, running.expectedDurationMinutes) ? (
                   <span
                     className={`today-session-timer${overtime ? " overtime" : ""}`}
@@ -550,17 +537,11 @@ export function TodayFocusSession({
                     {timerText}
                   </span>
                 ) : null}
-                <SessionTaskControls
-                  task={running}
-                  t={t}
-                  people={people}
-                  assignEnabled={assignEnabled}
-                  canPopOut={canPopOut}
-                  focusOpen={focusTaskIds.has(running.id)}
-                  handlers={handlersRef}
-                  inline
-                />
               </div>
+              {/* The board card's chips (who, when, which list) come under
+                  Skip and the clock, and only while the pointer is on the
+                  card: at rest the task in hand is its name and its time. */}
+              {runningChrome?.metaRow}
               <SessionSubtasks
                 subtasks={subtasksOf(running.id)}
                 t={t}
@@ -600,15 +581,22 @@ export function TodayFocusSession({
         ) : null}
 
         <div className="today-session-queue" ref={queueRef}>
-          {queued.map((task) => (
+          {queued.map((task) => {
+            const chrome = renderChrome(task);
+            return (
             <React.Fragment key={task.id}>
+              {/* A waiting task wears the board card's controls as the task
+                  in hand does: the pill in the corner and the chips under
+                  the words, both on hover. */}
               <div
-                className={`today-session-task${
+                className={`today-session-task task-item${
                   draggingId === task.id ? " is-dragging" : ""
-                }`}
+                }${chrome.anyOpen ? " has-open-menu" : ""}`}
                 data-task-id={task.id}
                 onPointerDown={(event) => startRowDrag(event, task)}
               >
+                {chrome.utilityPill}
+                <div className="today-session-task-line">
                 <button
                   type="button"
                   className="today-session-check"
@@ -644,8 +632,8 @@ export function TodayFocusSession({
                     {task.text}
                   </span>
                 )}
-                {/* What the task carries, at the end of the row. The controls
-                    come over these when the pointer is on the row. */}
+                {/* What the task carries, at the end of the row. The chips
+                    under it say the same on hover, so these go then. */}
                 <span className="today-session-marks">
                   {task.notesHtml ? (
                     <button
@@ -663,19 +651,13 @@ export function TodayFocusSession({
                     <SessionDuration task={task} t={t} handlers={handlersRef} />
                   ) : null}
                 </span>
-                <SessionTaskControls
-                  task={task}
-                  t={t}
-                  people={people}
-                  assignEnabled={assignEnabled}
-                  canPopOut={canPopOut}
-                  focusOpen={focusTaskIds.has(task.id)}
-                  handlers={handlersRef}
-                />
+                </div>
+                {chrome.metaRow}
               </div>
               {handlersRef.current.renderNotes(task)}
             </React.Fragment>
-          ))}
+            );
+          })}
 
           <input
             ref={addRef}
@@ -805,130 +787,6 @@ function SessionSubtasks({
   );
 }
 
-function SessionTaskControls({
-  task,
-  t,
-  people,
-  assignEnabled,
-  canPopOut,
-  focusOpen,
-  handlers,
-  inline = false,
-}: {
-  task: TodoTask;
-  t: ReturnType<typeof makeT>;
-  people: TodoPerson[];
-  assignEnabled: boolean;
-  canPopOut: boolean;
-  focusOpen: boolean;
-  handlers: React.MutableRefObject<TodaySessionHandlers>;
-  /** In the running block the cluster sits in the flow of the buttons. */
-  inline?: boolean;
-}) {
-  const assignRef = React.useRef<HTMLButtonElement | null>(null);
-  const [assignOpen, setAssignOpen] = React.useState(false);
-  const assignees = people.filter((person) =>
-    task.assigneeIds.includes(person.id)
-  );
-
-  React.useEffect(() => {
-    if (!assignOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (assignRef.current?.contains(event.target as Node)) return;
-      setAssignOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [assignOpen]);
-
-  return (
-    <div
-      className={`today-session-controls${inline ? " is-inline" : ""}`}
-    >
-      <button
-        type="button"
-        className="notes-btn today-session-expand"
-        title={t("expandTask")}
-        aria-label={t("expandTask")}
-        onClick={() => handlers.current.onExpand(task)}
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <polyline points="15 3 21 3 21 9" />
-          <polyline points="9 21 3 21 3 15" />
-          <line x1="21" y1="3" x2="14" y2="10" />
-          <line x1="3" y1="21" x2="10" y2="14" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        className={`notes-btn${task.notesHtml ? " has-notes" : ""}`}
-        title={t("notes")}
-        onClick={() => handlers.current.onToggleNotes(task)}
-      >
-        <NotesIcon />
-      </button>
-
-      <SessionDuration task={task} t={t} handlers={handlers} />
-
-      {assignEnabled ? (
-        <div className="assign-menu-wrap">
-          <button
-            ref={assignRef}
-            type="button"
-            className={`assign-btn${assignees.length ? " has-assignee" : ""}`}
-            title={t("assignPerson")}
-            onClick={() => setAssignOpen((open) => !open)}
-          >
-            {assignees.length ? (
-              <TaskAssigneeStack people={assignees} size={22} />
-            ) : (
-              <SessionPersonIcon />
-            )}
-          </button>
-          <TaskAssignMenu
-            open={assignOpen}
-            anchorEl={assignOpen ? assignRef.current : null}
-            people={people}
-            assigneeIds={task.assigneeIds}
-            t={t}
-            onToggle={(personId) =>
-              handlers.current.onToggleAssignee(task.id, personId)
-            }
-            onEditPeople={() => {
-              setAssignOpen(false);
-              handlers.current.onEditPeople();
-            }}
-            onClose={() => setAssignOpen(false)}
-          />
-        </div>
-      ) : null}
-
-      {canPopOut ? (
-        <button
-          type="button"
-          className={`focus-btn today-session-focus${
-            focusOpen ? " active-focus is-open" : ""
-          }`}
-          title={focusOpen ? t("exitFocusMode") : t("focusMode")}
-          onClick={() => handlers.current.onToggleFocus(task)}
-        >
-          <FocusRingIcon />
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 /**
  * The minutes a task is expected to take. A task that carries one says so at
  * all times, as a board card does. A task that carries none offers the clock
@@ -1003,25 +861,6 @@ function SessionClockIcon() {
       <path d="M16 19h6" />
       <path d="M19 16v6" />
       <path d="M21.92 13.267a10 10 0 1 0-8.653 8.653" />
-    </svg>
-  );
-}
-
-function SessionPersonIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
-/** The board's focus mark, so the two buttons read as the same thing. */
-function FocusRingIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="4" />
     </svg>
   );
 }

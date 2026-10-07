@@ -1,5 +1,6 @@
 "use client";
 
+import type { DeletedTodoList } from "@/lib/todo/store";
 import * as React from "react";
 import { Activity, Columns4, FolderTree, Map as MapIcon, SquareKanban, Timer, User } from "lucide-react";
 import { toast } from "sonner";
@@ -162,6 +163,8 @@ export function TodoSettingsModal({
   onGroupsEnabledChange,
   planEnabled,
   onPlanEnabledChange,
+  loadDeletedLists,
+  onRestoreList,
 }: {
   t: (key: string) => string;
   lang: TodoLang;
@@ -187,6 +190,9 @@ export function TodoSettingsModal({
   onGroupsEnabledChange: (enabled: boolean) => void;
   planEnabled: boolean;
   onPlanEnabledChange: (enabled: boolean) => void;
+  /** Deleted lists, kept with their tasks; and bringing one back. */
+  loadDeletedLists?: () => Promise<DeletedTodoList[]>;
+  onRestoreList?: (id: string) => Promise<void>;
 }) {
   const [langOpen, setLangOpen] = React.useState(false);
   const [remindersInfoOpen, setRemindersInfoOpen] = React.useState(false);
@@ -717,6 +723,10 @@ export function TodoSettingsModal({
                 </div>
               </div>
             </section>
+
+            {loadDeletedLists && onRestoreList ? (
+              <DeletedListsSection t={t} load={loadDeletedLists} restore={onRestoreList} />
+            ) : null}
           </div>
         </div>
 
@@ -727,5 +737,74 @@ export function TodoSettingsModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Lists that were deleted, with what they still hold, and a way back for
+ * each: a deleted list keeps its tasks (store.deleteTodoList).
+ */
+function DeletedListsSection({
+  t,
+  load,
+  restore,
+}: {
+  t: (key: string) => string;
+  load: () => Promise<DeletedTodoList[]>;
+  restore: (id: string) => Promise<void>;
+}) {
+  const [lists, setLists] = React.useState<DeletedTodoList[] | null>(null);
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    load().then(setLists).catch(() => setLists([]));
+  }, [load]);
+  return (
+    <section className="settings-section">
+      <h4 className="settings-section-heading">{t("deletedLists")}</h4>
+      <div className="settings-group">
+        <div className="settings-row">
+          <div className="settings-row-copy">
+            <span className="settings-row-hint">{t("deletedListsHint")}</span>
+          </div>
+        </div>
+        {lists === null ? null : lists.length === 0 ? (
+          <div className="settings-row">
+            <span className="settings-row-hint">{t("deletedListsNone")}</span>
+          </div>
+        ) : (
+          lists.map((list) => (
+            <div className="settings-row" key={list.id}>
+              <div className="settings-row-copy">
+                <span className="settings-row-label">{list.name}</span>
+                <span className="settings-row-hint">
+                  {new Date(list.deletedAt).toLocaleDateString()} ·{" "}
+                  {t("deletedListsCounts")
+                    .replace("{open}", String(list.openCount))
+                    .replace("{done}", String(list.doneCount))}
+                </span>
+              </div>
+              <div className="settings-row-control">
+                <button
+                  type="button"
+                  className="settings-blocklists-io-btn"
+                  disabled={busyId !== null}
+                  onClick={async () => {
+                    setBusyId(list.id);
+                    try {
+                      await restore(list.id);
+                      setLists((current) => (current ?? []).filter((l) => l.id !== list.id));
+                    } finally {
+                      setBusyId(null);
+                    }
+                  }}
+                >
+                  {t("restoreList")}
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
   );
 }

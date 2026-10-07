@@ -38,7 +38,7 @@ const COPY: Record<TodoLang, Record<string, string>> = {
     org: "Centre for Digital Habits",
     orgUrl: "https://digitalhabits.org",
     footer:
-      "is a not-for-profit creating digital focus tools in collaboration with researchers at the universities of Oxford, Copenhagen and Maastricht.",
+      "is a not-for-profit creating digital focus tools in collaboration with researchers at the universities of Oxford (UK), Copenhagen (DK), Maastricht (NL), and Santa Clara (US).",
     source: "View the source code on GitHub",
   },
   da: {
@@ -57,7 +57,7 @@ const COPY: Record<TodoLang, Record<string, string>> = {
     org: "Center for Digitale Vaner",
     orgUrl: "https://digitalevaner.dk",
     footer:
-      "er en non-profit, der bygger digitale fokusværktøjer i samarbejde med forskere ved universiteterne i Oxford, København og Maastricht.",
+      "er en non-profit, der bygger digitale fokusværktøjer i samarbejde med forskere ved universiteterne i Oxford (UK), København (DK), Maastricht (NL) og Santa Clara (US).",
     source: "Se kildekoden på GitHub",
   },
 };
@@ -185,7 +185,9 @@ export function WelcomeScreen({ alwaysShow = false }: { alwaysShow?: boolean }) 
                 >
                   {t.org}
                 </a>{" "}
-                {t.footer}{" "}
+                {t.footer}
+              </p>
+              <p className="welcome-footer-line">
                 <a
                   href={SOURCE_URL}
                   target="_blank"

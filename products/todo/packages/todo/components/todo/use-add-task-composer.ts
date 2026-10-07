@@ -32,6 +32,11 @@ export type AddTaskComposerProps = {
   onEditPeople: () => void;
   /** Off, the row has no assign chip. The setting is in TodoSettingsModal. */
   assignEnabled?: boolean;
+  /**
+   * On, the due-day picker offers "Show on the Calendar", as a task's own
+   * picker does. It follows the Calendar View setting.
+   */
+  calendarEnabled?: boolean;
   /** The lists the chip can pick from. */
   lists: TodoList[];
   /** The list the tab is on, or null on the All tab. */
@@ -66,6 +71,7 @@ export function useAddTaskComposer({
   people,
   onEditPeople,
   assignEnabled = true,
+  calendarEnabled = false,
   lists,
   defaultList,
   lang,
@@ -340,6 +346,7 @@ export function useAddTaskComposer({
     people,
     onEditPeople,
     assignEnabled,
+    calendarEnabled,
     lists,
     defaultList,
     lang,

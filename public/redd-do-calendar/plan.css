@@ -639,22 +639,33 @@
     background: var(--plan-panel-bg);
     border: 1px solid var(--plan-border-color);
     border-radius: 12px;
-    overflow: hidden;
+    /* Clip, not hidden: a hidden overflow is a scroller of its own, and a
+       head inside it could not stick to the calendar's scroll. */
+    overflow: clip;
+    /* The head's fill, under its own colour: see .plan-week-day-header. */
+    --plan-week-head-fill: var(--plan-panel-bg);
     box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04);
 }
 
 #plan-mode .plan-week-day-column.weekend {
     background: var(--plan-panel-bg-soft);
+    --plan-week-head-fill: var(--plan-panel-bg-soft);
 }
 
 [data-theme="dark"] #plan-mode .plan-week-day-column.weekend {
     background: rgba(255, 255, 255, 0.04);
+    --plan-week-head-fill: rgba(255, 255, 255, 0.04);
 }
 
 #plan-mode .plan-week-day-column.weekend .plan-week-day-name {
     color: var(--plan-text-muted);
 }
 
+/* The day's head stays at the top while the hours scroll under it. The
+   days are a see-through tint on the page (in the dark theme all of them,
+   in the light one the weekend and today), so the head paints the page's
+   own colour first, then the day's tint, then today's: it looks as it did,
+   and nothing shows through it. */
 #plan-mode .plan-week-day-header {
     display: flex;
     justify-content: center;
@@ -662,6 +673,17 @@
     padding: 12px 10px;
     border-bottom: 1px solid var(--plan-border-color);
     text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    background:
+        linear-gradient(var(--plan-week-head-tint, transparent), var(--plan-week-head-tint, transparent)),
+        linear-gradient(var(--plan-week-head-fill), var(--plan-week-head-fill)),
+        var(--plan-week-page-bg, #faf8f5);
+}
+
+[data-theme="dark"] #plan-mode .plan-week-day-header {
+    --plan-week-page-bg: #15212d;
 }
 
 #plan-mode .plan-week-day-goals {
@@ -1329,11 +1351,29 @@
     opacity: 0.35;
 }
 
-/* A task in the all-day row can be taken to a time. */
+/* A task in the all-day row can be taken to a time. Its name starts at the
+   top left and has the whole width; the mark of its list is in the bottom
+   right corner. Beside the name it took a strip of the card's width all
+   the way down, and a long name was a narrow column. */
 #plan-mode .plan-week-allday-row .plan-week-allday-item.calendar-task {
     cursor: grab;
     touch-action: none;
     user-select: none;
+    display: block;
+    position: relative;
+    /* The day's whole width: as a flex item it shrank to its narrowest. */
+    flex: 1 1 100%;
+    text-align: left;
+    padding: 4px 8px 18px;
+    overflow-wrap: anywhere;
+}
+
+#plan-mode .plan-week-allday-row .calendar-task > .calendar-task-icon,
+#plan-mode .plan-week-allday-row .calendar-task > .calendar-task-initials {
+    position: absolute;
+    right: 6px;
+    bottom: 5px;
+    margin: 0;
 }
 
 [data-theme="dark"] #plan-mode .plan-week-block--task {
@@ -1357,23 +1397,53 @@
     border-color: rgba(106, 169, 234, 0.5);
 }
 
+/* The name, then the time if a line is left (see createWeekTimedEvent).
+   The event is a column that wraps: what does not fit below the name goes
+   to a second column, past the right edge, where the event cuts it off. */
+#plan-mode .plan-week-event {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    /* Wider than the event's right padding, so the second column starts
+       past the edge that cuts it. With no gap it started at the padding,
+       and the first figures of the time showed at the top right. */
+    column-gap: 24px;
+}
+
+#plan-mode .plan-week-event.plan-week-event--short {
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+
+#plan-mode .plan-week-event-time,
+#plan-mode .plan-week-event-title {
+    flex-shrink: 0;
+}
+
 #plan-mode .plan-week-event-time {
     display: block;
+    width: 100%;
+    margin-top: 1px;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.2;
     color: var(--plan-text-muted);
 }
 
+/* Whole lines only. The line height (15px) and the event's padding and
+   border (10px, or 4px when short) are WEEK_EVENT_LINE, WEEK_EVENT_CHROME
+   and WEEK_EVENT_CHROME_SHORT in plan.js. */
 #plan-mode .plan-week-event-title {
-    display: block;
-    margin-top: 2px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    width: 100%;
     font-size: 12px;
     font-weight: 600;
-    line-height: 1.25;
+    line-height: 15px;
     color: var(--plan-text-primary);
     overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
 }
 
 #plan-mode .plan-week-now-marker {
@@ -1398,7 +1468,7 @@
 }
 
 #plan-mode .plan-week-day-column.today .plan-week-day-header {
-    background: var(--plan-today-bg);
+    --plan-week-head-tint: var(--plan-today-bg);
 }
 
 #plan-mode .plan-week-day-column.today {
@@ -1426,17 +1496,11 @@
     display: none;
 }
 
-@media (max-width: 900px) {
-    #plan-mode .plan-calendar-grid.plan-week-grid {
-        grid-template-columns: 32px repeat(7, minmax(128px, 1fr));
-        width: max-content;
-        min-width: 100%;
-    }
-
-    #plan-mode .plan-calendar-container.plan-week-mode {
-        overflow-x: auto;
-    }
-}
+/* No narrow-screen week. Below 900px the days were given 128px each and
+   the week scrolled sideways, and the grid took its own content's width.
+   With the day-by-day scroll (plan-week-grid--carousel), whose days are a
+   seventh of the grid's width, that gave one day the whole pane. A week
+   is seven days across, however narrow. */
 
 /* Month Column */
 #plan-mode .plan-month-column {
@@ -2189,6 +2253,58 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* A calendar chip's menu: rename, and which events show. Placed under
+   its chip by plan.js (openCalendarChipMenu). */
+#plan-mode .plan-calendar-chip-menu {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    min-width: 200px;
+    background: var(--plan-modal-bg);
+    border: 1px solid var(--plan-border-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.16);
+    padding: 8px;
+    z-index: 2000;
+    cursor: default;
+}
+
+[data-theme="dark"] #plan-mode .plan-calendar-chip-menu {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+#plan-mode .plan-calendar-chip-menu-item {
+    text-align: left;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    color: var(--plan-text-primary);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+#plan-mode .plan-calendar-chip-menu-item:hover {
+    background: var(--plan-panel-bg-soft);
+}
+
+#plan-mode .plan-calendar-chip-menu-label {
+    padding: 2px 8px 0;
+    color: var(--plan-text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+#plan-mode .plan-calendar-chip-menu .plan-calendar-show-group {
+    align-self: flex-start;
+    margin: 0 4px 2px;
+}
+
 #plan-mode .calendar-color-swatches {
     display: flex;
     gap: 6px;
@@ -2751,7 +2867,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     overflow-y: auto;
     border: 1px solid var(--plan-border-color);
     border-radius: 10px;
-    background: var(--plan-panel-bg);
+    background: var(--plan-modal-bg); /* solid: the panel colour is a film in the dark */
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
 }
 
@@ -3103,7 +3219,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     padding: 5px;
     border-radius: 12px;
     border: 1px solid var(--plan-border-color);
-    background: var(--plan-panel-bg, #ffffff);
+    background: var(--plan-modal-bg, #ffffff); /* solid, as the goal box */
     box-shadow:
         0 2px 4px rgba(30, 45, 62, 0.06),
         0 14px 32px rgba(30, 45, 62, 0.2);
@@ -3392,7 +3508,9 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     padding: 10px;
     border-radius: 12px;
     border: 1px solid var(--plan-border-color);
-    background: var(--plan-panel-bg, #ffffff);
+    /* The dialogs' own colour, which is solid. The panel colour is a film
+       in the dark theme (4% white), and the week showed through the box. */
+    background: var(--plan-modal-bg, #ffffff);
     box-shadow:
         0 2px 4px rgba(30, 45, 62, 0.06),
         0 16px 36px rgba(30, 45, 62, 0.22);
@@ -3616,4 +3734,291 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 
 #plan-mode .plan-goal-editor-delete {
     color: #b4483c;
+}
+
+/* Roadmap bands in the month view: see renderRoadmapBands in plan.js. The
+   days container holds them; a day under a band keeps room for it. */
+#plan-mode .plan-days-container {
+    position: relative;
+}
+
+#plan-mode .plan-day-row.has-roadmap-band {
+    padding-right: var(--plan-band-room);
+}
+
+#plan-mode .plan-roadmap-band {
+    --band: #64748b;
+    --band-bg: #eef1f4;
+    --band-text: #334155;
+    position: absolute;
+    z-index: 1;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--band) 30%, transparent);
+    border-right: 3px solid var(--band);
+    border-radius: 5px;
+    background: var(--band-bg);
+    overflow: hidden;
+    cursor: default;
+}
+
+#plan-mode .plan-roadmap-band.continues-before {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+#plan-mode .plan-roadmap-band.continues-after {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+#plan-mode .plan-roadmap-band.is-tool { --band: #0d9488; --band-bg: #e7f6f2; --band-text: #115e59; }
+#plan-mode .plan-roadmap-band.is-research { --band: #3b82f6; --band-bg: #e8f1fb; --band-text: #1e3a8a; }
+#plan-mode .plan-roadmap-band.is-grant { --band: #d97706; --band-bg: #fbf3dd; --band-text: #78350f; }
+
+#plan-mode .plan-roadmap-band-label {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    max-height: calc(100% - 12px);
+    transform: translateX(-50%);
+    writing-mode: vertical-rl;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--band-text);
+}
+
+[data-theme="dark"] #plan-mode .plan-roadmap-band {
+    --band-bg: color-mix(in srgb, var(--band) 22%, #1f2937);
+    --band-text: #f3f4f6;
+}
+
+/* The Roadmap chip: an eye and a name that show or hide it all, then one
+   button per category. */
+#plan-mode .plan-roadmap-toggle {
+    gap: 4px;
+    padding: 2px 4px 2px 8px;
+    cursor: default;
+}
+
+#plan-mode .plan-roadmap-toggle button {
+    font: inherit;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+#plan-mode .plan-roadmap-all {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 6px 2px 0;
+    margin-right: 2px;
+    border-right: 1px solid var(--plan-border-color) !important;
+}
+
+#plan-mode .plan-roadmap-cat {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px !important;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--plan-text-primary);
+    background: var(--cat-bg) !important;
+}
+
+#plan-mode .plan-roadmap-cat .plan-roadmap-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--cat);
+}
+
+#plan-mode .plan-roadmap-cat.is-tool { --cat: #0d9488; --cat-bg: #e7f6f2; }
+#plan-mode .plan-roadmap-cat.is-research { --cat: #3b82f6; --cat-bg: #e8f1fb; }
+#plan-mode .plan-roadmap-cat.is-grant { --cat: #d97706; --cat-bg: #fbf3dd; }
+
+#plan-mode .plan-roadmap-cat.is-off {
+    background: transparent !important;
+    color: var(--plan-text-muted);
+    text-decoration: line-through;
+}
+
+#plan-mode .plan-roadmap-cat.is-off .plan-roadmap-dot {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--cat);
+}
+
+#plan-mode .plan-roadmap-cat:disabled {
+    cursor: default;
+}
+
+[data-theme="dark"] #plan-mode .plan-roadmap-cat:not(.is-off) {
+    --cat-bg: color-mix(in srgb, var(--cat) 25%, transparent);
+}
+
+/* A band that can be moved, and its two ends that can be dragged. */
+#plan-mode .plan-roadmap-band.is-movable {
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+}
+
+#plan-mode .plan-roadmap-band-edge {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 7px;
+    z-index: 2;
+    cursor: ns-resize;
+}
+
+#plan-mode .plan-roadmap-band-edge.is-start { top: 0; }
+#plan-mode .plan-roadmap-band-edge.is-end { bottom: 0; }
+
+/* A short bar shows where an end can be taken, on hover. */
+#plan-mode .plan-roadmap-band-edge::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    top: 3px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--band);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+#plan-mode .plan-roadmap-band:hover .plan-roadmap-band-edge::after {
+    opacity: 0.6;
+}
+
+#plan-mode.is-dragging-roadmap,
+#plan-mode .is-dragging-roadmap,
+.is-dragging-roadmap * {
+    cursor: grabbing !important;
+    user-select: none;
+}
+
+.is-dragging-roadmap.roadmap-drag-start *,
+.is-dragging-roadmap.roadmap-drag-end * {
+    cursor: ns-resize !important;
+}
+
+#plan-mode .is-dragging-roadmap .plan-roadmap-band {
+    box-shadow: 0 2px 6px rgba(30, 45, 62, 0.12);
+}
+
+/* A task in a month day that can be dragged to another day. */
+#plan-mode .calendar-task--moves {
+    touch-action: none;
+    user-select: none;
+}
+
+#plan-mode .calendar-task.is-being-moved {
+    opacity: 0.35;
+}
+
+#plan-mode .plan-day-row.is-task-drop-target {
+    background: rgba(13, 148, 136, 0.1);
+    box-shadow: inset 3px 0 0 #0d9488;
+}
+
+#plan-mode.is-dragging-task,
+#plan-mode .is-dragging-task,
+.is-dragging-task * {
+    cursor: grabbing !important;
+}
+
+/* The Roadmap in the week view: a strip under the day headers, one lane per
+   entry. Each day (and the hours column) keeps the room; the bars are drawn
+   over it on one layer, across the gaps. See drawWeekRoadmap in plan.js. */
+#plan-mode .plan-week-roadmap-space {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-week-time-gutter .plan-week-roadmap-space {
+    border-bottom: 0;
+}
+
+#plan-mode .plan-week-roadmap-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    /* Cut where the stuck heads cover the grid: updateWeekHeadCover. */
+    clip-path: inset(var(--week-head-cover, 0px) 0 0 0);
+}
+
+/* With the days scrolling sideways, the layer moves as they do. */
+#plan-mode .plan-week-grid--carousel .plan-week-roadmap-layer {
+    transform: translateX(calc(var(--week-step, 0px) * -1 + var(--week-shift, 0px)));
+}
+
+#plan-mode .plan-week-grid--carousel.plan-week-grid--snapping .plan-week-roadmap-layer {
+    transition: transform 0.24s ease-out;
+}
+
+#plan-mode .plan-week-roadmap-bar {
+    --band: #64748b;
+    --band-bg: #eef1f4;
+    --band-text: #334155;
+    position: absolute;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border-left: 3px solid var(--band);
+    background: var(--band-bg);
+    color: var(--band-text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    pointer-events: auto;
+    cursor: default;
+}
+
+#plan-mode .plan-week-roadmap-bar.continues-before {
+    border-left-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+#plan-mode .plan-week-roadmap-bar.continues-after {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+#plan-mode .plan-week-roadmap-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#plan-mode .plan-week-roadmap-until {
+    flex-shrink: 0;
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+#plan-mode .plan-week-roadmap-bar.is-tool { --band: #0d9488; --band-bg: #e7f6f2; --band-text: #115e59; }
+#plan-mode .plan-week-roadmap-bar.is-research { --band: #3b82f6; --band-bg: #e8f1fb; --band-text: #1e3a8a; }
+#plan-mode .plan-week-roadmap-bar.is-grant { --band: #d97706; --band-bg: #fbf3dd; --band-text: #78350f; }
+
+[data-theme="dark"] #plan-mode .plan-week-roadmap-bar {
+    --band-bg: color-mix(in srgb, var(--band) 22%, #1f2937);
+    --band-text: #f3f4f6;
 }

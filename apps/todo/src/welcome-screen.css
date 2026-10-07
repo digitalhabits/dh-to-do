@@ -172,6 +172,11 @@ html.todo-welcome-open .todo-shell .footer {
   color: var(--text-muted);
 }
 
+/* The source code link: a paragraph of its own. */
+.todo-shell #eula-onboarding .welcome-footer-line + .welcome-footer-line {
+  margin-top: 6px;
+}
+
 @media (max-width: 640px) {
   .todo-shell #eula-welcome-title {
     font-size: 24px;

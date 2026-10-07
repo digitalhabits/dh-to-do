@@ -24,6 +24,9 @@ import {
   renderPlanner,
   renderTaskList,
 } from "@/components/todo/todo-task-area";
+import { AddTaskComposer } from "@/components/todo/AddTaskComposer";
+import { renderTask } from "@/components/todo/todo-task-card";
+import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
 import { renderNotesOverlay } from "@/components/todo/todo-task-overlay";
 import { useTodoPage, type TodoPageProps } from "@/components/todo/use-todo-page";
 
@@ -31,6 +34,9 @@ export type { TodoPageSnapshot } from "@/components/todo/use-board-reads";
 
 export function TodoPage(props: TodoPageProps) {
   const m = useTodoPage(props);
+  /* Tasks added in the embedded add row show at once, before the page
+     around it has heard of them. */
+  const [embedAdded, setEmbedAdded] = React.useState<string[]>([]);
   const {
     view,
     focusMode,
@@ -68,7 +74,7 @@ export function TodoPage(props: TodoPageProps) {
       ref={shellRef}
       className={`todo-shell ${
         draggingTaskId || draggingListId || draggingGroupId ? "is-reordering" : ""
-      }${boardAccordion || boardPills ? " todo-tile-compact" : ""}${
+      }${boardAccordion || boardPills || m.embedTaskIds ? " todo-tile-compact" : ""}${
         boardPills ? " todo-tile-pills" : ""
       } ${
         searchRevealed ? "list-search-open" : ""
@@ -77,6 +83,8 @@ export function TodoPage(props: TodoPageProps) {
           ? " task-menu-open"
           : ""
       }${focusMode ? " focus-mode" : ""}${macWindow ? " mac-window" : ""}${
+        m.calendarOnly ? " todo-calendar-only" : ""
+      }${
         shellWidthClasses ? ` ${shellWidthClasses}` : ""
       }`}
       data-theme={effectiveDark ? "dark" : undefined}
@@ -92,7 +100,51 @@ export function TodoPage(props: TodoPageProps) {
         <div className="dialog-title-strip" data-tauri-drag-region aria-hidden="true" />
       ) : null}
       <div id="normal-mode">
-        {renderTitleBar(m)}
+        {m.embedTaskIds ? (
+          /* Only the cards asked for, as cards of a list: see embedTaskIds. */
+          <div className="task-area list-column todo-embed">
+            {m.state.tasks
+              .filter(
+                (task) =>
+                  !task.parentTaskId &&
+                  (m.embedTaskIds!.includes(task.id) || embedAdded.includes(task.id))
+              )
+              .map((task) => renderTask(m, task))}
+            {m.embedComposer ? (
+              <div className="board-column-add">
+                <AddTaskComposer
+                  placeholder={m.embedComposer.placeholder}
+                  addLabel={m.t("addTask")}
+                  minutesLabel={m.t("minutes")}
+                  onSubmit={async (draft) => {
+                    const composer = m.embedComposer!;
+                    const id = await m.addTask("week", {
+                      ...draft,
+                      listId: draft.listId ?? composer.listId,
+                    });
+                    if (!id) return;
+                    setEmbedAdded((ids) => [...ids, id]);
+                    composer.onAdded(id);
+                  }}
+                  uploadImageForList={m.uploaderForList}
+                  resolveImageSrc={resolveBasecampImage}
+                  people={m.state.people}
+                  assignEnabled={m.assignEnabled}
+                  calendarEnabled={m.planEnabled}
+                  onEditPeople={() => m.setPeopleEditorOpen(true)}
+                  lists={m.lists}
+                  defaultList={m.state.lists.find((l) => l.id === m.embedComposer!.listId) ?? null}
+                  lang={m.lang}
+                  t={m.t}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+        <>
+        {/* The Calendar tab is the calendar alone: no lists, no switch to
+            them, no footer. See `calendarOnly`. */}
+        {m.calendarOnly ? null : renderTitleBar(m)}
 
         <div
           className={`content-column${boardWidth ? " board-layout" : ""}`}
@@ -125,7 +177,9 @@ export function TodoPage(props: TodoPageProps) {
 
         {/* The line belongs to the store app. Inside the planner the board is
             one tab of the user's own tool, and it says nothing there. */}
-        {renderFooter(m)}
+        {m.calendarOnly ? null : renderFooter(m)}
+        </>
+        )}
       </div>
 
       {renderCalendarCard(m)}

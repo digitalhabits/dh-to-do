@@ -242,9 +242,17 @@ export function useGroupsAndLists({
           .then(() =>
             showUndo(t("listDeleted"), () => {
               void (async () => {
-                const created = await recreateList(list);
-                for (const task of listTasks) {
-                  await recreateTask({ ...task, listId: created.id });
+                // A deleted list is kept with its tasks, so Undo brings
+                // that one back. Making a copy left the deleted one in
+                // Settings, under Deleted lists, for a list that was
+                // never gone. A host without the route makes the copy.
+                try {
+                  await api("/api/todo/lists/deleted", "POST", { id: list.id });
+                } catch {
+                  const created = await recreateList(list);
+                  for (const task of listTasks) {
+                    await recreateTask({ ...task, listId: created.id });
+                  }
                 }
                 await refresh();
               })();

@@ -556,7 +556,7 @@ export function renderNotesOverlay(m: TodoPageModel) {
                 aria-label={t("fieldDue")}
                 value={task.dueOn ?? ""}
                 onChange={(e) =>
-                  void mutateTask(task.id, dueDatePatch(e.target.value || null))
+                  void mutateTask(task.id, dueDatePatch(e.target.value || null, task))
                 }
               />
               {task.dueOn ? (

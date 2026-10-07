@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "targets": ["appimage", "deb"],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5RDAxNjE4RTEwMTc1NEQKUldSTmRRSGhHQmJRcVVKNEtlK2FIQStzcldUaVg5L3IveTdPTTliZ2plUm1pUnNzNWRzcXVzbmMK",
+      "endpoints": [
+        "https://github.com/digitalhabits/dh-to-do/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

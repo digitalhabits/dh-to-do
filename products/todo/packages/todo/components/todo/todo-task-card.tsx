@@ -37,7 +37,7 @@ import {
 import { renderNotesEditor } from "@/components/todo/todo-task-overlay";
 import { isInteractiveDragTarget } from "@/components/todo/use-pointer-drag";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
-import { doneStamp } from "@/lib/todo/done-groups";
+import { DoneStamp } from "@/components/todo/DoneStamp";
 import { formatDurationShort } from "@/lib/todo/duration";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
 import { ListIcon, resolveListIconId } from "@/lib/todo/list-icons";
@@ -226,7 +226,7 @@ function cardDueChip(
           // takes the task off it, and a first day puts it on when the
           // box was ticked before the day was picked.
           void mutateTask(task.id, {
-            ...dueDatePatch(dueOn),
+            ...dueDatePatch(dueOn, task),
             showOnCalendar: dueOn ? dueCalendarWanted : false,
           });
         }}
@@ -864,6 +864,116 @@ function cardFocusButton(
   );
 }
 
+/**
+ * An open task's controls, as the board card draws them: the corner pill
+ * (menu, expand, favourite, focus) and the row under the words (person,
+ * date, duration, notes, subtasks, and the list on the right). The Today
+ * session draws the same two on the task in hand, so a task has the same
+ * controls in the same places wherever it is.
+ */
+export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" | "session" = "board") {
+  const {
+    sessionIds,
+    view,
+    durationPopoverTaskId,
+    setDurationPopoverTaskId,
+    setDurationPopoverAnchor,
+    duePopoverTaskId,
+    openMenuTaskId,
+    setOpenMenuTaskId,
+    openListPickerTaskId,
+    openAssignTaskId,
+    setOpenAssignTaskId,
+    activeFocusTaskIds,
+    t,
+    isAllListsView,
+    navigateToList,
+    foldPillActions,
+    openTaskOverlay,
+    peopleById,
+  } = m;
+  /*
+    While the Today session is open, a task in it is drawn twice: on the
+    board behind and in the session. Its menus open in the session only.
+    Two copies of the list picker took the caret from each other, and the
+    blur closed both before anything could be picked.
+  */
+  const here = where === "session" || !sessionIds;
+  const menuOpen = here && openMenuTaskId === task.id;
+  const assignOpen = here && openAssignTaskId === task.id;
+  const assignees = task.assigneeIds
+    .map((id) => peopleById.get(id))
+    .filter((p): p is TodoPerson => Boolean(p));
+  const unlisted = isUnlistedTask(task);
+  const listPickerOpen = here && openListPickerTaskId === task.id;
+  const hasDuration = task.completed
+    ? task.timeSpentSeconds > 0
+    : task.expectedDurationMinutes != null;
+  const isFocused = activeFocusTaskIds.has(task.id);
+  const duePopoverOpen = here && duePopoverTaskId === task.id;
+  const durationPopoverOpen = here && durationPopoverTaskId === task.id;
+  const openDurationPopover = (anchor: HTMLElement) => {
+    if (view === "favourites") {
+      if (task.listId) navigateToList(task.listId);
+      return;
+    }
+    setOpenMenuTaskId(null);
+    setOpenAssignTaskId(null);
+    setDurationPopoverAnchor(anchor);
+    setDurationPopoverTaskId(task.id);
+  };
+  const expandBtn = (
+    <button
+      type="button"
+      className="task-expand-btn is-inline is-ghost"
+      title={t("expandTask")}
+      aria-label={t("expandTask")}
+      onClick={(e) => {
+        e.stopPropagation();
+        openTaskOverlay(task);
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <polyline points="15 3 21 3 21 9" />
+        <polyline points="9 21 3 21 3 15" />
+        <line x1="21" y1="3" x2="14" y2="10" />
+        <line x1="3" y1="21" x2="10" y2="14" />
+      </svg>
+    </button>
+  );
+  const heartAtRest = task.isFavourite && view !== "favourites";
+  const pillShowsState = isFocused || heartAtRest;
+  const utilityPill = (
+    <div className={`task-utility-pill${pillShowsState ? " has-state" : ""}`}>
+      {cardMenu(m, task, { menuOpen, unlisted, hasDuration, openDurationPopover })}
+      {expandBtn}
+      {cardFavouriteButton(m, task)}
+      {cardFocusButton(m, task, { isFocused })}
+    </div>
+  );
+  const metaRow = (
+    <div className="task-meta-row">
+      <div className="task-meta-chips">
+        {cardAssignChip(m, task, { assignOpen, assignees })}
+        {cardDueChip(m, task, { duePopoverOpen })}
+        {/* On a slim tile the two unset ones live in the menu. */}
+        {foldPillActions && !hasDuration
+          ? null
+          : cardDurationChip(m, task, { hasDuration, durationPopoverOpen, openDurationPopover })}
+        {foldPillActions && !task.notesHtml ? null : cardNotesChip(m, task)}
+        {cardSubtaskChip(m, task)}
+        <span className="task-meta-spacer" />
+        <div className="task-chip-actions">
+          {cardOriginPicker(m, task, { unlisted, showListOrigin: isAllListsView, listPickerOpen })}
+        </div>
+      </div>
+    </div>
+  );
+  /** A menu or picker of the task's is open: its controls stay on screen. */
+  const anyOpen = menuOpen || assignOpen || durationPopoverOpen || duePopoverOpen || listPickerOpen;
+  return { utilityPill, metaRow, anyOpen };
+}
+
 export function renderTask(m: TodoPageModel, task: TodoTask) {
   const {
     view,
@@ -882,13 +992,11 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     openAssignTaskId,
     setOpenAssignTaskId,
     animHiddenTargets,
-    activeFocusTaskIds,
     draggingTaskId,
     setDraggingTaskId,
     taskDropListId,
     taskDragRef,
     lang,
-    t,
     isAllListsView,
     navigateToList,
     isSearching,
@@ -901,15 +1009,10 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     caretAfterEditRef,
     commitEditTask,
     toggleNotes,
-    openTaskOverlay,
-    peopleById,
   } = m;
   const editing = editingTaskId === task.id;
   const menuOpen = openMenuTaskId === task.id;
   const assignOpen = openAssignTaskId === task.id;
-  const assignees = task.assigneeIds
-    .map((id) => peopleById.get(id))
-    .filter((p): p is TodoPerson => Boolean(p));
   const unlisted = isUnlistedTask(task);
   const showListOrigin = isAllListsView;
   const listPickerOpen = openListPickerTaskId === task.id;
@@ -933,10 +1036,7 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     which still took the width the moment the pointer arrived, and
     re-wrapped the task under it.
   */
-  const isFocused = activeFocusTaskIds.has(task.id);
-  const assignChip = cardAssignChip(m, task, { assignOpen, assignees });
   const duePopoverOpen = duePopoverTaskId === task.id;
-  const dueChip = cardDueChip(m, task, { duePopoverOpen });
   /* The clock opens the same popover the add row uses, on the chip. */
   const durationPopoverOpen = durationPopoverTaskId === task.id;
   const openDurationPopover = (anchor: HTMLElement) => {
@@ -949,10 +1049,7 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     setDurationPopoverAnchor(anchor);
     setDurationPopoverTaskId(task.id);
   };
-  const durationChip = cardDurationChip(m, task, { hasDuration, durationPopoverOpen, openDurationPopover });
-  const notesChip = cardNotesChip(m, task);
   const favBtn = cardFavouriteButton(m, task);
-  const focusBtn = cardFocusButton(m, task, { isFocused });
   const notesBtn = (
     <button
       className={`notes-btn ${task.notesHtml ? "has-notes" : ""}`}
@@ -992,25 +1089,6 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     />
   );
   const originPicker = cardOriginPicker(m, task, { unlisted, showListOrigin, listPickerOpen });
-  const expandBtn = (
-    <button
-      type="button"
-      className="task-expand-btn is-inline is-ghost"
-      title={t("expandTask")}
-      aria-label={t("expandTask")}
-      onClick={(e) => {
-        e.stopPropagation();
-        openTaskOverlay(task);
-      }}
-    >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <polyline points="15 3 21 3 21 9" />
-        <polyline points="9 21 3 21 3 15" />
-        <line x1="21" y1="3" x2="14" y2="10" />
-        <line x1="3" y1="21" x2="10" y2="14" />
-      </svg>
-    </button>
-  );
   const menuWrap = cardMenu(m, task, { menuOpen, unlisted, hasDuration, openDurationPopover });
   /*
     The open row's utilities, in a pill of their own in the card's
@@ -1028,17 +1106,6 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     screen, because that is news on any view.
   */
   const heartAtRest = task.isFavourite && view !== "favourites";
-  const pillShowsState = isFocused || heartAtRest;
-  const utilityPill = !task.completed ? (
-    <div
-      className={`task-utility-pill${pillShowsState ? " has-state" : ""}`}
-    >
-      {menuWrap}
-      {expandBtn}
-      {favBtn}
-      {focusBtn}
-    </div>
-  ) : null;
   /* A done row keeps its hover pill: the time it took, its note, its
      menu. An open row lays its marks out as chips instead — below. */
   const actionsCluster = (
@@ -1058,7 +1125,7 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
       </div>
     </div>
   );
-  const subtaskChip = cardSubtaskChip(m, task);
+  const chrome = task.completed ? null : taskCardChrome(m, task);
 
   return (
     <div
@@ -1129,6 +1196,8 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         taskDragRef.current = drag;
       }}
     >
+      {/* Whose step it is, when the Planner says (its CRM next steps). */}
+      {m.boardExtension?.renderTaskHeader(task) ?? null}
       <div
         className={`task-main-row${
           task.completed && showListOrigin ? " task-main-row-all" : ""
@@ -1211,42 +1280,13 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         {/* When it was finished, as the mail list stamps a message:
             the hour today and yesterday, the day before that. */}
         {task.completed && task.completedAt ? (
-          <span className="task-done-stamp">
-            {doneStamp(task.completedAt, lang)}
-          </span>
+          <DoneStamp completedAt={task.completedAt} lang={lang} />
         ) : null}
         {task.completed ? actionsCluster : null}
       </div>
-      {utilityPill}
-      {!task.completed ? (
-        <>
-          <div className="task-meta-row">
-            {/*
-              The same row the add row draws, in the same order: the
-              person on the left, the list on the right, and between
-              them the marks a task carries. What it does not carry
-              yet is a ghost until the pointer arrives.
-            */}
-            <div className="task-meta-chips">
-              {/* The add row's order, always: the ghosts appear in their
-                  own slots around what the task carries. */}
-              {assignChip}
-              {dueChip}
-              {/* On a slim tile the two unset ones live in the menu. */}
-              {foldPillActions && !hasDuration ? null : durationChip}
-              {foldPillActions && !task.notesHtml ? null : notesChip}
-              {subtaskChip}
-              <span className="task-meta-spacer" />
-              {/* The list holds the right end of the row, the way the
-                  add row keeps its list on the right. The utilities are
-                  in the corner pill above. */}
-              <div className="task-chip-actions">
-                {originPicker}
-              </div>
-            </div>
-          </div>
-        </>
-      ) : null}
+      {/* The corner pill and the row under the words: see taskCardChrome. */}
+      {chrome ? chrome.utilityPill : null}
+      {chrome ? chrome.metaRow : null}
       {renderNotesEditor(m, task)}
     </div>
   );

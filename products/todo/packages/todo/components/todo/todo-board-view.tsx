@@ -162,6 +162,7 @@ export function renderBoardColumn(
     state,
     draggingColumn,
     assignEnabled,
+    planEnabled,
     setPeopleEditorOpen,
     boardDragHover,
     lang,
@@ -398,6 +399,7 @@ export function renderBoardColumn(
             resolveImageSrc={resolveBasecampImage}
             people={state.people}
             assignEnabled={assignEnabled}
+            calendarEnabled={planEnabled}
             onEditPeople={() => setPeopleEditorOpen(true)}
             lists={lists}
             defaultList={addTargetList}

@@ -1,12 +1,14 @@
-# Build Digital Habits: To-Do for the two stores, from this public source.
+# Build Digital Habits: To-Do for the two stores and for Linux, from this
+# public source.
 #
 # This file is written into the public repository by the export script
 # (scripts/export-todo-mirror.mjs in the private monorepo). Edit it there, in
 # apps/todo/mirror/workflows/build.yml. A change made here is lost at the next
 # export.
 #
-# To-Do goes out through the Mac App Store and the Microsoft Store only. So a
-# run makes two store packages and no direct download:
+# On Mac and Windows, To-Do goes out through the Mac App Store and the
+# Microsoft Store only. Linux has no store, so Linux gets a direct download
+# that updates itself. A run makes:
 #
 #   mac           a universal .pkg for App Store Connect, signed with the App
 #                 Store identities, sandboxed, with the provisioning profile
@@ -14,9 +16,20 @@
 #   windows       one .msix for each architecture, for Partner Center. Not
 #                 signed: Microsoft signs it again when it takes it in.
 #                 `pnpm --dir apps/todo app:build:win-store`.
-#   release       a DRAFT release "v<version>" with both packages, their
-#                 checksums, and the notes from changelog.md. A person reads
-#                 it and publishes it.
+#   linux         an AppImage and a .deb for x86_64 and for aarch64. The
+#                 AppImage is signed for the updater (not for the reader:
+#                 Linux has no such check). `pnpm --dir apps/todo app:build`.
+#   release       a DRAFT release "v<version>" with the packages, their
+#                 checksums, the notes from changelog.md, and latest.json for
+#                 the Linux updater. A person reads it and publishes it.
+#
+# The Linux files have no version in their names, so the website can link to
+# releases/latest/download/<name>. The Linux app asks
+# releases/latest/download/latest.json for updates (src-tauri/src/
+# linux_update.rs). "latest" is the newest PUBLISHED release, so nothing
+# reaches a Linux reader until a person publishes the draft. Publish only a
+# release that has the Linux files: with none, the Linux download links and
+# the updater find nothing.
 #   submit-mac    optional. Sends the .pkg to App Store Connect with the
 #                 What's New text from changelog.md, and submits for review.
 #   submit-windows  optional. The same for Partner Center.
@@ -45,6 +58,9 @@
 #         the two identity names, as `security find-identity` prints them
 #     KEYCHAIN_PASSWORD
 #         any long random value; it locks the keychain made for the run
+#     TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#         the updater key; the Linux app holds the public half
+#         (src-tauri/tauri.linux.conf.json)
 #     The Windows build needs no secret.
 #
 #   "store-submit"  the two submit jobs. They can put a version in front of
@@ -65,8 +81,8 @@ on:
       platform:
         description: "What to build"
         type: choice
-        default: both
-        options: [both, mac, windows]
+        default: all
+        options: [all, mac, windows, linux]
       windows_architecture:
         description: "Windows architectures"
         type: choice
@@ -85,9 +101,9 @@ on:
         type: boolean
         default: false
       microsoft_store_draft_only:
-        description: "With the Microsoft submission: upload the package and the texts, and leave the draft open. You add pictures by hand and press Submit in Partner Center."
+        description: "Stop at a Partner Center draft instead of submitting. Reload the Store listing page before editing it, or Partner Center can bring back the old texts."
         type: boolean
-        default: true
+        default: false
       upload_mac_screenshots:
         description: "With the Mac submission, replace the store pictures with store-listing/screenshots/mac/en"
         type: boolean
@@ -114,7 +130,7 @@ env:
 jobs:
   mac:
     name: Mac App Store (.pkg)
-    if: inputs.platform == 'both' || inputs.platform == 'mac'
+    if: inputs.platform == 'all' || inputs.platform == 'mac'
     runs-on: macos-latest
     timeout-minutes: 90
     environment: release
@@ -244,7 +260,7 @@ jobs:
 
   windows:
     name: Microsoft Store (.msix)
-    if: inputs.platform == 'both' || inputs.platform == 'windows'
+    if: inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-latest
     timeout-minutes: 90
     # No secret is read here. The environment is for the approval: a build
@@ -356,12 +372,144 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  linux:
+    name: Linux (${{ matrix.arch }})
+    if: inputs.platform == 'all' || inputs.platform == 'linux'
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    # The oldest supported Ubuntu, because an AppImage runs only on a system
+    # with the same C library as the build machine or a newer one.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.14.4 --activate
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/todo/src-tauri/target
+          key: cargo-linux-${{ matrix.arch }}-${{ hashFiles('apps/todo/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-linux-${{ matrix.arch }}-
+
+      - name: Install the system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev patchelf xdg-utils file
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Without the key, the build makes no .sig, and the updater would
+      # refuse every update. Stop before the compile, not after it.
+      - name: Check the secrets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          missing=""
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::These secrets are missing from the environment \"release\":$missing"
+            exit 1
+          fi
+
+      - name: Read the version
+        id: version
+        run: node -p "'version=' + require('./apps/todo/package.json').version" >> "$GITHUB_OUTPUT"
+
+      # tauri.linux.conf.json makes the AppImage, the .deb and the AppImage's
+      # updater signature.
+      - name: Build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm --dir apps/todo app:build
+
+      - name: Name the packages
+        run: |
+          bundle=apps/todo/src-tauri/target/release/bundle
+          out=apps/todo/for-distribution
+          name="Digital-Habits-To-Do_linux_${{ matrix.arch }}"
+          mkdir -p "$out"
+          cp "$(ls "$bundle"/appimage/*.AppImage)" "$out/$name.AppImage"
+          cp "$(ls "$bundle"/appimage/*.AppImage.sig)" "$out/$name.AppImage.sig"
+          cp "$(ls "$bundle"/deb/*.deb)" "$out/$name.deb"
+          cd "$out"
+          for file in "$name.AppImage" "$name.deb"; do
+            sha256sum "$file" > "$file.sha256"
+          done
+
+      - name: Say what was built
+        working-directory: apps/todo/for-distribution
+        run: |
+          {
+            echo "## Digital Habits To-Do ${{ steps.version.outputs.version }} — Linux ${{ matrix.arch }}"
+            echo
+            for file in *.AppImage *.deb; do
+              echo "- \`$file\` — $(du -h "$file" | cut -f1)"
+              echo "  \`$(cut -d' ' -f1 "$file.sha256")\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest where the packages came from
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            apps/todo/for-distribution/*.AppImage
+            apps/todo/for-distribution/*.deb
+
+      - name: Keep the packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: todo-linux-${{ matrix.arch }}-${{ steps.version.outputs.version }}
+          path: |
+            apps/todo/for-distribution/*.AppImage
+            apps/todo/for-distribution/*.AppImage.sig
+            apps/todo/for-distribution/*.deb
+            apps/todo/for-distribution/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
   # A draft, and only a draft. It has no public page until a person publishes
   # it. A run for the same version puts the new files over the old ones. The
-  # packages are not for installing by hand: they are here so the public record
-  # holds the exact files that went to the stores.
+  # store packages are not for installing by hand: they are here so the public
+  # record holds the exact files that went to the stores. The Linux files ARE
+  # for installing: the website links to them.
   release:
-    needs: [mac, windows]
+    needs: [mac, windows, linux]
     if: ${{ !cancelled() && !failure() && inputs.draft_release }}
     runs-on: ubuntu-latest
     permissions:
@@ -369,7 +517,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      VERSION: ${{ needs.mac.outputs.version || needs.windows.outputs.version }}
+      VERSION: ${{ needs.mac.outputs.version || needs.windows.outputs.version || needs.linux.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -386,6 +534,11 @@ jobs:
           ls -l files
           tag="v$VERSION"
           bash apps/todo/scripts/extract-changelog-section.sh "$VERSION" apps/todo/changelog.md > notes.md
+          # The updater's manifest. Its addresses name this tag, so an
+          # update is never a file of another release.
+          if ls files/*.AppImage.sig >/dev/null 2>&1; then
+            node apps/todo/scripts/write-linux-update-manifest.cjs "$VERSION" "https://github.com/$GH_REPO/releases/download/$tag" files > files/latest.json
+          fi
           if gh release view "$tag" >/dev/null 2>&1; then
             if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != "true" ]; then
               echo "::error::Release $tag is published. This run does not change a published release. Bump the version."

@@ -1,25 +1,26 @@
 "use client";
 
 /**
- * Planner View — the calendar surface inside To-Do.
+ * The calendar: To-Do's Calendar View, and the Planner's one calendar.
  *
- * This mounts the same vanilla plan.js that the planner's Calendar tab
- * serves from /redd-do-calendar (components/CalendarView.tsx wraps it
- * there). Calendar tab work therefore lands here without a port. The
- * differences are deliberate:
+ * It mounts the vanilla plan.js served from /redd-do-calendar. Everything
+ * the calendar does with tasks and people is wired here, once. A host adds
+ * what only it has through TodoPlanStorageContext (see plan-storage):
  *
- *  - Own storage prefix. The Calendar tab keys ('redd-do-plan-*') are
- *    team state, synced with the planner server. This surface keeps its
- *    own local keys, so its linked calendars and notes are independent
- *    of any account linking elsewhere in the planner.
- *  - No server sync. State lives in localStorage in both hosts, which
- *    is also all the standalone app has.
- *  - ICS fetch: the planner host proxies through /api/calendar-proxy
- *    (webview fetch answers to CORS); the standalone app uses the Tauri
- *    HTTP plugin.
+ *  - The To-Do desktop app adds nothing. Its calendar keeps its data on the
+ *    device ('redd-todo-plan-*') and reads the addresses pasted into it,
+ *    fetched with the Tauri HTTP plugin.
+ *  - The Planner adds its team calendar: the data on the server under the
+ *    'redd-do-plan-*' keys, its Google calendars, the application deadlines
+ *    and the Roadmap (lib/plan/planner-calendar-host.ts). Its To-Do tab and
+ *    its Calendar tab (the To-Do page with `calendarOnly`) both show this
+ *    component with that host, so they are one calendar. A pasted address
+ *    is fetched through /api/calendar-proxy.
  */
 
 import * as React from "react";
+
+import { TodoPlanStorageContext } from "@/lib/todo/plan-storage";
 
 import { isStandaloneTodo } from "@/lib/todo/product-flavor";
 import type { TodoLang } from "@/lib/todo/i18n";
@@ -39,7 +40,10 @@ import type {
 import type { TodoList, TodoPerson, TodoTask } from "@/lib/todo/types";
 
 const ASSET_BASE = "/redd-do-calendar";
-/** Not 'redd-do-plan-': that namespace belongs to the planner Calendar tab. */
+/**
+ * To-Do's own calendar, on the device: the desktop app's. In the Planner the
+ * host gives the team calendar's prefix instead (see plan-storage).
+ */
 const STORAGE_PREFIX = "redd-todo-plan-";
 
 declare global {
@@ -82,6 +86,8 @@ declare global {
            * due date. Left out, a task stays in its own day.
            */
           onTaskDueChange?: (taskId: string, dateKey: string) => Promise<void> | void;
+          /** A Roadmap band was moved or made longer; ISO dates. */
+          onRoadmapItemChange?: (id: string, start: string, end: string) => Promise<void> | void;
           /**
            * A task was double-clicked: open it for editing, beside the place
            * given (in the window's own pixels). Left out, nothing opens.
@@ -102,9 +108,7 @@ declare global {
           }) => void;
           /**
            * The accounts and calendars the picker offers. Left out, the
-           * reader pastes a calendar address instead. The To-Do tab leaves
-           * it out: its calendars are the reader's own, not the team's, and
-           * that store does not exist yet.
+           * reader pastes a calendar address instead (the desktop app).
            */
           onListCalendarChoices?: () => Promise<PickableAccount[]>;
           /**
@@ -113,11 +117,11 @@ declare global {
            */
           onReadCalendarEvents?: (
             sources: CalendarSource[],
+            options?: { full?: boolean },
           ) => Promise<CalendarFeed[]>;
           /**
            * What the board draws besides calendars, each with a name and
-           * whether it is on. The To-Do tab passes none: the application
-           * deadlines belong to the planner's own Calendar tab.
+           * whether it is on: in the Planner, the application deadlines.
            */
           boardSources?: {
             id: string;
@@ -143,6 +147,11 @@ declare global {
       /** Give a task its hours in the week view, in minutes from midnight. */
       setTaskTime: (taskId: string, startMinutes: number, endMinutes: number) => void;
       /** Every task of the board, for a week goal to be linked to. */
+      /** New Roadmap entries, drawn at once (the Planner's Calendar tab). */
+      setRoadmap?: (data: {
+        items: { id: string; title: string; category: string; kind: string; start: string; end: string }[];
+        categories: { id: string; label: string }[];
+      }) => void;
       setLinkableTasks: (
         tasks: { id: string; name: string; listName: string | null; completed: boolean }[],
       ) => void;
@@ -414,8 +423,14 @@ export function TodoPlannerView({
     };
   }, [taskSources]);
 
+  // The host's own keeping of some of the calendar's data: see plan-storage.
+  const planStorage = React.useContext(TodoPlanStorageContext);
+
   React.useEffect(() => {
     let cancelled = false;
+    let stopKeeping: (() => void) | null = null;
+    // The host's calendar (the Planner's team calendar), or To-Do's own.
+    const prefix = planStorage?.storagePrefix ?? STORAGE_PREFIX;
 
     installCalendarFetch();
     loadStylesheet(`${ASSET_BASE}/plan.css`);
@@ -423,9 +438,14 @@ export function TodoPlannerView({
     void (async () => {
       try {
         await ensureCalendarScriptsLoaded();
+        // Before the calendar reads localStorage: the host's copy goes in.
+        await planStorage?.prepare(prefix);
         if (cancelled || !containerRef.current || !window.PlanModule) return;
         window.PlanModule.init(containerRef.current, {
-          storagePrefix: STORAGE_PREFIX,
+          // The host's calendars and layers first: the board's own
+          // options below are the same in every host.
+          ...planStorage?.initOptions?.(),
+          storagePrefix: prefix,
           language: lang,
           people: peopleRef.current,
           tasks: tasksRef.current,
@@ -448,6 +468,7 @@ export function TodoPlannerView({
                 : goalPickOf(request)
             ),
         });
+        stopKeeping = planStorage?.start(prefix) ?? null;
       } catch (err) {
         console.error("[TodoPlannerView] Failed to initialise calendar:", err);
       }
@@ -455,13 +476,14 @@ export function TodoPlannerView({
 
     return () => {
       cancelled = true;
+      stopKeeping?.();
       try {
         window.PlanModule?.destroy();
       } catch (err) {
         console.error("[TodoPlannerView] destroy failed:", err);
       }
     };
-  }, [lang]);
+  }, [lang, planStorage]);
 
   // plan.css scopes every calendar rule under #plan-mode.
   return (

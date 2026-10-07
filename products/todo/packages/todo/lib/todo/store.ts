@@ -58,10 +58,41 @@ export type TodoRemoteAction = {
   subtaskBasecampId?: string | null;
 };
 
-let pushRemote: (action: TodoRemoteAction) => Promise<void> = async () => {};
+let pushBasecamp: (action: TodoRemoteAction) => Promise<void> = async () => {};
 
-export function setTodoRemotePush(fn: typeof pushRemote) {
-  pushRemote = fn;
+export function setTodoRemotePush(fn: typeof pushBasecamp) {
+  pushBasecamp = fn;
+}
+
+/*
+  More listeners than Basecamp: the Planner keeps its CRM next steps in
+  step with their tasks this way (lib/plan/crm-step-tasks.ts). Kept on
+  globalThis, because a Next server loads this module once per bundle and
+  a listener installed from one bundle must hear the writes of another.
+*/
+type TodoRemoteListener = (action: TodoRemoteAction) => Promise<void>;
+const listenerHome = globalThis as typeof globalThis & { __todoRemoteListeners?: TodoRemoteListener[] };
+
+/** Hear every task write after the store makes it. Installed once per name. */
+export function addTodoRemoteListener(name: string, fn: TodoRemoteListener) {
+  const list = (listenerHome.__todoRemoteListeners ??= []);
+  const tagged = fn as TodoRemoteListener & { listenerName?: string };
+  tagged.listenerName = name;
+  const at = list.findIndex((l) => (l as typeof tagged).listenerName === name);
+  if (at >= 0) list[at] = tagged;
+  else list.push(tagged);
+}
+
+async function pushRemote(action: TodoRemoteAction): Promise<void> {
+  await pushBasecamp(action);
+  for (const listener of listenerHome.__todoRemoteListeners ?? []) {
+    try {
+      await listener(action);
+    } catch (err) {
+      // A listener never fails the write the reader made.
+      console.error("[todo] a remote listener failed:", err);
+    }
+  }
 }
 
 function rowToGroup(row: Row): TodoGroup {
@@ -203,9 +234,15 @@ export async function getTodoState(options: {
   const groups = await todoDb().query(
     "SELECT * FROM todo_groups ORDER BY position, created_at"
   );
-  const lists = await todoDb().query(
+  const allLists = await todoDb().query(
     "SELECT * FROM todo_lists ORDER BY position, created_at"
   );
+  // A deleted list is kept, with its tasks, for its history (see
+  // deleteTodoList); the board shows neither.
+  const deletedListIds = new Set(
+    allLists.rows.filter((row) => row.deleted_at).map((row) => row.id as string)
+  );
+  const lists = { rows: allLists.rows.filter((row) => !row.deleted_at) };
   // The reader may be known by several keys — the address they sign in
   // with, the mailboxes they connected, the sign-in's own id — and a task
   // is theirs under any of them. Placeholders one by one: SQLite has no
@@ -255,9 +292,9 @@ export async function getTodoState(options: {
   return {
     groups: groups.rows.map(rowToGroup),
     lists: lists.rows.map(rowToList),
-    tasks: tasks.rows.map((row) =>
-      rowToTask(row, assignees.get(row.id as string) ?? [])
-    ),
+    tasks: tasks.rows
+      .filter((row) => !(row.list_id && deletedListIds.has(row.list_id as string)))
+      .map((row) => rowToTask(row, assignees.get(row.id as string) ?? [])),
     people: people.rows.map(rowToPerson),
   };
 }
@@ -358,7 +395,11 @@ export async function updateTodoGroup(
 
 /** Deletes the group AND its lists (with their tasks), matching redd-do. */
 export async function deleteTodoGroup(id: string): Promise<void> {
-  await todoDb().query("DELETE FROM todo_lists WHERE group_id = $1", [id]);
+  // Its lists are deleted as a list is: kept, with their tasks.
+  await todoDb().query(
+    "UPDATE todo_lists SET deleted_at = NOW(), group_id = NULL WHERE group_id = $1",
+    [id]
+  );
   const { rowCount } = await todoDb().query(
     "DELETE FROM todo_groups WHERE id = $1",
     [id]
@@ -445,8 +486,55 @@ export async function updateTodoList(
   return rowToList(rows[0]);
 }
 
+/**
+ * Delete a list: it leaves the board with its tasks, but both are kept,
+ * so the work done in it can be looked over again (restoreTodoList).
+ * It used to be a DELETE, which took every task with it, done ones and all.
+ */
 export async function deleteTodoList(id: string): Promise<void> {
-  await todoDb().query("DELETE FROM todo_lists WHERE id = $1", [id]);
+  await todoDb().query("UPDATE todo_lists SET deleted_at = NOW() WHERE id = $1", [id]);
+}
+
+export type DeletedTodoList = {
+  id: string;
+  name: string;
+  emoji: string | null;
+  deletedAt: string;
+  openCount: number;
+  doneCount: number;
+};
+
+/** The lists that were deleted, newest first, with what they hold. */
+export async function listDeletedTodoLists(): Promise<DeletedTodoList[]> {
+  const { rows } = await todoDb().query(
+    `SELECT l.id, l.name, l.emoji, l.deleted_at,
+            (SELECT COUNT(*) FROM todo_tasks t
+              WHERE t.list_id = l.id AND t.parent_task_id IS NULL AND t.completed = FALSE) AS open_count,
+            (SELECT COUNT(*) FROM todo_tasks t
+              WHERE t.list_id = l.id AND t.parent_task_id IS NULL AND t.completed = TRUE) AS done_count
+       FROM todo_lists l
+      WHERE l.deleted_at IS NOT NULL
+      ORDER BY l.deleted_at DESC`
+  );
+  return rows.map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    emoji: (row.emoji as string | null) ?? null,
+    deletedAt: String(row.deleted_at),
+    openCount: Number(row.open_count),
+    doneCount: Number(row.done_count),
+  }));
+}
+
+/** Bring a deleted list back, at the end of the tabs, with all its tasks. */
+export async function restoreTodoList(id: string): Promise<void> {
+  await todoDb().query(
+    `UPDATE todo_lists
+        SET deleted_at = NULL,
+            position = (SELECT COALESCE(MAX(position), 0) + 1 FROM todo_lists WHERE deleted_at IS NULL)
+      WHERE id = $1`,
+    [id]
+  );
 }
 
 export async function createTodoTask(input: {
@@ -535,17 +623,10 @@ export async function createTodoTask(input: {
     ? await setTaskAssignees(id, input.assigneeIds)
     : [];
   const task = rowToTask(rows[0], assigneeIds);
-  // Born with people on a step: they are on the task too, same subset rule
-  // as an assignment made later.
+  // Born with people on a step: they are on the task too, same rule as an
+  // assignment made later.
   if (task.parentTaskId && task.assigneeIds.length) {
-    const parentIds =
-      (await assigneesByTaskId([task.parentTaskId])).get(task.parentTaskId) ?? [];
-    const missing = task.assigneeIds.filter((pid) => !parentIds.includes(pid));
-    if (missing.length) {
-      await updateTodoTask(task.parentTaskId, {
-        assigneeIds: [...parentIds, ...missing],
-      });
-    }
+    await settleParentPeople(task.parentTaskId);
   }
   // Reminders imports already have a remote id — do not also push to Basecamp.
   if (!input.remindersId) {
@@ -713,29 +794,99 @@ async function writeTaskRow(
   return row;
 }
 
-/** A task's people and its steps' people, kept in step after a change. */
-async function settleStepPeople(task: TodoTask, patch: TodoTaskPatch) {
-  /*
-    The people on a step are on the task. Assigning somebody to a subtask
-    puts them on the parent too — one union, through this same function,
-    so the parent's Basecamp PUT carries them. Only additions flow up;
-    taking somebody off a step says nothing about the task.
-  */
-  if (task.parentTaskId && patch.assigneeIds !== undefined) {
-    const parentIds =
-      (await assigneesByTaskId([task.parentTaskId])).get(task.parentTaskId) ?? [];
-    const missing = task.assigneeIds.filter((pid) => !parentIds.includes(pid));
-    if (missing.length) {
-      await updateTodoTask(task.parentTaskId, {
-        assigneeIds: [...parentIds, ...missing],
-      });
+/** Postgres before migration 097, which adds `from_step`. */
+function isMissingFromStep(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  return e?.code === "42703" || /from_step/.test(e?.message ?? "");
+}
+
+/**
+ * Put a task's people in step with its subtasks.
+ *
+ * Somebody assigned to a subtask is put on the task too, so the task shows
+ * everybody with work in it, and its Basecamp to-do carries them. That
+ * assignment is marked `from_step`. When they have no open subtask left
+ * (they did theirs, were taken off it, or it was deleted), they come off
+ * the task again. Somebody put on the task itself is never taken off here.
+ *
+ * The parent is written directly, not through updateTodoTask: that would
+ * take the people who came off from the parent's done steps too, and the
+ * done steps should still show who did them.
+ */
+async function settleParentPeople(parentId: string): Promise<void> {
+  let current: { personId: string; fromStep: boolean }[];
+  try {
+    const { rows } = await todoDb().query(
+      `SELECT person_id, from_step FROM todo_task_assignees
+        WHERE task_id = $1
+        ORDER BY position, created_at`,
+      [parentId]
+    );
+    current = rows.map((row) => ({
+      personId: row.person_id as string,
+      fromStep: Boolean(row.from_step),
+    }));
+  } catch (err) {
+    if (!isMissingFromStep(err)) throw err;
+    // Before the migration: no marks, so people are only ever added.
+    current = ((await assigneesByTaskId([parentId])).get(parentId) ?? []).map(
+      (personId) => ({ personId, fromStep: false })
+    );
+  }
+  const { rows: openRows } = await todoDb().query(
+    `SELECT DISTINCT a.person_id
+       FROM todo_task_assignees a
+       JOIN todo_tasks t ON t.id = a.task_id
+      WHERE t.parent_task_id = $1 AND t.completed = FALSE`,
+    [parentId]
+  );
+  const open = new Set(openRows.map((row) => row.person_id as string));
+  const kept = current
+    .filter((row) => !row.fromStep || open.has(row.personId))
+    .map((row) => row.personId);
+  const had = new Set(current.map((row) => row.personId));
+  const added = [...open].filter((personId) => !had.has(personId));
+  if (kept.length === current.length && added.length === 0) return;
+
+  await setTaskAssignees(parentId, [...kept, ...added]);
+  if (added.length) {
+    try {
+      await todoDb().query(
+        `UPDATE todo_task_assignees SET from_step = TRUE
+          WHERE task_id = $1
+            AND person_id IN (${added.map((_, i) => `$${i + 2}`).join(", ")})`,
+        [parentId, ...added]
+      );
+    } catch (err) {
+      if (!isMissingFromStep(err)) throw err;
     }
   }
+  const parent = await loadTodoTask(parentId);
+  await pushRemote({
+    type: "assign",
+    listId: parent.listId,
+    taskId: parent.id,
+    basecampId: parent.basecampId,
+    text: parent.text,
+    notesHtml: parent.notesHtml,
+    dueOn: parent.dueOn,
+  });
+}
+
+/** A task's people and its steps' people, kept in step after a change. */
+async function settleStepPeople(task: TodoTask, patch: TodoTaskPatch) {
+  // The people on a step's open work are on the task: see settleParentPeople.
+  if (
+    task.parentTaskId &&
+    (patch.assigneeIds !== undefined || patch.completed !== undefined)
+  ) {
+    await settleParentPeople(task.parentTaskId);
+  }
   /*
-    And taken off the task, they are off its steps. The invariant is the
-    subset, held here rather than asked of every caller: after a parent's
-    people change, no child keeps somebody the parent no longer has. The
-    reverse write above only ever adds, so the two cannot chase each other.
+    And taken off the task by hand, they are off its steps: after a
+    parent's people are changed, no child keeps somebody the parent no
+    longer has. settleParentPeople writes the parent without coming
+    through here, so a done step keeps the people who did it.
   */
   if (!task.parentTaskId && patch.assigneeIds !== undefined) {
     if (task.assigneeIds.length) {
@@ -808,6 +959,7 @@ async function pushTaskUpdate(
     await pushRemote({
       type: "complete",
       listId: task.listId,
+      taskId: task.id,
       basecampId: task.basecampId,
       completed: task.completed,
     });
@@ -933,7 +1085,7 @@ export async function deleteTodoSubtask(id: string): Promise<void> {
 
 export async function deleteTodoTask(id: string): Promise<void> {
   const { rows } = await todoDb().query(
-    "DELETE FROM todo_tasks WHERE id = $1 RETURNING list_id, basecamp_id",
+    "DELETE FROM todo_tasks WHERE id = $1 RETURNING list_id, basecamp_id, parent_task_id",
     [id]
   );
   // Idempotent for offline replay — already gone is success.
@@ -941,8 +1093,12 @@ export async function deleteTodoTask(id: string): Promise<void> {
   await pushRemote({
     type: "delete",
     listId: rows[0].list_id as string,
+    taskId: id,
     basecampId: (rows[0].basecamp_id as string | null) ?? null,
   });
+  // A deleted step's people may have no open work left on the task.
+  const parentId = (rows[0].parent_task_id as string | null) ?? null;
+  if (parentId) await settleParentPeople(parentId);
 }
 
 /**

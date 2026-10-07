@@ -46,9 +46,21 @@ export function queueReordered(ids: SessionQueue, order: string[]): SessionQueue
   return ids ? [...order, ...ids.filter((id) => !order.includes(id))] : ids;
 }
 
-/** The queue's tasks, in its order. A task that is gone is left out. */
-export function sessionTasks<T extends Pick<TodoTask, "id">>(ids: string[], tasks: T[]): T[] {
-  return ids
+/**
+ * The session's tasks, from the board: the open ones are the Today column's,
+ * in the board's order, and the finished ones are the ones of this session's
+ * queue that are done. So a task whose date moves off today leaves the
+ * session, a task added to Today joins it, and an order changed on either
+ * side is the one order both show.
+ */
+export function sessionTasksFromBoard<T extends Pick<TodoTask, "id" | "completed">>(
+  ids: string[],
+  todayColumn: T[],
+  tasks: T[]
+): T[] {
+  const open = todayColumn.filter((task) => !task.completed);
+  const done = ids
     .map((id) => tasks.find((task) => task.id === id))
-    .filter((task): task is T => Boolean(task));
+    .filter((task): task is T => Boolean(task?.completed));
+  return [...open, ...done];
 }

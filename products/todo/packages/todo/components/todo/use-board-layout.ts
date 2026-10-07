@@ -203,6 +203,19 @@ export function useBoardLayout({
     setOpenStackColumn(column);
     persistPref(TILE_OPEN_COLUMN_KEY, column);
   };
+  /*
+    For a search: open the section that holds what was found without
+    making it the reader's choice, and go back to their choice after.
+  */
+  const showStackSectionForSearch = (column: TodoBoardColumn) => setOpenStackColumn(column);
+  const restoreStackSection = () => {
+    try {
+      const stored = localStorage.getItem(TILE_OPEN_COLUMN_KEY) ?? undefined;
+      setOpenStackColumn(isTodoBoardColumn(stored) ? stored : "today");
+    } catch {
+      setOpenStackColumn("today");
+    }
+  };
 
   const showTodayRail = somedayEnabled && somedayExpanded && !boardStacked;
   const boardOpenColumns = React.useMemo(
@@ -232,6 +245,8 @@ export function useBoardLayout({
     pillMenuOpen,
     setPillMenuOpen,
     openStackSection,
+    showStackSectionForSearch,
+    restoreStackSection,
     showTodayRail,
     boardOpenColumns,
     onRailActivate,

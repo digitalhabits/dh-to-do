@@ -89,3 +89,11 @@ export function openTasksShown(options: {
   }
   return inPreviewOrder(openTasksSorted, previewIds);
 }
+
+/**
+ * The done tasks the Done pile shows: while searching, the ones whose words
+ * hold the query, so a search reaches the pile too. Without a search, all.
+ */
+export function doneTasksShown(doneTasks: TodoTask[], query: string): TodoTask[] {
+  return query ? doneTasks.filter((t) => matches(t, query)) : doneTasks;
+}

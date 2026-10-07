@@ -96,6 +96,8 @@ import {
 import { boardViewIsOn } from "@/lib/todo/board-view-default";
 import { settingsActions } from "@/components/todo/settings-actions";
 import { useViewTasks } from "@/components/todo/use-view-tasks";
+import { useLockedState } from "@/components/todo/use-locked-state";
+import type { TodoBoardExtension } from "@/lib/todo/board-extension";
 export type { TodoPageSnapshot } from "@/components/todo/use-board-reads";
 
 /** How long a task ticked from the focus window stands ticked before it goes. */
@@ -117,6 +119,14 @@ export type TodoPageProps = {
    * desktop app has no login and uses THIS_DEVICE_MAKER instead.
    */
   viewerKeys?: string[];
+  /** What the Planner adds for its CRM next steps. */
+  boardExtension?: TodoBoardExtension;
+  /** Only these cards, no board around them (a CRM record's own page); no flight to Done. */
+  embedTaskIds?: readonly string[];
+  /** With embedTaskIds: the add row, into this list; `onAdded` hears each new task's id. */
+  embedComposer?: { listId: string; placeholder: string; onAdded: (taskId: string) => void };
+  /** The Calendar View only, and nothing that leads off it: the Planner's Calendar tab. */
+  calendarOnly?: boolean;
 };
 
 export function useTodoPage({
@@ -124,6 +134,10 @@ export function useTodoPage({
   appVersion,
   viewerEmails = [],
   viewerKeys = [],
+  boardExtension,
+  embedTaskIds,
+  embedComposer,
+  calendarOnly = false,
 }: TodoPageProps) {
   const refreshRef = React.useRef<() => Promise<void>>(async () => {});
   const {
@@ -259,9 +273,8 @@ export function useTodoPage({
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [view, setView] = React.useState<"lists" | "favourites" | "plan">(
-    "lists"
-  );
+  const [view, setView] = useLockedState<"lists" | "favourites" | "plan">(
+    calendarOnly, "plan", "lists");
   /**
    * The app opens on the view the reader left it on, as it opens on the
    * list they left it on. This is before the effect that reads the settings,
@@ -429,7 +442,7 @@ export function useTodoPage({
     }
   });
   // Planner View — the calendar surface, toggled in settings (default off).
-  const [planEnabled, setPlanEnabled] = React.useState(false);
+  const [planEnabled, setPlanEnabled] = useLockedState(calendarOnly, true, false);
   // Tab groups (feature-flagged like redd-do's enableGroups, default off)
   const [groupsEnabled, setGroupsEnabled] = React.useState(false);
   const [currentGroupId, setCurrentGroupId] = React.useState<string | null>(null);
@@ -759,10 +772,15 @@ export function useTodoPage({
 
   /* Parents only, whatever the view: a subtask lives inside its parent's
      expanded card, never as a card of the board. */
-  const parentTasks = React.useMemo(
-    () => state.tasks.filter((t) => !t.parentTaskId),
-    [state.tasks]
-  );
+  /* On All, the lists the extension asks to leave out (the Planner's
+     client steps, while its switch is off) are left out. */
+  const hiddenOnAll = boardExtension?.hiddenListIdsOnAll;
+  const parentTasks = React.useMemo(() => {
+    const hidden = isAllListsView && hiddenOnAll?.length ? new Set(hiddenOnAll) : null;
+    return state.tasks.filter(
+      (t) => !t.parentTaskId && !(hidden && t.listId && hidden.has(t.listId))
+    );
+  }, [state.tasks, isAllListsView, hiddenOnAll]);
   const { tasksForView, openTasksSorted, doneTasks } = useViewTasks({
     parentTasks,
     view,
@@ -926,6 +944,8 @@ export function useTodoPage({
     pillMenuOpen,
     setPillMenuOpen,
     openStackSection,
+    showStackSectionForSearch,
+    restoreStackSection,
     showTodayRail,
     boardOpenColumns,
     onRailActivate,
@@ -940,6 +960,30 @@ export function useTodoPage({
     shellHeight,
     suppressRailClickRef,
   });
+
+  /*
+    A search on a stacked board, one section open at a time: when the open
+    section has no match and another has, open the first one that has.
+    Cleared, the board goes back to the section the reader had open.
+  */
+  const searchMovedStackRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!isSearching) {
+      if (searchMovedStackRef.current) {
+        searchMovedStackRef.current = false;
+        restoreStackSection();
+      }
+      return;
+    }
+    if (!boardAccordion && !boardPills) return;
+    if (boardColumns[openStackColumn].length > 0) return;
+    const withMatches = visibleColumnOrder.find((column) => boardColumns[column].length > 0);
+    if (!withMatches || withMatches === openStackColumn) return;
+    searchMovedStackRef.current = true;
+    showStackSectionForSearch(withMatches);
+    // The two setters are new each render and only set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSearching, boardAccordion, boardPills, boardColumns, openStackColumn, visibleColumnOrder]);
 
   function boardColumnLabel(column: TodoBoardColumn): string {
     if (column === "someday") return t("boardSomeday");
@@ -962,6 +1006,7 @@ export function useTodoPage({
     startTodaySession,
     uncompleteSessionTask,
     skipSessionTask,
+    reorderSessionTasks,
     addSessionTask,
     moveTaskToEdge,
     toggleFavourite,
@@ -972,6 +1017,11 @@ export function useTodoPage({
     removeTask,
     clearDone,
   } = useTaskActions({
+    noFlight: Boolean(embedTaskIds),
+    onTaskCompleted: boardExtension
+      ? (task) => boardExtension.onTaskCompleted(task, refresh)
+      : undefined,
+    onTaskDeleted: boardExtension?.onTaskDeleted,
     api,
     refresh,
     state,
@@ -1223,6 +1273,12 @@ export function useTodoPage({
   });
 
   return {
+    boardExtension,
+    embedTaskIds,
+    calendarOnly,
+    embedComposer,
+    api, // the settings' Deleted lists, and refresh after a restore
+    refresh,
     ...settings,
     ...calendarCardState,
     ...cardMenus,
@@ -1368,6 +1424,7 @@ export function useTodoPage({
     startTodaySession,
     uncompleteSessionTask,
     skipSessionTask,
+    reorderSessionTasks,
     addSessionTask,
     moveTaskToEdge,
     toggleFavourite,

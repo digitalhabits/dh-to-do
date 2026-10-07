@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 
-const SCHEMA_VERSION: i32 = 13;
+const SCHEMA_VERSION: i32 = 15;
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -463,6 +463,41 @@ impl TodoDb {
         ALTER TABLE todo_tasks ADD COLUMN show_on_calendar INTEGER NOT NULL DEFAULT 0;
         DELETE FROM schema_version;
         INSERT INTO schema_version (version) VALUES (13);
+        "#,
+      )?;
+    }
+
+    if version < 14 {
+      // A deleted list is kept, with its tasks, and can be brought back.
+      // See Postgres migration 094.
+      conn.execute_batch(
+        r#"
+        ALTER TABLE todo_lists ADD COLUMN deleted_at TEXT;
+        DELETE FROM schema_version;
+        INSERT INTO schema_version (version) VALUES (14);
+        "#,
+      )?;
+    }
+
+    if version < 15 {
+      // Somebody on a task only because of one of its subtasks comes off
+      // the task when they have no open subtask left. See Postgres
+      // migration 097, which marks the older assignments the same way.
+      conn.execute_batch(
+        r#"
+        ALTER TABLE todo_task_assignees ADD COLUMN from_step INTEGER NOT NULL DEFAULT 0;
+        UPDATE todo_task_assignees
+           SET from_step = 1
+         WHERE EXISTS (
+           SELECT 1
+             FROM todo_tasks c
+             JOIN todo_task_assignees ca ON ca.task_id = c.id
+            WHERE c.parent_task_id = todo_task_assignees.task_id
+              AND ca.person_id = todo_task_assignees.person_id
+              AND ca.created_at <= datetime(todo_task_assignees.created_at, '+5 seconds')
+         );
+        DELETE FROM schema_version;
+        INSERT INTO schema_version (version) VALUES (15);
         "#,
       )?;
     }

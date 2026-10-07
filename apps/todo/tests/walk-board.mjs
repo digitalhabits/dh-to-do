@@ -150,14 +150,13 @@ export async function walkBoard(page) {
   await pickSort("week", t("sortAlpha"));
   await pickSort("week", t("sortAlpha"));
   await until(() => wordsIn("week").join() === "Paint the gate,Fix the tap");
-  const saved = JSON.parse(localStorage.getItem("redd-plan-todo-column-sort") ?? "{}");
+  const saved = JSON.parse(localStorage.getItem("redd-plan-todo-column-sort-2") ?? "{}");
   check(
     "the order is kept on the device",
     saved.week?.sort === "alpha" && saved.week?.desc === true,
     JSON.stringify(saved)
   );
   check("the other columns keep theirs", saved.today?.sort === "due");
-  await pickSort("today", t("sortManual"));
 
   // Carry "Buy seeds" from the backlog into Today, to its foot.
   let aim = null;
@@ -173,6 +172,11 @@ export async function walkBoard(page) {
     "and drawn there, last",
     await until(() => wordsIn("today").at(-1) === "Buy seeds"),
     wordsIn("today").join()
+  );
+  check(
+    "a card from another column leaves the column on due date",
+    column("today").querySelector(".board-sort-label")?.textContent === t("sortDue"),
+    column("today").querySelector(".board-sort-label")?.textContent
   );
 
   // Carry it to the top of Today.
@@ -192,6 +196,11 @@ export async function walkBoard(page) {
     "and drawn first",
     await until(() => wordsIn("today")[0] === "Buy seeds"),
     wordsIn("today").join()
+  );
+  check(
+    "a card carried inside its column puts the column on Manual",
+    await until(() => column("today").querySelector(".board-sort-label")?.textContent === t("sortManual")),
+    column("today").querySelector(".board-sort-label")?.textContent
   );
 
   // Carry a card onto the tab of another list.
@@ -243,10 +252,29 @@ export async function walkBoard(page) {
   // The Today session, on the column as it stands.
   click(column("today").querySelector(".board-start-btn"));
   check("Start opens the Today session", await until(() => Boolean($(".today-session"))));
+  // The task in hand carries the board card's controls, in the board's places.
+  const now = $(".today-session-now");
+  check("the task in hand has the board's corner pill", Boolean(now?.querySelector(":scope > .task-utility-pill .task-expand-btn")));
+  check("and its row of chips under Skip and the clock", Boolean(now?.querySelector(":scope > .today-session-now-actions ~ .task-meta-row .task-meta-chips")));
+  check(
+    "a task waiting has the same pill and chips",
+    Boolean($(".today-session-queue .today-session-task.task-item > .task-utility-pill") && $(".today-session-queue .today-session-task.task-item > .task-meta-row .task-meta-chips"))
+  );
+  // The list chip opens its picker in the session. The board card behind
+  // drew a second picker, and the two closed each other at once.
+  click(now?.querySelector(".task-list-origin"));
+  check("the list chip in the session opens its picker", await until(() => $$(".task-list-picker").length === 1), $$(".task-list-picker").length);
+  document.body.click();
+  await until(() => !$(".task-list-picker"));
   const running = () => $(".today-session-now-title")?.textContent;
   check("the first task is in hand", await until(() => running() === "Buy seeds"), running());
   click($(".today-session-skip"));
   check("Skip takes the next one", await until(() => running() === "Call the plumber"), running());
+  check(
+    "and puts the skipped one last in Today on the board too",
+    await until(() => row("Buy seeds")?.position > row("Water the pots")?.position, 5000),
+    JSON.stringify({ seeds: row("Buy seeds")?.position, pots: row("Water the pots")?.position })
+  );
   click($(".today-session-now-check"));
   check(
     "the tick in the session is saved",

@@ -226,7 +226,7 @@ export async function syncBasecampList(
     [listId]
   );
   const list = listRows[0];
-  if (!list) throw new PlanError("List not found", 404);
+  if (!list || list.deleted_at) throw new PlanError("List not found", 404);
   if (!list.basecamp_project_id || !list.basecamp_list_id) {
     throw new PlanError("List is not linked to Basecamp", 400);
   }

@@ -280,7 +280,7 @@ async function searchField() {
 
 async function columnSorts() {
   const { useColumnSorts } = await import("@/components/todo/use-column-sorts");
-  localStorage.removeItem("redd-plan-todo-column-sort");
+  localStorage.removeItem("redd-plan-todo-column-sort-2");
   const people = [{ id: "p1", name: "Zed" }, { id: "p2", name: "Amy" }];
   const hook = renderHook((args) => useColumnSorts(args), { assignEnabled: true, people, taskPreviewIds: null });
   const tasks = [
@@ -291,7 +291,7 @@ async function columnSorts() {
   check("a column starts on due date: undated tasks by position", order("week") === "a,b");
   flushed(() => hook.result().pickColumnSort("week", "assignee"));
   check("a picked order is put on the column", order("week") === "b,a", order("week"));
-  check("and kept", JSON.parse(localStorage.getItem("redd-plan-todo-column-sort")).week.sort === "assignee");
+  check("and kept", JSON.parse(localStorage.getItem("redd-plan-todo-column-sort-2")).week.sort === "assignee");
   hook.rerender({ assignEnabled: false, people, taskPreviewIds: null });
   check("with assigning off, 'assignee' reads as due date", order("week") === "a,b" && hook.result().columnSorts.week.sort === "due");
   hook.rerender({ assignEnabled: true, people, taskPreviewIds: ["x"] });
@@ -308,7 +308,7 @@ async function columnSorts() {
   flushed(() => document.body.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true })));
   check("so does a press anywhere", hook.result().columnSortMenu === null);
   hook.unmount();
-  localStorage.removeItem("redd-plan-todo-column-sort");
+  localStorage.removeItem("redd-plan-todo-column-sort-2");
 }
 
 async function peopleScope() {
@@ -1032,9 +1032,16 @@ async function taskActions() {
   check("the session is Today's column", r().sessionIds?.join() === "a,b", r().sessionIds?.join());
   flushed(() => r().skipSessionTask(task("a")));
   check("a skip goes to the end", r().sessionIds.join() === "b,a");
+  // The board's order is the session's, so a skip is a move on the board.
+  check(
+    "and to the end of Today on the board",
+    await until(() => task("a")?.position > task("b")?.position),
+    JSON.stringify({ a: task("a")?.position, b: task("b")?.position })
+  );
   flushed(() => r().uncompleteSessionTask(task("a")));
   check("a task taken back up is first again", r().sessionIds.join() === "a,b");
-  check("and not done", writes("PATCH").at(-1)?.body.completed === false);
+  check("and not done", writes("PATCH").some((c) => c.body.id === "a" && c.body.completed === false));
+  check("and first in Today on the board", await until(() => task("a")?.position < task("b")?.position));
   await r().addSessionTask("Brew tea", 15);
   const brewed = writes("POST").find((c) => c.body.text === "Brew tea")?.body;
   check("a task added in the session joins its end", await until(() => Boolean(brewed) && r().sessionIds?.at(-1) === brewed.id), r().sessionIds?.join());
@@ -2197,11 +2204,29 @@ async function groupsAndLists() {
   await until(() => undos.at(-1)?.label === "listDeleted");
   calls.length = 0;
   remade.length = 0;
+  // A host without the restore route: Undo makes the list again.
+  fail.on = (path) => path === "/api/todo/lists/deleted";
   undos.at(-1).restore();
   const back = () => calls.find((c) => c.path === "/api/todo/lists" && c.method === "POST")?.body;
-  check("undo makes the list again, with its look", await until(() => back()?.name === "Attic" && back().colour === "#111111" && back().emoji === "star"));
+  check("without the route, undo makes the list again, with its look", await until(() => back()?.name === "Attic" && back().colour === "#111111" && back().emoji === "star"));
   check("and its links", await until(() => calls.some((c) => c.method === "PATCH" && c.body.basecampListId === "b" && c.body.basecampProjectId === "p")));
   check("and its tasks", await until(() => remade.length === 1 && remade[0].listId === back()?.id));
+  fail.on = null;
+  // A deleted list is kept with its tasks: Undo brings that one back.
+  flushed(() => h4.result().removeList(h4.result().state.lists[0]));
+  flushed(() => confirm.onConfirm());
+  await until(() => undos.at(-1)?.label === "listDeleted" && calls.some((c) => c.method === "DELETE" && c.path.includes("id=l2")));
+  calls.length = 0;
+  remade.length = 0;
+  undos.at(-1).restore();
+  check(
+    "undo brings the same list back",
+    await until(() => calls.some((c) => c.path === "/api/todo/lists/deleted" && c.method === "POST" && c.body?.id === "l2"))
+  );
+  check(
+    "and makes no copy of it",
+    !calls.some((c) => c.path === "/api/todo/lists" && c.method === "POST") && remade.length === 0
+  );
   h4.unmount();
   const h5 = renderHook(() => {
     const [state, setState] = React.useState({ groups: [], lists: [{ id: "l1", name: "Attic" }, { id: "l2", name: "Barn" }], tasks: [], people: [] });

@@ -13,6 +13,7 @@ import * as React from "react";
 import { AddTaskComposer } from "@/components/todo/AddTaskComposer";
 import { BoardViewNudge } from "@/components/todo/BoardViewNudge";
 import { TodoPlannerView } from "@/components/todo/TodoPlannerView";
+import { DoneBox, DoneSummary } from "@/components/todo/done-summary";
 import { DoneChevron, HeartIcon } from "@/components/todo/task-icons";
 import { renderBoardColumn, renderBoardPills } from "@/components/todo/todo-board-view";
 import { renderSyncControls } from "@/components/todo/todo-list-chrome";
@@ -20,7 +21,8 @@ import { renderTask } from "@/components/todo/todo-task-card";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
 import { groupDoneTasks } from "@/lib/todo/done-groups";
-import { dueDatePatch, timeSpentLabel } from "@/lib/todo/task-helpers";
+import { doneTasksShown, searchQueryOf } from "@/lib/todo/search-groups";
+import { dueDatePatch } from "@/lib/todo/task-helpers";
 import { type TodoBoardColumn } from "@/lib/todo/types";
 
 export function renderTaskList(m: TodoPageModel) {
@@ -160,6 +162,7 @@ export function renderAddTask(m: TodoPageModel) {
     answerBoardNudge,
     addTask,
     uploaderForList,
+    planEnabled,
   } = m;
   return (
     view === "lists" &&
@@ -188,6 +191,7 @@ export function renderAddTask(m: TodoPageModel) {
           resolveImageSrc={resolveBasecampImage}
           people={state.people}
           assignEnabled={assignEnabled}
+          calendarEnabled={planEnabled}
           onEditPeople={() => setPeopleEditorOpen(true)}
           lists={lists}
           defaultList={addTargetList}
@@ -227,11 +231,10 @@ export function renderDonePile(m: TodoPageModel) {
     : Boolean(activeList?.remindersListId && remindersConnected);
   const canSync =
     view === "lists" && (syncBasecamp || syncReminders);
-  const showDone = filteredDoneTasks.length > 0 && !isSearching;
-  const filteredDoneSeconds = filteredDoneTasks.reduce(
-    (sum, t) => sum + (t.timeSpentSeconds || 0),
-    0
-  );
+  // A search reaches the pile when it is open: its matching done tasks
+  // show under the open ones. Folded, it stays out of the search's way.
+  const doneShown = doneTasksShown(filteredDoneTasks, isSearching ? searchQueryOf(m.searchQuery) : "");
+  const showDone = doneShown.length > 0 && (!isSearching || !doneCollapsed);
   if (!canSync && !showDone) return null;
   const syncBtn = canSync
     ? renderSyncControls(m, {
@@ -244,17 +247,7 @@ export function renderDonePile(m: TodoPageModel) {
     return <div className="done-heading-row">{syncBtn}</div>;
   }
   return (
-    <div
-      className={`done-container ${doneCollapsed ? "collapsed" : ""}`}
-      id="done-container"
-      style={{
-        display: "flex",
-        // Collapsed, the box holds the heading row alone and takes
-        // the height that row needs (see .done-container.collapsed
-        // in todo-shell.css). No cap, so nothing is cut off.
-        maxHeight: doneCollapsed ? undefined : 260,
-      }}
-    >
+    <DoneBox collapsed={doneCollapsed} t={t}>
       <div className="done-heading-row" ref={doneHeadingRowRef}>
         {syncBtn}
         <div
@@ -267,18 +260,12 @@ export function renderDonePile(m: TodoPageModel) {
             <DoneChevron />
           </div>
         </div>
-      </div>
-      <div className="done-summary">
-        <span className="done-task-count">
-          {filteredDoneTasks.length}{" "}
-          {filteredDoneTasks.length === 1 ? "task" : "tasks"}
-        </span>
-        {filteredDoneSeconds > 0 ? (
-          <span className="done-time-spent">
-            {timeSpentLabel(filteredDoneSeconds, t("minutes"), t("hoursShort"))}
-          </span>
-        ) : null}
-        {!doneCollapsed ? (
+        {/* How much was done in a day, a week, a month or ever, on the
+            row itself: see done-summary. */}
+        {!doneCollapsed ? <DoneSummary tasks={doneShown} lang={m.lang} t={t} /> : null}
+        {/* Not while searching: it clears every done task, not only the
+            ones the search shows. */}
+        {!doneCollapsed && !isSearching ? (
           <button
             className="delete-all-btn"
             title={t("deleteAllCompleted")}
@@ -292,14 +279,14 @@ export function renderDonePile(m: TodoPageModel) {
           stretch of days, newest first, and none for a stretch
           with nothing in it. */}
       <div className="done-tasks" ref={doneTasksRef}>
-        {(view === "plan" ? [] : groupDoneTasks(filteredDoneTasks)).map((group) => (
+        {(view === "plan" ? [] : groupDoneTasks(doneShown)).map((group) => (
           <React.Fragment key={group.bucket}>
             <div className="done-day-heading">{t(group.bucket)}</div>
             {group.tasks.map((task) => renderTask(m, task))}
           </React.Fragment>
         ))}
       </div>
-    </div>
+    </DoneBox>
   );
 }
 
@@ -328,7 +315,9 @@ export function renderPlanner(m: TodoPageModel) {
         mePersonId={mePersonIds[0] ?? null}
         t={t}
         onEditPeople={() => setPeopleEditorOpen(true)}
-        onTaskDueChange={(taskId, dueOn) => mutateTask(taskId, dueDatePatch(dueOn))}
+        onTaskDueChange={(taskId, dueOn) =>
+          mutateTask(taskId, dueDatePatch(dueOn, state.tasks.find((task) => task.id === taskId)))
+        }
         onTaskOpen={openCalendarTask}
         onTaskCreate={openCalendarNewTask}
       />

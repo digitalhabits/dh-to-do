@@ -33,6 +33,7 @@ import {
   seededAssignees,
 } from "@/lib/todo/optimistic-task";
 import {
+  queueReordered,
   queueWithAdded,
   queueWithFirst,
   queueWithLast,
@@ -83,6 +84,9 @@ const JUST_ADDED_MS = 1600;
  * moving to an end, deleting, and the steps of the Today session.
  */
 export function useTaskActions({
+  noFlight,
+  onTaskCompleted,
+  onTaskDeleted,
   api,
   refresh,
   state,
@@ -121,6 +125,12 @@ export function useTaskActions({
   sortColumn,
   pickColumnSort,
 }: {
+  /** Told when a task is ticked off (the Planner asks for a next step). */
+  onTaskCompleted?: (task: TodoTask) => void;
+  /** A task was deleted (not a step inside a task). */
+  onTaskDeleted?: (task: TodoTask) => void;
+  /** No flight to Done: the board is not on screen (an embedded card). */
+  noFlight?: boolean;
   api: TodoApi;
   refresh: () => Promise<void>;
   state: TodoState;
@@ -175,6 +185,18 @@ export function useTaskActions({
       const json = await api("/api/todo/tasks", "PATCH", { id, ...patch });
       const task = json.task as TodoTask;
       patchTaskLocal(id, task);
+      /*
+        A step ticked, or its people changed: the store may have put people
+        on its task or taken them off (settleParentPeople), and only it
+        knows who was put on the task by hand. Read the board again.
+      */
+      if (
+        existing.parentTaskId &&
+        (patch.completed !== undefined || patch.assigneeIds !== undefined) &&
+        !isOfflineNow()
+      ) {
+        void refresh();
+      }
       // A focus window that shows this task must not keep the old text.
       focusChannelRef.current?.postMessage({
         type: BOARD_TASK_CHANGED_MESSAGE,
@@ -381,15 +403,37 @@ export function useTaskActions({
     setSessionIds(queue);
   }
 
-  /** Take a finished task back up in the session: see queueWithFirst. */
+  /*
+    The session's open tasks are the Today column's, in the board's order
+    (sessionTasksFromBoard). So what changes the order in the session
+    changes it on the board, and the two never disagree.
+  */
+
+  /** Take a finished task back up: not done, and first in Today again. */
   function uncompleteSessionTask(task: TodoTask) {
     void mutateTask(task.id, { completed: false });
+    moveTaskToEdge(task, "top");
     setSessionIds((ids) => queueWithFirst(ids, task.id));
   }
 
-  /** Skip: the task goes to the end of the queue, and the next one runs. */
+  /** Skip: the task goes to the end of Today, and the next one runs. */
   function skipSessionTask(task: TodoTask) {
+    moveTaskToEdge(task, "bottom");
     setSessionIds((ids) => queueWithLast(ids, task.id));
+  }
+
+  /** The session's tasks dragged into a new order: Today takes that order. */
+  function reorderSessionTasks(taskIds: string[]) {
+    const open = boardColumns.today.filter((task) => !task.completed);
+    const moved = taskIds
+      .map((id) => open.find((task) => task.id === id))
+      .filter((task): task is TodoTask => Boolean(task));
+    const order = [...moved, ...open.filter((task) => !taskIds.includes(task.id))];
+    for (const write of planManualOrder(order, Date.now())) {
+      void mutateTask(write.id, write.patch);
+    }
+    if (columnSorts.today.sort !== "manual") pickColumnSort("today", "manual");
+    setSessionIds((ids) => queueReordered(ids, taskIds));
   }
 
   /** A task added inside the session joins the end of its queue. */
@@ -483,11 +527,12 @@ export function useTaskActions({
     // from — a card, the focus window, the Today session.
     if (nextCompleted) {
       registerUndo(() => void mutateTask(task.id, { completed: false }));
+      onTaskCompleted?.(task);
     }
 
     // Favourites / search: no DONE flight target — just toggle. The board
     // and the single list both get the party and the flight.
-    if (view === "favourites" || isSearching || !sourceElement) {
+    if (view === "favourites" || isSearching || !sourceElement || noFlight) {
       void mutateTask(task.id, { ...extra, completed: nextCompleted });
       return;
     }
@@ -700,6 +745,12 @@ export function useTaskActions({
         ...s,
         tasks: s.tasks.map((t) => (t.id === tempId ? { ...t, ...created } : t)),
       }));
+      // Ticked in the add row's day picker. A second write, as the Calendar's
+      // own add does: the create does not take the flag. Only a dated task
+      // can be on the Calendar.
+      if (draft.showOnCalendar && dueOn) {
+        await mutateTask(tempId, { showOnCalendar: true });
+      }
       // One at a time, in order: the server numbers each step after the
       // last, so a parallel send could land them shuffled.
       for (const subtask of optimisticSubtasks) {
@@ -793,6 +844,7 @@ export function useTaskActions({
 
     try {
       await api(`/api/todo/tasks?id=${encodeURIComponent(id)}`, "DELETE");
+      if (!task.parentTaskId) onTaskDeleted?.(task);
       if (task.remindersId && listOfTask(task)?.remindersListId) {
         pushReminders(() => deleteRemindersTask(task.remindersId as string));
       }
@@ -844,6 +896,7 @@ export function useTaskActions({
     startTodaySession,
     uncompleteSessionTask,
     skipSessionTask,
+    reorderSessionTasks,
     addSessionTask,
     moveTaskToEdge,
     toggleFavourite,

@@ -13,12 +13,18 @@ import { boardColumnPatch, type TodoList, type TodoTask, type TodoTaskPatch } fr
 /**
  * What setting a due date writes: the date, and a move to Today when the
  * date is today or already past. A later date waits its turn — the board
- * read puts it in Today on the day (see promoteDueTasks in the store).
+ * read puts it in Today on the day (see promoteDueTasks in the store). A
+ * task in Today given a later date leaves Today for Soon(-ish), the week
+ * column, until then. `current` is the task as it is; without it, a later
+ * date moves nothing.
  */
-export function dueDatePatch(dueOn: string | null): TodoTaskPatch {
-  return dueOn && dueOn <= todayDueOn()
-    ? { dueOn, ...boardColumnPatch("today") }
-    : { dueOn };
+export function dueDatePatch(
+  dueOn: string | null,
+  current?: Pick<TodoTask, "isToday">
+): TodoTaskPatch {
+  if (dueOn && dueOn <= todayDueOn()) return { dueOn, ...boardColumnPatch("today") };
+  if (dueOn && current?.isToday) return { dueOn, ...boardColumnPatch("week") };
+  return { dueOn };
 }
 
 /** Normalize task flags from API / older page-cache snapshots. */

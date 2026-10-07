@@ -10,14 +10,16 @@
  * from it. The JSX is TodoPage's own, word for word.
  */
 
+import type { DeletedTodoList } from "@/lib/todo/store";
 import { ListAppearancePicker } from "@/components/todo/ListAppearancePicker";
 import { TodayFocusSession } from "@/components/todo/TodayFocusSession";
 import { TodoPeopleEditor } from "@/components/todo/TodoPeopleEditor";
 import { TodoSelect } from "@/components/todo/TodoSelect";
 import { TodoSettingsModal } from "@/components/todo/TodoSettingsModal";
 import { renderNotesEditor } from "@/components/todo/todo-task-overlay";
+import { taskCardChrome } from "@/components/todo/todo-task-card";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
-import { queueReordered, sessionTasks } from "@/lib/todo/session-queue";
+import { queueWithAdded, sessionTasksFromBoard } from "@/lib/todo/session-queue";
 import { COLOR_SWATCHES } from "@/lib/todo/tab-colours";
 import { type TodoTask } from "@/lib/todo/types";
 
@@ -339,6 +341,13 @@ export function renderSettings(m: TodoPageModel) {
         onGroupsEnabledChange={handleGroupsEnabledChange}
         planEnabled={planEnabled}
         onPlanEnabledChange={changePlanEnabled}
+        loadDeletedLists={async () =>
+          ((await m.api("/api/todo/lists/deleted", "GET")) as { lists: DeletedTodoList[] }).lists
+        }
+        onRestoreList={async (id) => {
+          await m.api("/api/todo/lists/deleted", "POST", { id });
+          await m.refresh();
+        }}
       />
     ) : null
   );
@@ -347,55 +356,47 @@ export function renderSettings(m: TodoPageModel) {
 export function renderTodaySession(m: TodoPageModel) {
   const {
     state,
-    assignEnabled,
     focusTimerAlways,
-    setPeopleEditorOpen,
     sessionIds,
     setSessionIds,
-    nativeShell,
-    activeFocusTaskIds,
     t,
-    toggleTaskFocusPopout,
     mutateTask,
     uncompleteSessionTask,
     skipSessionTask,
+    reorderSessionTasks,
     addSessionTask,
+    boardColumns,
     toggleNotes,
-    openTaskOverlay,
     subtasksByTask,
     toggleSubtaskDone,
-    toggleTaskAssignee,
   } = m;
   return (
     sessionIds ? (
       <TodayFocusSession
-        tasks={sessionTasks(sessionIds, state.tasks)}
+        tasks={sessionTasksFromBoard(sessionIds, boardColumns.today, state.tasks)}
         t={t}
-        canPopOut={nativeShell}
-        focusTaskIds={activeFocusTaskIds}
-        people={state.people}
-        assignEnabled={assignEnabled}
         timerAlways={focusTimerAlways}
         subtasksOf={(taskId) => subtasksByTask.get(taskId) ?? []}
+        renderChrome={(task) => taskCardChrome(m, task, "session")}
         handlers={{
-          onComplete: (task) => void mutateTask(task.id, { completed: true }),
+          onComplete: (task) => {
+            void mutateTask(task.id, { completed: true });
+            // A task that came into Today during the session is in the
+            // queue too, so it shows with the finished ones.
+            setSessionIds((ids) => (ids?.includes(task.id) ? ids : queueWithAdded(ids, task.id)));
+          },
           onUncomplete: uncompleteSessionTask,
-          onToggleFocus: toggleTaskFocusPopout,
           onToggleNotes: toggleNotes,
           renderNotes: (task: TodoTask) => renderNotesEditor(m, task),
-          onToggleAssignee: toggleTaskAssignee,
-          onEditPeople: () => setPeopleEditorOpen(true),
           onSetDuration: (task, minutes) =>
             void mutateTask(task.id, { expectedDurationMinutes: minutes }),
           onSkip: skipSessionTask,
-          onReorder: (taskIds) =>
-            setSessionIds((ids) => queueReordered(ids, taskIds)),
+          onReorder: reorderSessionTasks,
           onAddTask: (text, durationMinutes) =>
             void addSessionTask(text, durationMinutes),
           onPersistTime: (taskId, totalSeconds) =>
             void mutateTask(taskId, { timeSpentSeconds: totalSeconds }),
           onEditText: (task, text) => void mutateTask(task.id, { text }),
-          onExpand: openTaskOverlay,
           onToggleSubtask: toggleSubtaskDone,
           onExit: () => setSessionIds(null),
         }}

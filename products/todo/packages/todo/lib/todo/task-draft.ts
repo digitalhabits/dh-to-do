@@ -27,6 +27,8 @@ export type TaskDraft = {
   subtasks: SubtaskDraft[];
   /** A list picked in the row. Null means the list the tab is on. */
   listId: string | null;
+  /** Show the new task on the Calendar. Only a task with a due day can be. */
+  showOnCalendar: boolean;
 };
 
 export const EMPTY_TASK_DRAFT: TaskDraft = {
@@ -37,6 +39,7 @@ export const EMPTY_TASK_DRAFT: TaskDraft = {
   notes: "",
   subtasks: [],
   listId: null,
+  showOnCalendar: false,
 };
 
 /** Whether anything but the title is set. */

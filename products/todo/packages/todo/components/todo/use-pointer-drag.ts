@@ -684,7 +684,10 @@ export function usePointerDrag({
     setTaskPreviewIds(null);
 
     // The column it lands in. When that column is sorted (due date, name…)
-    // the drop keeps the order the drag drew, and the column goes Manual.
+    // the drop writes the order the drag drew. A task moved inside its own
+    // column then puts the column on Manual. A task from another column
+    // leaves the sort alone: the sort puts it in place, and only where the
+    // sort has nothing to go by (no due date) does the drawn order count.
     const dragged = liveState.tasks.find((task) => task.id === taskId);
     const column =
       hover?.taskId === taskId
@@ -719,7 +722,9 @@ export function usePointerDrag({
       sortedColumn,
     });
     for (const write of writes) void mutateTask(write.id, write.patch);
-    if (sortedColumn && writes.some((write) => "position" in write.patch)) {
+    const fromOtherColumn =
+      dragged !== undefined && column !== boardColumnOf(dragged, liveSomeday);
+    if (sortedColumn && !fromOtherColumn && writes.some((write) => "position" in write.patch)) {
       setManualColumn(column);
     }
   }
