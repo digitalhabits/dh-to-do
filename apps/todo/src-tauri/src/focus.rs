@@ -423,6 +423,10 @@ pub fn open_focus_popout(
       return Ok(());
     }
 
+    // On Linux a fixed title, so a window rule can find the focus window
+    // (README). Its name is on the note itself.
+    #[cfg(target_os = "linux")]
+    let title = linux_focus_title(slot);
     let popout = WebviewWindowBuilder::new(&app, &label, url)
       .title(title.clone())
       // The sticky-note colour (todo.css), so nothing shows white or black
@@ -451,10 +455,41 @@ pub fn open_focus_popout(
     // the window is on screen. Ask again once it is.
     #[cfg(target_os = "linux")]
     let _ = popout.set_always_on_top(true);
+    #[cfg(target_os = "linux")]
+    hyprland_float_and_pin(&title);
     let _ = popout.set_focus();
     let _ = window;
     Ok(())
   }
+}
+
+/// The focus window's title on Linux: "Digital Habits focus 1" or "… 2".
+#[cfg(target_os = "linux")]
+fn linux_focus_title(slot: usize) -> String {
+  format!("Digital Habits focus {slot}")
+}
+
+/// Hyprland tiles a new window and ignores "keep above". Ask it to float
+/// the focus window and pin it (on top, on every workspace), once the
+/// window is on screen. Without Hyprland, or without hyprctl, nothing
+/// happens. `pin` turns pinning over, so this runs once, for a new window.
+#[cfg(target_os = "linux")]
+fn hyprland_float_and_pin(title: &str) {
+  if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
+    return;
+  }
+  let target = format!("title:^({title})$");
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let batch = format!("dispatch setfloating {target} ; dispatch pin {target}");
+    match std::process::Command::new("hyprctl").args(["--batch", &batch]).output() {
+      Ok(out) => log::info!(
+        "focus: hyprctl {}",
+        String::from_utf8_lossy(&out.stdout).trim()
+      ),
+      Err(err) => log::warn!("focus: hyprctl did not run: {err}"),
+    }
+  });
 }
 
 /// `navigate` wants an absolute URL. Resolve the app-relative focus page

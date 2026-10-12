@@ -450,6 +450,11 @@ jobs:
         id: version
         run: node -p "'version=' + require('./apps/todo/package.json').version" >> "$GITHUB_OUTPUT"
 
+      # The Rust cache brings back the target folder, and with it the packages
+      # of the last release. Two .deb files made the next step fail (3.1.4).
+      - name: Clear old packages
+        run: rm -rf apps/todo/src-tauri/target/release/bundle
+
       # tauri.linux.conf.json makes the AppImage, the .deb and the AppImage's
       # updater signature.
       - name: Build
@@ -464,9 +469,10 @@ jobs:
           out=apps/todo/for-distribution
           name="Digital-Habits-To-Do_linux_${{ matrix.arch }}"
           mkdir -p "$out"
-          cp "$(ls "$bundle"/appimage/*.AppImage)" "$out/$name.AppImage"
-          cp "$(ls "$bundle"/appimage/*.AppImage.sig)" "$out/$name.AppImage.sig"
-          cp "$(ls "$bundle"/deb/*.deb)" "$out/$name.deb"
+          version="${{ steps.version.outputs.version }}"
+          cp "$(ls "$bundle"/appimage/*_"$version"_*.AppImage)" "$out/$name.AppImage"
+          cp "$(ls "$bundle"/appimage/*_"$version"_*.AppImage.sig)" "$out/$name.AppImage.sig"
+          cp "$(ls "$bundle"/deb/*_"$version"_*.deb)" "$out/$name.deb"
           cd "$out"
           for file in "$name.AppImage" "$name.deb"; do
             sha256sum "$file" > "$file.sha256"

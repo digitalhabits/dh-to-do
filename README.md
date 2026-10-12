@@ -78,13 +78,31 @@ The tasks, the names and the mail in the pictures are invented.
 
 ## How it works
 
-A desktop app for macOS and Windows, made with Tauri. It is distributed
-through the Mac App Store and the Microsoft Store, and the stores update it.
+A desktop app for macOS, Windows and Linux, made with Tauri. On macOS and
+Windows it is distributed through the Mac App Store and the Microsoft Store,
+and the stores update it.
 Your tasks are in a SQLite file on your computer. There is no account and no server of ours for
 your tasks.
 
 - macOS: `~/Library/Application Support/<app identifier>/todo.sqlite3`
 - Windows: the app data directory, file name `todo.sqlite3`
+
+On Linux it comes as an AppImage, which updates itself, and as a .deb, from
+the releases of this repository. The focus window asks to stay on top of your
+other windows. On Wayland the app runs through XWayland for that, because
+Wayland lets no app keep a window on top. On Hyprland (Omarchy, for one) it
+does not: it asks Hyprland to float and pin the focus window. If your focus
+window is tiled anyway, add a window rule that floats and pins the titles
+`Digital Habits focus 1` and `Digital Habits focus 2`. In recent
+Hyprland versions:
+
+```
+windowrule = float, title:^(Digital Habits focus [12])$
+windowrule = pin, title:^(Digital Habits focus [12])$
+```
+
+The rule syntax changes between Hyprland versions. If these lines give an
+error, see the Hyprland wiki for window rules.
 
 The Basecamp sign-in goes through a small OAuth broker at
 `todo.digitalhabits.org`, because Basecamp needs a client secret and an app
