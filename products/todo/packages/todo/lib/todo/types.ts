@@ -12,6 +12,15 @@ export const FOCUS_CHANNEL = "redd-plan-todo-focus";
 export const BOARD_TASK_CHANGED_MESSAGE = "board-task-changed";
 
 /**
+ * The board asks the focus window of `taskId` to show `task` in its place,
+ * as the window's own switcher does: the time so far is kept, and the clock
+ * starts again on the new task. Skip in the Today session sends it, so a
+ * window on the skipped task moves on to the new first task with the
+ * session.
+ */
+export const FOCUS_SWITCH_REQUEST_MESSAGE = "focus-switch-request";
+
+/**
  * Which list the To-Do page opens on, kept per device.
  *
  * Here rather than in the page, because the planner sets it too: the

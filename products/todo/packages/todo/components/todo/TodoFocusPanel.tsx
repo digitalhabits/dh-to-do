@@ -39,6 +39,7 @@ import { makeT, type TodoLang } from "@/lib/todo/i18n";
 import {
   BOARD_TASK_CHANGED_MESSAGE,
   FOCUS_CHANNEL,
+  FOCUS_SWITCH_REQUEST_MESSAGE,
   type TodoState,
   type TodoTask,
 } from "@/lib/todo/types";
@@ -190,6 +191,8 @@ export function TodoFocusPanel({
   const notesRef = React.useRef<HTMLDivElement | null>(null);
   const draggedRef = React.useRef(false);
   const channelRef = React.useRef<BroadcastChannel | null>(null);
+  /** The newest switchToTask, for the channel handler set up per task. */
+  const switchToTaskRef = React.useRef<(next: TodoTask) => void>(() => {});
   const persistedRef = React.useRef({ taskId: initialTaskId, baseSpent: 0 });
   const pendingPersistRef = React.useRef<Promise<void> | null>(null);
   /**
@@ -462,6 +465,10 @@ export function TodoFocusPanel({
         });
       } else if (msg.type === "focus-exit-request" && msg.taskId === taskId) {
         void exitFocus();
+      } else if (msg.type === FOCUS_SWITCH_REQUEST_MESSAGE && msg.taskId === taskId) {
+        // Skip in the Today session: show the session's next task instead.
+        const next = (msg as { task?: TodoTask }).task;
+        if (next) switchToTaskRef.current(next);
       } else if (msg.type === "focus-started" && msg.taskId) {
         // The other panel's task. A channel never echoes to its sender, so
         // this is never this panel's own.
@@ -673,6 +680,10 @@ export function TodoFocusPanel({
     });
   }
 
+  React.useEffect(() => {
+    switchToTaskRef.current = switchToTask;
+  });
+
   function toggleNotes() {
     if (!task) return;
     if (notesOpen) {
@@ -710,6 +721,20 @@ export function TodoFocusPanel({
   }
 
   /**
+   * The macOS panel is a clear window. Its own shadow is the window's
+   * square, not the note's rounded shape, so the shell turns it off
+   * (focus.rs) and the note draws its own shadow, in room the CSS leaves
+   * round it. Windows and Linux draw the window as the note, so they need
+   * no room.
+   */
+  React.useEffect(() => {
+    if (!isNativeShell() || !/^Mac/.test(navigator.platform)) return;
+    const root = document.documentElement;
+    root.classList.add("focus-note-room");
+    return () => root.classList.remove("focus-note-room");
+  }, []);
+
+  /**
    * Fit the window to the bar plus whatever is open under it. The shell
    * opens the panel at the height of the bar, so an open task list or the
    * notes editor draws outside the window and nothing appears to happen.
@@ -730,6 +755,19 @@ export function TodoFocusPanel({
 
     const fit = () => {
       if (stopped) return;
+      /*
+        On macOS the note sits inside the window with clear room round it,
+        where its shadow falls (todo.css). The window is that room bigger
+        than the note. Elsewhere the room is 0.
+      */
+      const room = { x: 0, y: 0 };
+      const focusMode = shellRef.current?.querySelector<HTMLElement>("#focus-mode");
+      if (focusMode) {
+        const style = getComputedStyle(focusMode);
+        const px = (v: string) => Number.parseFloat(v) || 0;
+        room.x = px(style.left) + px(style.right);
+        room.y = px(style.top) + px(style.bottom);
+      }
       // scrollHeight as well as offsetHeight: a panel the flex box has
       // squeezed still reports what it wants to be.
       const natural = (el: HTMLElement | null) =>
@@ -754,18 +792,20 @@ export function TodoFocusPanel({
           (Number.parseFloat(barStyle.paddingBottom) || 0);
         const lineHeight = Number.parseFloat(getComputedStyle(name).lineHeight) || 24;
         const allLines = Math.max(1, Math.round(name.scrollHeight / lineHeight));
-        const room = Math.floor((window.innerHeight - openHeight - padding) / lineHeight);
-        const lines = Math.max(1, room);
+        const lines = Math.max(
+          1,
+          Math.floor((window.innerHeight - room.y - openHeight - padding) / lineHeight)
+        );
         setNameLines(lines >= allLines ? null : lines);
         barHeight = Math.max(48, Math.ceil(padding + lineHeight));
       }
       const target = Math.min(
-        Math.max(barHeight + openHeight, FOCUS_PANEL_MIN_HEIGHT),
+        Math.max(barHeight + openHeight, FOCUS_PANEL_MIN_HEIGHT) + room.y,
         FOCUS_PANEL_MAX_HEIGHT
       );
       const width =
         barRef.current && nameRef.current
-          ? focusBarNaturalWidth(barRef.current, nameRef.current)
+          ? focusBarNaturalWidth(barRef.current, nameRef.current) + room.x
           : undefined;
       void setFocusPopoutHeight(target, width);
     };

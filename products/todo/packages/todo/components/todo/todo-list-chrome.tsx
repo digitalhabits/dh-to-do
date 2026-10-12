@@ -122,7 +122,6 @@ export function renderSyncSourceIcons(opts: {
   return (
     <span className="sync-source-stack" aria-hidden="true">
       {opts.basecamp ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src="/todo/basecamp-logo.png"
           alt=""

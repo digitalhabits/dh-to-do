@@ -1,7 +1,7 @@
 {
   "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Digital Habits To-Do",
-  "version": "3.1.3",
+  "version": "3.1.4",
   "identifier": "com.redd.do",
   "build": {
     "frontendDist": "../dist",
@@ -19,10 +19,10 @@
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
         "dragDropEnabled": false,
-        "width": 1100,
+        "width": 680,
         "height": 760,
-        "minWidth": 720,
-        "minHeight": 520,
+        "minWidth": 380,
+        "minHeight": 400,
         "resizable": true,
         "fullscreen": false,
         "backgroundColor": "#faf8f5",

@@ -21,7 +21,7 @@ import { taskCardChrome } from "@/components/todo/todo-task-card";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { queueWithAdded, sessionTasksFromBoard } from "@/lib/todo/session-queue";
 import { COLOR_SWATCHES } from "@/lib/todo/tab-colours";
-import { type TodoTask } from "@/lib/todo/types";
+import { FOCUS_SWITCH_REQUEST_MESSAGE, type TodoTask } from "@/lib/todo/types";
 
 export function renderListDialog(m: TodoPageModel) {
   const {
@@ -369,7 +369,24 @@ export function renderTodaySession(m: TodoPageModel) {
     toggleNotes,
     subtasksByTask,
     toggleSubtaskDone,
+    activeFocusTaskIds,
+    focusChannelRef,
   } = m;
+  /*
+    Skip moves the session on to the next task, and a focus window on the
+    skipped task moves on with it. Not when the next task has a window of
+    its own already: two windows would show one task.
+  */
+  const skip = (task: TodoTask) => {
+    skipSessionTask(task);
+    const next = boardColumns.today.find((other) => !other.completed && other.id !== task.id);
+    if (!next || !activeFocusTaskIds.has(task.id) || activeFocusTaskIds.has(next.id)) return;
+    focusChannelRef.current?.postMessage({
+      type: FOCUS_SWITCH_REQUEST_MESSAGE,
+      taskId: task.id,
+      task: next,
+    });
+  };
   return (
     sessionIds ? (
       <TodayFocusSession
@@ -390,7 +407,7 @@ export function renderTodaySession(m: TodoPageModel) {
           renderNotes: (task: TodoTask) => renderNotesEditor(m, task),
           onSetDuration: (task, minutes) =>
             void mutateTask(task.id, { expectedDurationMinutes: minutes }),
-          onSkip: skipSessionTask,
+          onSkip: skip,
           onReorder: reorderSessionTasks,
           onAddTask: (text, durationMinutes) =>
             void addSessionTask(text, durationMinutes),

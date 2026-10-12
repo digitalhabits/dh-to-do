@@ -522,6 +522,13 @@ async function sync() {
   const r = () => hook.result();
   const synced = () => calls.filter((c) => c.path === "/api/todo/basecamp/sync").map((c) => c.body.listId).join();
 
+  // At start, every linked list syncs once, and says nothing.
+  check("at start, every linked list syncs", await until(() => synced() === "a,b"), synced());
+  await until(() => !r().st.syncing);
+  check("and says nothing", toasts.length === 0, JSON.stringify(toasts));
+  calls.length = 0;
+  refreshes = 0;
+
   // The Sync button.
   hold = true;
   const running = r().doSync();

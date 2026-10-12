@@ -569,6 +569,10 @@ function cardMenu(
     moveTaskToEdge,
     removeTask,
     toggleNotes,
+    kanbanEnabled,
+    toggleFavourite,
+    setEditingDurationTaskId,
+    setEditingDuration,
   } = m;
   /* The "…" menu: in the meta row of an open card, in the hover pill of
      a done row. */
@@ -707,7 +711,24 @@ function cardMenu(
                     {t("addDuration")}
                   </button>
                 ) : null}
-                {foldPillActions && !task.notesHtml ? (
+                {/* A done row shows only this menu on hover: the time,
+                    the note and the heart it has not got are here. */}
+                {task.completed && !hasDuration ? (
+                  <button
+                    role="menuitem"
+                    className="task-menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuTaskId(null);
+                      setEditingDuration("");
+                      setEditingDurationTaskId(task.id);
+                    }}
+                  >
+                    <ClockIcon />
+                    {t("addTimeSpent")}
+                  </button>
+                ) : null}
+                {(foldPillActions || task.completed) && !task.notesHtml ? (
                   <button
                     role="menuitem"
                     className="task-menu-item"
@@ -719,6 +740,20 @@ function cardMenu(
                   >
                     <NotesIcon />
                     {t("fieldNotes")}
+                  </button>
+                ) : null}
+                {task.completed && !task.isFavourite && !kanbanEnabled ? (
+                  <button
+                    role="menuitem"
+                    className="task-menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuTaskId(null);
+                      toggleFavourite(task);
+                    }}
+                  >
+                    <HeartIcon size={14} />
+                    {t("addToFavourites")}
                   </button>
                 ) : null}
                 <button
@@ -1114,9 +1149,11 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         {menuWrap}
         {/* Folded into the menu on a slim tile — but a duration being
             typed stays where it is typed. */}
-        {foldPillActions && !editingDur ? null : metaHover}
-        {!task.notesHtml && !foldPillActions ? notesBtn : null}
-        {!heartAtRest ? favBtn : null}
+        {/* Folded into the menu on a slim tile, and always on a done
+            row — but a duration being typed stays where it is typed. */}
+        {(foldPillActions || task.completed) && !editingDur ? null : metaHover}
+        {!task.notesHtml && !foldPillActions && !task.completed ? notesBtn : null}
+        {!heartAtRest && (!task.completed || task.isFavourite) ? favBtn : null}
       </div>
       <div className="always-actions">
         {heartAtRest ? favBtn : null}

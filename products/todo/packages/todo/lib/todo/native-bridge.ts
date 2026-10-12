@@ -421,10 +421,45 @@ export function shellTop(): { __TAURI__?: TauriGlobal } | null {
   }
 }
 
+type TauriWindow = {
+  label?: string;
+  startDragging: () => Promise<void>;
+  innerSize?: () => Promise<{ width: number; height: number }>;
+  scaleFactor?: () => Promise<number>;
+  setSize?: (size: unknown) => Promise<void>;
+};
+
 export type TauriGlobal = {
   core?: { invoke?: TauriInvoke };
   window?: {
-    getCurrentWindow?: () => { startDragging: () => Promise<void> };
+    getCurrentWindow?: () => TauriWindow;
   };
+  dpi?: { LogicalSize?: new (width: number, height: number) => unknown };
   opener?: { openUrl?: (url: string) => Promise<void> };
 };
+
+/**
+ * Make the app's main window this many points wide. The height stays.
+ *
+ * Only this page's own window, and only the main one: a page in a planner
+ * pane or a focus window must not resize the window it sits in.
+ * `grow` and `shrink` say which ways the width may change. Outside the
+ * desktop shell this does nothing.
+ */
+export async function fitMainWindowWidth(
+  width: number,
+  { grow, shrink }: { grow: boolean; shrink: boolean }
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const tauri = (window as unknown as { __TAURI__?: TauriGlobal }).__TAURI__;
+  const current = tauri?.window?.getCurrentWindow?.();
+  const LogicalSize = tauri?.dpi?.LogicalSize;
+  if (!current || current.label !== "main" || !LogicalSize) return;
+  if (!current.innerSize || !current.scaleFactor || !current.setSize) return;
+  const [size, scale] = await Promise.all([current.innerSize(), current.scaleFactor()]);
+  const now = size.width / scale;
+  if (Math.abs(now - width) < 1) return;
+  if (now < width && !grow) return;
+  if (now > width && !shrink) return;
+  await current.setSize(new LogicalSize(width, size.height / scale));
+}

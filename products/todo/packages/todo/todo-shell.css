@@ -1329,11 +1329,66 @@ textarea.today-session-edit.today-session-now-title {
   white-space: nowrap;
 }
 
-/* In a narrow pile the sparkline goes first, then the time. */
-@container (max-width: 520px) {
-  .todo-shell .done-sparkline {
+/* In a narrow pile the summary goes behind a chart icon, and opens in a
+   box under it (StatsPopover in done-summary.tsx). The row keeps DONE and
+   Clear all only, as before there was a summary. */
+.todo-shell .done-overview-compact {
+  display: none;
+  align-items: center;
+  margin-left: 4px;
+}
+
+@container (max-width: 560px) {
+  .todo-shell .done-overview {
     display: none;
   }
+
+  .todo-shell .done-overview-compact {
+    display: flex;
+  }
+}
+
+.todo-shell .done-stats-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.todo-shell .done-stats-btn:hover,
+.todo-shell .done-stats-btn.is-open {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.todo-shell .done-stats-popover {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--modal-bg);
+  box-shadow: 0 12px 32px rgba(30, 45, 62, 0.16);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.todo-shell .done-stats-popover-figures {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 /* The pile's top edge: drag it up for a taller pile. */

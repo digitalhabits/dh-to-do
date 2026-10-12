@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 import { fillText } from "@/lib/todo/i18n";
 import { timeSpentLabel } from "@/lib/todo/task-helpers";
@@ -209,13 +210,10 @@ function Sparkline({ stats, t }: { stats: Stats; t: T }) {
   );
 }
 
-/** The switcher, the count, the time and the sparkline, on the Done row. */
-export function DoneSummary({ tasks, lang, t }: { tasks: TodoTask[]; lang: string; t: T }) {
-  const [period, setPeriod] = usePeriod();
-  const stats = React.useMemo(() => doneStats(tasks, period, new Date(), lang), [tasks, period, lang]);
+/** The count, the time and the sparkline. */
+function Figures({ stats, t }: { stats: Stats; t: T }) {
   return (
-    <div className="done-overview">
-      <PeriodSwitch period={period} onPick={setPeriod} t={t} />
+    <>
       <span className="done-overview-count">
         {fillText(t(stats.count === 1 ? "doneTasksOne" : "doneTasksMany"), { count: stats.count })}
       </span>
@@ -223,7 +221,126 @@ export function DoneSummary({ tasks, lang, t }: { tasks: TodoTask[]; lang: strin
         <span className="done-overview-time">{timeSpentLabel(stats.seconds, t("minutes"), t("hoursShort"))}</span>
       ) : null}
       <Sparkline stats={stats} t={t} />
+    </>
+  );
+}
+
+function ChartIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-3" />
+    </svg>
+  );
+}
+
+/**
+ * The narrow Done row: a chart icon, and the summary in a box under it.
+ *
+ * The Done box clips what goes past its edge, and with a few done tasks it
+ * is short, so the box is drawn in the page (.todo-shell), under the icon.
+ * A click outside it or Escape closes it.
+ */
+function StatsPopover({ children, t }: { children: React.ReactNode; t: T }) {
+  const [open, setOpen] = React.useState(false);
+  const [place, setPlace] = React.useState<{ top: number; left: number } | null>(null);
+  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const boxRef = React.useRef<HTMLDivElement>(null);
+  const [shell, setShell] = React.useState<HTMLElement | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!open || !shell || !btnRef.current) return;
+    const btn = btnRef.current.getBoundingClientRect();
+    const frame = shell.getBoundingClientRect();
+    // A zoomed page gives zoomed rects; the box is placed in page units.
+    const scale = shell.clientWidth > 0 ? frame.width / shell.clientWidth || 1 : 1;
+    const boxWidth = boxRef.current?.offsetWidth ?? 0;
+    const left = (btn.left - frame.left) / scale;
+    setPlace({
+      top: (btn.bottom - frame.top) / scale + 6,
+      left: Math.max(8, Math.min(left, shell.clientWidth - boxWidth - 8)),
+    });
+  }, [open, shell]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (boxRef.current?.contains(target) || btnRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onResize = () => setOpen(false);
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [open]);
+
+  return (
+    <div className="done-overview-compact">
+      <button
+        ref={btnRef}
+        type="button"
+        className={`done-stats-btn${open ? " is-open" : ""}`}
+        aria-expanded={open}
+        aria-label={t("doneStatsShow")}
+        title={t("doneStatsShow")}
+        onClick={(e) => {
+          setShell(e.currentTarget.closest<HTMLElement>(".todo-shell"));
+          setPlace(null);
+          setOpen((v) => !v);
+        }}
+      >
+        <ChartIcon />
+      </button>
+      {open && shell
+        ? createPortal(
+            <div
+              ref={boxRef}
+              className="done-stats-popover"
+              role="dialog"
+              aria-label={t("doneStatsShow")}
+              style={place ? { top: place.top, left: place.left } : { visibility: "hidden" }}
+            >
+              {children}
+            </div>,
+            shell
+          )
+        : null}
     </div>
+  );
+}
+
+/**
+ * The switcher, the count, the time and the sparkline, on the Done row.
+ * When the row is narrow, they move into a box behind a chart icon (the
+ * row is a size container: see .done-overview-compact in todo-shell.css).
+ */
+export function DoneSummary({ tasks, lang, t }: { tasks: TodoTask[]; lang: string; t: T }) {
+  const [period, setPeriod] = usePeriod();
+  const stats = React.useMemo(() => doneStats(tasks, period, new Date(), lang), [tasks, period, lang]);
+  return (
+    <>
+      <div className="done-overview">
+        <PeriodSwitch period={period} onPick={setPeriod} t={t} />
+        <Figures stats={stats} t={t} />
+      </div>
+      <StatsPopover t={t}>
+        <PeriodSwitch period={period} onPick={setPeriod} t={t} />
+        <div className="done-stats-popover-figures">
+          <Figures stats={stats} t={t} />
+        </div>
+      </StatsPopover>
+    </>
   );
 }
 

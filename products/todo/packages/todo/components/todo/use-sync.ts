@@ -18,6 +18,9 @@ import {
 } from "@/lib/todo/sync-labels";
 import type { TodoList, TodoTask } from "@/lib/todo/types";
 
+/** How often every linked list syncs by itself. */
+const AUTO_SYNC_EVERY_MS = 10 * 60_000;
+
 /**
  * Whether Basecamp and Apple Reminders are connected, and what the sync
  * keeps between renders. At the top of the page: the list dialog reads
@@ -354,6 +357,35 @@ export function useSync({
     if (!list?.remindersListId) return;
     autoSyncList(list);
   }, [remindersConnected, autoSyncKeyRef, listsRef]);
+
+  /**
+   * Every linked list syncs when the page starts, and again every ten
+   * minutes, without a word. Before this, a list only synced when it was
+   * opened or left, so a list read from All, or one left open all day,
+   * showed what Basecamp or Reminders had at that moment and no more.
+   * The start waits for the lists, which come in after the first paint.
+   */
+  const hasListsRef = React.useRef(false);
+  const autoSyncAllRef = React.useRef<() => void>(() => {});
+  React.useEffect(() => {
+    autoSyncAllRef.current = () => {
+      if (isOfflineNow()) return;
+      const linked = listsRef.current.filter((l) => listHasSyncLink(l));
+      if (!linked.length) return;
+      void enqueueSync(linked, { silent: true }).catch(() => {
+        /* silent auto-sync: surface faults on the next manual sync */
+      });
+    };
+  });
+  React.useEffect(() => {
+    if (hasListsRef.current || !lists.length) return;
+    hasListsRef.current = true;
+    autoSyncAllRef.current();
+  }, [lists.length]);
+  React.useEffect(() => {
+    const timer = window.setInterval(() => autoSyncAllRef.current(), AUTO_SYNC_EVERY_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Push a final silent sync when leaving the To-Do page.
   React.useEffect(() => {

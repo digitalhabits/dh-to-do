@@ -52,6 +52,7 @@ import { useTitleEdit } from "@/components/todo/use-title-edit";
 import { useCalendarCard, useCalendarCardState } from "@/components/todo/use-calendar-card";
 import { useCardMenusClose, useCardMenusState } from "@/components/todo/use-card-menus";
 import { useBoardNudge } from "@/components/todo/use-board-nudge";
+import { useWindowFitsView } from "@/components/todo/use-window-fits-view";
 import { rescueBrowserTasks } from "@/lib/todo/browser-tasks-rescue";
 import {
   addStarterList,
@@ -102,7 +103,6 @@ export type { TodoPageSnapshot } from "@/components/todo/use-board-reads";
 
 /** How long a task ticked from the focus window stands ticked before it goes. */
 const FOCUS_COMPLETE_HOLD_MS = 500;
-
 
 export type TodoPageProps = {
   initialState: TodoState | null;
@@ -286,7 +286,6 @@ export function useTodoPage({
   const viewRestoredRef = React.useRef(false);
   React.useEffect(() => {
     if (viewRestoredRef.current) persistPref(VIEW_KEY, view);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   /** Hides list/group tabs and the footer for a quieter board. */
   const [focusMode, setFocusMode] = React.useState(false);
@@ -573,6 +572,8 @@ export function useTodoPage({
   React.useEffect(() => {
     if (kanbanEnabled && view === "favourites") setView("lists");
   }, [kanbanEnabled, view]);
+
+  useWindowFitsView(kanbanEnabled);
 
   /** Same rule for the Planner View: its toggle off means the view goes. */
   React.useEffect(() => {

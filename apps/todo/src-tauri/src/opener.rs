@@ -18,9 +18,11 @@ pub fn open_external(url: &str) -> Result<(), String> {
         }
     }
 
+    // Windows and Linux: the opener plugin's default browser. Before, this
+    // gave an error, so the Basecamp sign-in could not start there.
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = url;
-        Err("open_external is only implemented on macOS in this shell".into())
+        tauri_plugin_opener::open_url(url, None::<&str>)
+            .map_err(|e| format!("Could not open {url}: {e}"))
     }
 }

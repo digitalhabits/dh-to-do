@@ -94,8 +94,10 @@ const FOCUS_POPOUT_MIN_HEIGHT: f64 = 48.0;
 /// one-line bar on a screen of empty yellow. Once the page has measured
 /// itself, `set_focus_popout_height` holds it to its content, inside this.
 const FOCUS_POPOUT_MAX_WIDTH: f64 = 720.0;
-/// The narrowest: room for the bar's buttons.
-const FOCUS_POPOUT_MIN_WIDTH: f64 = 280.0;
+/// The narrowest: room for the bar's buttons, drawn smaller below 260px
+/// (todo.css). Was 280, the opening width less a little: a short name's
+/// widest was below it, so the window could not be resized sideways.
+const FOCUS_POPOUT_MIN_WIDTH: f64 = 200.0;
 /// How much taller than its content the panel can be drawn out.
 const FOCUS_POPOUT_ROOM: f64 = 80.0;
 
@@ -136,7 +138,13 @@ fn focus_slots() -> &'static std::sync::Mutex<std::collections::HashMap<String, 
 
 /// The gap between the first window and the second when the second is put
 /// under it.
+#[cfg(not(target_os = "macos"))]
 const FOCUS_POPOUT_STACK_GAP: f64 = 12.0;
+/// macOS: each note has 4px of clear room above it and 16px below, for its
+/// shadow (todo.css). The windows overlap by 4px, clear room on clear
+/// room, so the notes are 16px apart.
+#[cfg(target_os = "macos")]
+const FOCUS_POPOUT_STACK_GAP: f64 = -4.0;
 
 /// A focus window that exists and is on screen. A hidden NSPanel reports
 /// itself not visible, and a closed window (other platforms) is gone.
@@ -338,7 +346,7 @@ pub fn open_focus_popout(
         FOCUS_POPOUT_HEIGHT,
       ));
       let _ = existing.set_min_size(Some(tauri::LogicalSize::new(
-        280.0,
+        FOCUS_POPOUT_MIN_WIDTH,
         FOCUS_POPOUT_MIN_HEIGHT,
       )));
       let _ = existing.set_max_size(Some(tauri::LogicalSize::new(
@@ -360,12 +368,15 @@ pub fn open_focus_popout(
       .style_mask(StyleMask::empty().resizable().nonactivating_panel())
       .corner_radius(8.0)
       .transparent(true)
+      // The window's own shadow is its square, round the rounded note, and
+      // shows as a box. The page draws the note's shadow (todo.css).
+      .has_shadow(false)
       .with_window(move |w| {
         w.title(title)
           .decorations(false)
           .resizable(true)
           .inner_size(FOCUS_POPOUT_WIDTH, FOCUS_POPOUT_HEIGHT)
-          .min_inner_size(280.0, FOCUS_POPOUT_MIN_HEIGHT)
+          .min_inner_size(FOCUS_POPOUT_MIN_WIDTH, FOCUS_POPOUT_MIN_HEIGHT)
           .max_inner_size(FOCUS_POPOUT_MAX_WIDTH, FOCUS_POPOUT_MAX_HEIGHT)
       })
       .build()
@@ -422,7 +433,7 @@ pub fn open_focus_popout(
         tauri::window::Color(0xff, 0xf9, 0xc4, 0xff)
       })
       .inner_size(FOCUS_POPOUT_WIDTH, FOCUS_POPOUT_HEIGHT)
-      .min_inner_size(280.0, FOCUS_POPOUT_MIN_HEIGHT)
+      .min_inner_size(FOCUS_POPOUT_MIN_WIDTH, FOCUS_POPOUT_MIN_HEIGHT)
           .max_inner_size(FOCUS_POPOUT_MAX_WIDTH, FOCUS_POPOUT_MAX_HEIGHT)
       .resizable(true)
       .decorations(false)
@@ -724,6 +735,8 @@ pub fn set_focus_popout_height(
   let max_width = max_width
     .filter(|w| w.is_finite())
     .map(|w| w.clamp(FOCUS_POPOUT_MIN_WIDTH, FOCUS_POPOUT_MAX_WIDTH))
+    // A short name may still be as wide as the panel opens.
+    .map(|w| w.max(FOCUS_POPOUT_WIDTH))
     .unwrap_or(FOCUS_POPOUT_MAX_WIDTH);
   // The height: never less than the content, so nothing is cut off, and
   // up to FOCUS_POPOUT_ROOM more, so the window can be drawn out a little

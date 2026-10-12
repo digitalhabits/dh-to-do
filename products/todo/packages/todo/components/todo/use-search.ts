@@ -170,7 +170,6 @@ export function useSearchResults({
         previewIds: taskPreviewIds,
         openTasksSorted,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isSearching,
       view,

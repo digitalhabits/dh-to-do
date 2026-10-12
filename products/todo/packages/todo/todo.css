@@ -354,8 +354,8 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    /* 6px under the buttons: the row of list tabs below has its own 8px. */
-    padding: 6px 24px 6px 24px;
+    /* Nothing under the buttons: each list tab below has 6px above its name. */
+    padding: 6px 24px 0 24px;
     min-height: 42px;
     background: transparent;
     -webkit-app-region: drag;
@@ -692,7 +692,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .tabs-container {
     display: flex;
     align-items: center;
-    padding: 8px 24px 0 24px;
+    padding: 0 24px;
     background: transparent;
     border-bottom: 1px solid var(--border-color);
     position: relative;
@@ -868,13 +868,30 @@ html.redd-native-shell .todo-shell .title-bar {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s ease, color 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, opacity 0.15s ease;
     margin-left: 2px;
     -webkit-app-region: no-drag;
     flex-shrink: 0;
     padding-top: 0;
     margin-bottom: 4px;
     transform: translateY(-2px);
+}
+
+/*
+  The + shows only while the pointer is on the tabs, so the row is quiet.
+  It keeps its place, so the tabs do not move when it comes. A keyboard
+  reader who tabs to it sees it, and a touch screen, with no hover, always
+  shows it.
+*/
+@media (hover: hover) {
+    .todo-shell .add-tab-btn-subtle {
+        opacity: 0;
+    }
+
+    .todo-shell .tabs-container:hover .add-tab-btn-subtle,
+    .todo-shell .add-tab-btn-subtle:focus-visible {
+        opacity: 1;
+    }
 }
 
 .todo-shell .add-tab-btn-subtle:hover {
@@ -2609,7 +2626,8 @@ html.redd-native-shell .todo-shell .title-bar {
  * the same height, so the join does not show.
  */
 .todo-shell .task-item:hover .hover-actions,
-.todo-shell .task-item.has-open-menu .hover-actions {
+.todo-shell .task-item.has-open-menu .hover-actions,
+.todo-shell .hover-actions:has(.task-duration-input) {
     display: flex;
     position: absolute;
     right: 100%;
@@ -3319,8 +3337,11 @@ html.redd-native-shell .todo-shell .title-bar {
  * a container query, and its menu is anchored to `.task-actions` rather
  * than to the buttons.
  */
+/* A time being typed keeps the row's buttons up: it can be opened from the
+   menu, with the pointer off the row. */
 .todo-shell .done-tasks .task-item:hover .hover-actions,
-.todo-shell .done-tasks .task-item.has-open-menu .hover-actions {
+.todo-shell .done-tasks .task-item.has-open-menu .hover-actions,
+.todo-shell .done-tasks .hover-actions:has(.task-duration-input) {
     position: static;
     padding-left: 0;
     border-radius: 0;
@@ -4980,6 +5001,12 @@ html.redd-native-shell .todo-shell .title-bar {
     backdrop-filter: none;
 }
 
+/* In the Mac app the top bar's buttons are hidden while Settings is open,
+   so the sheet starts right under the window's strip, not under the bar. */
+.todo-shell.mac-window.todo-w-narrow #settings-modal {
+    top: 30px;
+}
+
 .todo-shell.todo-w-narrow #settings-modal .modal-content {
     width: 100%;
     max-width: none;
@@ -5239,12 +5266,27 @@ html.redd-native-shell .todo-shell .title-bar {
     --accent-hover: #21806f;
     --redd-blue: #4a90e2;
     --warning: #f59e0b;
-    background: #fff9c4;
+    /* A sticky note: a touch lighter where it is glued at the top, and a
+       soft shadow that falls mostly below, as if it lifts off the page. */
+    background: linear-gradient(180deg, #fffbd4 0%, #fff6b6 100%);
     backdrop-filter: none;
     box-shadow:
-        0 1px 2px rgba(30, 45, 62, 0.1),
-        0 6px 14px rgba(30, 45, 62, 0.12);
-    border: 1px solid rgba(212, 190, 100, 0.45);
+        0 1px 1px rgba(90, 72, 10, 0.08),
+        0 3px 6px -1px rgba(90, 72, 10, 0.14),
+        0 9px 14px -6px rgba(90, 72, 10, 0.24);
+    border: 1px solid rgba(190, 165, 60, 0.3);
+}
+
+/* macOS: the panel is a clear window with no shadow of its own (focus.rs),
+   so the note sits inside it with room for the shadow above. The window is
+   this much bigger than the note (TodoFocusPanel measures it). */
+html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) {
+    border-radius: 0;
+}
+
+html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-mode {
+    inset: 4px 10px 16px;
+    height: auto;
 }
 
 .todo-shell.focus-panel-window:not(.is-fullscreen) .focus-container:not(.fullscreen) .focus-notes-container {
@@ -5254,8 +5296,8 @@ html.redd-native-shell .todo-shell .title-bar {
 /* The second panel is the green sticky note, so two open panels tell apart
    at a glance: the first is the yellow one. */
 .todo-shell.focus-panel-window.is-second:not(.is-fullscreen) .focus-container:not(.fullscreen) {
-    background: #c6f08c;
-    border-color: rgba(96, 150, 40, 0.45);
+    background: linear-gradient(180deg, #d2f5a2 0%, #bfec80 100%);
+    border-color: rgba(96, 150, 40, 0.35);
 }
 
 /* The task list and the notes editor keep their own height.
@@ -5374,6 +5416,27 @@ html.redd-native-shell .todo-shell .title-bar {
     -webkit-app-region: drag;
     user-select: none;
     -webkit-user-select: none;
+}
+
+/* The panel window is at least 56px and the bar 48px. With nothing open
+   under it, the bar sits in the middle of the note, so the space above the
+   name and below it is the same. */
+.todo-shell .focus-container:not(.fullscreen) .focus-bar:last-child {
+    margin-block: auto;
+}
+
+/* The timer is level with the name's first line. It starts on the same
+   baseline, and then moves down a little: digits are as tall as capitals,
+   so on the baseline their middle is above the middle of the name's small
+   letters. Inter's capitals are 0.727em and its small letters 0.545em, so
+   the move is (0.727 x 17px - 0.545 x 18px) / 2, about 1.3px. */
+.todo-shell .focus-container:not(.fullscreen) .focus-bar {
+    align-items: baseline;
+}
+
+.todo-shell .focus-container:not(.fullscreen) .focus-timer {
+    position: relative;
+    top: 0.075em;
 }
 
 /* Attention ring animation when focus mode opens */
@@ -5587,6 +5650,28 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .focus-bar:hover .focus-buttons-container {
     opacity: 1;
     pointer-events: auto;
+}
+
+/* A focus panel drawn narrow (it can go to 200px): smaller buttons, closer
+   together, so all six still fit across it. */
+@media (max-width: 259px) {
+    .todo-shell .focus-container:not(.fullscreen) .focus-buttons-container {
+        right: 6px;
+        gap: 2px;
+        padding: 3px;
+    }
+
+    .todo-shell .focus-container:not(.fullscreen) .focus-buttons-container > *,
+    .todo-shell .focus-container:not(.fullscreen) .focus-buttons-container :is(
+        .complete-focus-btn,
+        .fullscreen-focus-btn,
+        .reset-focus-btn,
+        .notes-focus-btn,
+        .switch-focus-task-btn
+    ) {
+        width: 26px;
+        height: 26px;
+    }
 }
 
 .todo-shell .complete-focus-btn,
@@ -6205,10 +6290,6 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 /* Custom select (settings-style) for Basecamp / Reminders pickers */
-.todo-shell #tab-name-modal .modal-content {
-    overflow: visible;
-}
-
 .todo-shell .basecamp-selection .todo-select {
     margin-bottom: 8px;
 }
