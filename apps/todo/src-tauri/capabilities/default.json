@@ -46,6 +46,7 @@
     "allow-todo-sql-batch",
     "allow-todo-media-write",
     "allow-todo-media-read",
+    "allow-save-backup",
     {
       "identifier": "http:default",
       "allow": [

@@ -117,3 +117,26 @@ pub fn todo_media_read(
     },
   ))
 }
+
+/// The backup file, written where the reader chose in the save panel. A
+/// download link in the web view goes nowhere in the app. None on cancel.
+#[tauri::command]
+pub async fn save_backup(
+  app: AppHandle,
+  file_name: String,
+  contents: String,
+) -> Result<Option<String>, String> {
+  use tauri_plugin_dialog::DialogExt;
+  let Some(path) = app
+    .dialog()
+    .file()
+    .set_file_name(&file_name)
+    .add_filter("JSON", &["json"])
+    .blocking_save_file()
+  else {
+    return Ok(None);
+  };
+  let path = path.into_path().map_err(map_err)?;
+  std::fs::write(&path, contents).map_err(map_err)?;
+  Ok(Some(path.display().to_string()))
+}

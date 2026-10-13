@@ -15,6 +15,7 @@ use tauri::Manager;
 pub fn run() {
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_deep_link::init());
 
   // The focus window is an NSPanel on macOS (see focus.rs).
@@ -95,6 +96,7 @@ pub fn run() {
       commands::todo_sql_batch,
       commands::todo_media_write,
       commands::todo_media_read,
+      commands::save_backup,
       focus::open_focus_popout,
       focus::close_focus_popout,
       focus::set_focus_popout_height,

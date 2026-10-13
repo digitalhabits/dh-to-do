@@ -10,6 +10,7 @@ fn main() {
         "todo_sql_batch",
         "todo_media_write",
         "todo_media_read",
+        "save_backup",
         "open_focus_popout",
         "close_focus_popout",
         "set_focus_popout_height",

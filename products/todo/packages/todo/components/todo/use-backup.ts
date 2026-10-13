@@ -15,6 +15,7 @@ import {
   type BackupMedia,
 } from "@/lib/todo/backup-media";
 import { noteMediaSrc } from "@/lib/todo/basecamp-image";
+import { tauriInvoke } from "@/lib/native-shell";
 import { describeError } from "@/lib/todo/errors";
 import { fillText } from "@/lib/todo/i18n";
 import { todoMediaStore } from "@/lib/todo/media-store";
@@ -81,9 +82,16 @@ export function useBackup({
       toast.warning(t("exportMissingPictures"));
     }
     const backup = buildTodoBackup(state, now, media);
-    const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], {
-      type: "application/json",
-    });
+    const text = `${JSON.stringify(backup, null, 2)}\n`;
+    // The app has no downloads: a save panel, and Rust writes the file.
+    const invoke = isStandaloneTodo() ? tauriInvoke() : null;
+    if (invoke) {
+      await invoke("save_backup", { fileName: todoBackupFileName(now), contents: text }).catch(
+        (err) => toast.error(describeError(err, t("exportFailed")))
+      );
+      return;
+    }
+    const blob = new Blob([text], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.download = todoBackupFileName(now);
