@@ -7,7 +7,7 @@ Get back to that thing you meant to do. Digital Habits: To-Do keeps you on track
 - Board View: sort your tasks into Backlog, Soon (-ish) and Today, and press Start on Today for a calm, full-screen view that takes you through them one by one. Turn it on in Settings
 - Work with others: assign tasks to people and filter the board by person. Turn it on in Settings
 - Calendar View: a calm, Danish-style month or week calendar of your tasks and goals, with your own calendars linked in. Turn it on in Settings
-- Sync two ways with Basecamp, and with Apple Reminders on a Mac (Google Tasks integration coming soon!)
+- Sync two ways with Basecamp and GitHub, and with Apple Reminders on a Mac (Google Tasks integration coming soon!)
 - Light and dark themes, in English or Danish
 - Back up and restore: export your data, pictures included, and import it on another computer
 
