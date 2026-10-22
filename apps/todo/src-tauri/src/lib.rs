@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod demo;
 mod focus;
 #[cfg(target_os = "linux")]
 mod linux_update;
@@ -59,6 +60,9 @@ pub fn run() {
       )?;
       let db = commands::init_db(app.handle())?;
       app.manage(db);
+      if demo::is_demo(app.handle()) {
+        demo::create_main_window(app.handle())?;
+      }
 
       // Settings… in the app menu, and the version and our addresses in Help.
       #[cfg(target_os = "macos")]
@@ -94,9 +98,11 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       commands::todo_sql_query,
       commands::todo_sql_batch,
+      demo::todo_is_demo,
       commands::todo_media_write,
       commands::todo_media_read,
       commands::save_backup,
+      commands::save_note_image,
       focus::open_focus_popout,
       focus::close_focus_popout,
       focus::set_focus_popout_height,

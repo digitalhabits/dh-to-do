@@ -13,6 +13,12 @@ import * as React from "react";
 import { isInteractiveDragTarget } from "@/components/todo/use-pointer-drag";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { ListIcon, resolveListIconId } from "@/lib/todo/list-icons";
+import {
+  TODO_EVERYTHING_GROUP_ID,
+  groupOfTab,
+  groupTabId,
+  isEverythingGroup,
+} from "@/lib/todo/list-scope";
 import { persistPref } from "@/lib/todo/saved-prefs";
 import { hexToRgba, resolveTabColorHex } from "@/lib/todo/tab-colours";
 import {
@@ -25,6 +31,7 @@ import {
 export function renderGroupTab(m: TodoPageModel, group: TodoGroup) {
   const {
     draggingGroupId,
+    tabDropGroupId,
     groupDragRef,
     suppressGroupClickUntil,
     groupsSorted,
@@ -36,7 +43,9 @@ export function renderGroupTab(m: TodoPageModel, group: TodoGroup) {
   const active = activeGroup?.id === group.id;
   let className = `group-tab ${active ? "active" : ""} ${
     !active ? "dimmed" : ""
-  } ${draggingGroupId === group.id ? "dragging" : ""}`;
+  } ${draggingGroupId === group.id ? "dragging" : ""} ${
+    tabDropGroupId === group.id ? "list-drop-target" : ""
+  }`;
   const style: React.CSSProperties = {};
   if (group.colour) {
     if (group.colour.startsWith("#")) {
@@ -72,7 +81,7 @@ export function renderGroupTab(m: TodoPageModel, group: TodoGroup) {
       }}
     >
       <span>{group.name}</span>
-      {groupsSorted.length > 1 && active ? (
+      {groupsSorted.length > 1 ? (
         <button
           className="group-delete-btn"
           title="Delete group"
@@ -86,6 +95,66 @@ export function renderGroupTab(m: TodoPageModel, group: TodoGroup) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Everything, the fixed first group (lib/todo/list-scope.ts): like a group
+ * tab, but with no × and no drag, and a divider after it.
+ */
+export function renderEverythingGroupTab(m: TodoPageModel) {
+  const { activeGroup, switchToGroup, t } = m;
+  const active = isEverythingGroup(activeGroup);
+  return (
+    <React.Fragment key={TODO_EVERYTHING_GROUP_ID}>
+      <div
+        className={`group-tab group-tab-everything ${active ? "active" : "dimmed"}`}
+        onClick={() => {
+          if (!active) switchToGroup(TODO_EVERYTHING_GROUP_ID);
+        }}
+      >
+        <span>{t("everythingGroup")}</span>
+      </div>
+      <span className="group-divider" aria-hidden="true" />
+    </React.Fragment>
+  );
+}
+
+/**
+ * Everything's tab row: All (every list's tasks), then a tab per group that
+ * shows the tasks of that group's lists. A group's tab says "All Sales", not
+ * "Sales": beside the group tabs above, the bare name read as the group
+ * itself, not as every list in it.
+ */
+export function renderEverythingTabs(m: TodoPageModel) {
+  const { view, setView, currentListId, setCurrentListId, t, groupsSorted } = m;
+  const openGroupId = groupOfTab(currentListId);
+  const choose = (listId: string) => {
+    setView("lists");
+    setCurrentListId(listId);
+    persistPref(TODO_CURRENT_LIST_KEY, listId);
+  };
+  const tab = (key: string, label: string, active: boolean, listId: string) => (
+    <div
+      key={key}
+      className={`tab ${key === TODO_ALL_LIST_ID ? "tab-all " : ""}${view === "lists" && active ? "active" : ""}`}
+      onClick={() => choose(listId)}
+    >
+      <span className="tab-label">
+        <span className="tab-name">{label}</span>
+      </span>
+    </div>
+  );
+  return [
+    tab(TODO_ALL_LIST_ID, t("boardAll"), openGroupId === null, TODO_ALL_LIST_ID),
+    ...groupsSorted.map((group) =>
+      tab(
+        group.id,
+        t("allOfGroup").replace("{name}", group.name),
+        openGroupId === group.id,
+        groupTabId(group.id)
+      )
+    ),
+  ];
 }
 
 export function renderAllListTab(m: TodoPageModel) {
@@ -118,6 +187,7 @@ export function renderAllListTab(m: TodoPageModel) {
 export function renderSyncSourceIcons(opts: {
   basecamp: boolean;
   reminders: boolean;
+  github?: boolean;
 }) {
   return (
     <span className="sync-source-stack" aria-hidden="true">
@@ -148,6 +218,17 @@ export function renderSyncSourceIcons(opts: {
           <path d="M3 18h.01" />
         </svg>
       ) : null}
+      {opts.github ? (
+        <svg
+          className="sync-source-icon github-icon"
+          width="20"
+          height="20"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+        >
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+      ) : null}
     </span>
   );
 }
@@ -157,6 +238,7 @@ export function renderSyncControls(
   opts: {
     basecamp: boolean;
     reminders: boolean;
+    github?: boolean;
     stopPropagation?: boolean;
   }
 ) {
@@ -167,6 +249,7 @@ export function renderSyncControls(
   const sources = [
     opts.basecamp ? "Basecamp" : null,
     opts.reminders ? "Apple Reminders" : null,
+    opts.github ? "GitHub" : null,
   ].filter(Boolean);
   const title =
     sources.length > 0
@@ -270,7 +353,7 @@ export function renderListTab(m: TodoPageModel, list: TodoList) {
         ) : null}
         <span className="tab-name">{list.name}</span>
       </span>
-      {lists.length > 1 && active ? (
+      {lists.length > 1 ? (
         <button
           className="tab-close"
           title="Close tab"

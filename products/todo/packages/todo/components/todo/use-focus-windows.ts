@@ -8,10 +8,58 @@ import { describeError } from "@/lib/todo/errors";
 import { drainPendingFocusCompletes } from "@/lib/todo/focus-pending";
 import { openTodoFocusPopout } from "@/lib/todo/focus-popout";
 import { focusToGiveWay } from "@/lib/todo/focus-windows";
-import { FOCUS_CHANNEL, type TodoTask } from "@/lib/todo/types";
+import { BOARD_ID } from "@/components/todo/use-write-tracking";
+import {
+  BOARD_TASK_CHANGED_MESSAGE,
+  BOARD_WROTE_MESSAGE,
+  FOCUS_CHANNEL,
+  type TodoState,
+  type TodoTask,
+} from "@/lib/todo/types";
 
 /** The page's own tick for a task a focus window finished. */
 export type CompleteFromFocus = (taskId: string, timeSpentSeconds?: number) => void;
+
+/** How long a task ticked from the focus window stands ticked before it goes. */
+const FOCUS_COMPLETE_HOLD_MS = 500;
+
+/**
+ * Tick a task a focus window finished. The row is found on the page so
+ * the tick can play as the board's own does; a row not on screen — another
+ * list, another tab — is completed without the flight.
+ */
+export function tickFromFocus(
+  tasks: TodoTask[],
+  taskId: string,
+  timeSpentSeconds: number | undefined,
+  completeTaskWithFlight: (
+    task: TodoTask,
+    nextCompleted: boolean,
+    checkbox: HTMLInputElement | null,
+    sourceElement: HTMLElement | null,
+    holdMs?: number,
+    extra?: { timeSpentSeconds?: number }
+  ) => void
+) {
+  const existing = tasks.find((t) => t.id === taskId);
+  if (!existing || existing.completed) return;
+  // The window's time goes with the tick, in the board's own write. The
+  // window says the task is done before it saves its time, so the
+  // answer to a write without it would put the old time back; and a
+  // task only the board holds is not found by the window's save at all.
+  const extra =
+    typeof timeSpentSeconds === "number" &&
+    timeSpentSeconds >= existing.timeSpentSeconds
+      ? { timeSpentSeconds }
+      : {};
+  const row = document.querySelector<HTMLElement>(
+    `.task-item[data-task-id="${CSS.escape(taskId)}"]`
+  );
+  const box = row?.querySelector<HTMLInputElement>("input.task-checkbox") ?? null;
+  // Ticked, then half a second standing so, then away — as redd-do does
+  // it: the focus window has just closed, and the eye arrives after.
+  completeTaskWithFlight(existing, true, box, row, FOCUS_COMPLETE_HOLD_MS, extra);
+}
 
 /**
  * The floating focus windows of the desktop shell: which tasks have one,
@@ -89,6 +137,7 @@ export function useFocusWindowState({
 export function useFocusChannel({
   nativeShell,
   refresh,
+  setState,
   standalone,
   activeFocusTaskIds,
   setActiveFocusTaskIds,
@@ -99,6 +148,7 @@ export function useFocusChannel({
 }: {
   nativeShell: boolean;
   refresh: () => Promise<void>;
+  setState: React.Dispatch<React.SetStateAction<TodoState>>;
   standalone: boolean;
   activeFocusTaskIds: Set<string>;
   setActiveFocusTaskIds: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -127,6 +177,23 @@ export function useFocusChannel({
         focusEndWaitersRef.current.get(msg.taskId)?.();
       } else if (msg.type === "task-updated") {
         void refresh();
+      } else if (msg.type === BOARD_WROTE_MESSAGE) {
+        // Another board saved something. Its reads are put together, so a
+        // run of writes (a drag that orders a day) is one read here.
+        if ((msg as { from?: string }).from !== BOARD_ID) void refresh();
+      } else if (msg.type === BOARD_TASK_CHANGED_MESSAGE && msg.taskId) {
+        /*
+          Another board changed a task: the To-Do tile beside the Calendar
+          tile, or a tile in its own window. Each runs its own board, so
+          without this a task ticked in one stayed open in the other's week
+          until that tile was clicked.
+        */
+        const changed = (msg as { task?: TodoTask }).task;
+        if (!changed) return;
+        setState((s) => ({
+          ...s,
+          tasks: s.tasks.map((t) => (t.id === changed.id ? { ...t, ...changed } : t)),
+        }));
       } else if (msg.type === "task-complete" && msg.taskId) {
         // The focus window's tick. The board completes the task the way
         // its own checkbox does: the party and the flight to Done.
@@ -145,6 +212,7 @@ export function useFocusChannel({
     nativeShell,
     refresh,
     setActiveFocusTaskIds,
+    setState,
   ]);
 
   /**

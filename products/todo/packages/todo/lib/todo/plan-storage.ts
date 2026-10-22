@@ -31,6 +31,13 @@ export type TodoPlanHostOptions = {
   onBoardSourceToggle?: (id: string, shown: boolean) => Promise<void> | void;
   /** A Roadmap band was moved or made longer; ISO dates. */
   onRoadmapItemChange?: (id: string, start: string, end: string) => Promise<void> | void;
+  /** A Roadmap entry's card was saved: its name, track and ISO dates. */
+  onRoadmapItemEdit?: (
+    id: string,
+    changes: { title: string; category: string; start: string; end: string }
+  ) => Promise<void> | void;
+  /** A Roadmap entry was deleted from its card. */
+  onRoadmapItemDelete?: (id: string) => Promise<void> | void;
 };
 
 export type TodoPlanStorage = {

@@ -153,6 +153,8 @@ export function useNotesCard({
     if (!notesExpanded) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // Escape in the title's box puts the box away, not the card.
+      if ((event.target as HTMLElement | null)?.closest?.(".notes-overlay-title-input")) return;
       event.stopPropagation();
       // The card is the task now, not only its notes: leaving it saves and
       // puts the reader back on the board, not into the small note box.

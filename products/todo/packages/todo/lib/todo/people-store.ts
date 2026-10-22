@@ -41,6 +41,7 @@ export function rowToPerson(row: Row): TodoPerson {
     sourceId: (row.source_id as string | null) ?? null,
     email: (row.email as string | null) ?? null,
     basecampPersonId: (row.basecamp_person_id as string | null) ?? null,
+    githubLogin: (row.github_login as string | null) ?? null,
     position: Number(row.position),
   };
 }

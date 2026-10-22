@@ -605,15 +605,37 @@ html.redd-native-shell .todo-shell .title-bar {
     -webkit-user-select: none;
 }
 
-.todo-shell .group-tab:hover {
+/* Everything, the fixed first group, and the line after it. */
+.todo-shell .group-tab-everything {
+    cursor: pointer;
+}
+
+.todo-shell .group-divider {
+    flex: none;
+    width: 1px;
+    height: 16px;
+    margin: 0 6px;
+    background: var(--border-color);
+}
+
+/* The first group's name starts where the first tab's name does: a group
+   pill has 10px before its text, a tab 8px (.tab below). */
+.todo-shell .groups .group-tab:first-child {
+    margin-left: -2px;
+}
+
+.todo-shell .group-tab[data-hover] {
     background: var(--nav-item-hover-bg);
     color: var(--nav-item-hover-text);
 }
 
+/* A tab with no colour has no pill to lift: the page's own colour under a
+   shadow showed only the shadow, a ghost edge at its right. The coloured
+   ones keep it (below, with .tab-bg-*). */
 .todo-shell .group-tab.active {
-    background: var(--app-bg-solid);
+    background: transparent;
     color: var(--text-primary);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-weight: 700;
 }
 
 .todo-shell .group-tab.dimmed {
@@ -622,14 +644,21 @@ html.redd-native-shell .todo-shell .title-bar {
     transition: opacity 0.3s ease, filter 0.3s ease;
 }
 
-.todo-shell .group-tab.dimmed:hover {
+.todo-shell .group-tab.dimmed[data-hover] {
     opacity: 0.85;
     filter: saturate(0.8) brightness(0.98);
 }
 
-.todo-shell .group-tab.drag-over {
+.todo-shell .group-tab.drag-over,
+.todo-shell .group-tab.list-drop-target {
     background: var(--redd-teal-soft);
     border: 1px dashed var(--accent-primary);
+}
+
+/* A list tab carried over another group: that group is where it would go. */
+.todo-shell .group-tab.list-drop-target.dimmed {
+    opacity: 1;
+    filter: none;
 }
 
 .todo-shell .group-tab.dragging {
@@ -647,19 +676,19 @@ html.redd-native-shell .todo-shell .title-bar {
     color: var(--text-tertiary);
     font-size: 12px;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s ease, color 0.2s ease, background 0.2s ease;
+    transition: color 0.2s ease, background 0.2s ease;
     -webkit-app-region: no-drag;
     line-height: 1;
     width: 16px;
     height: 16px;
-    display: flex;
+    /* No room until its tab is hovered: then that tab widens to fit it. */
+    display: none;
     align-items: center;
     justify-content: center;
 }
 
-.todo-shell .group-tab:hover .group-delete-btn {
-    opacity: 1;
+.todo-shell .group-tab[data-hover] .group-delete-btn {
+    display: flex;
 }
 
 .todo-shell .group-delete-btn:hover {
@@ -816,18 +845,19 @@ html.redd-native-shell .todo-shell .title-bar {
     border-bottom-color: var(--text-primary);
 }
 
-.todo-shell .tab:hover:not(.active) {
+.todo-shell .tab[data-hover]:not(.active) {
     background: var(--hover-bg);
     color: var(--text-primary);
 }
 
 /* As a group tab's close button: a 16px circle, 6px after the name and
-   4px from the tab's edge. In the flow, so the selected tab, the only one
-   with the button, is wider by it, as a selected group tab is. */
+   4px from the tab's edge. On any tab, shown only while that tab is
+   hovered, which widens it by the button. */
 .todo-shell .tab-close {
     width: 16px;
     height: 16px;
-    display: flex;
+    /* No room until its tab is hovered: then that tab widens to fit it. */
+    display: none;
     align-items: center;
     justify-content: center;
     margin: 0 -8px 0 6px;
@@ -840,36 +870,34 @@ html.redd-native-shell .todo-shell .title-bar {
     font-size: 12px;
     line-height: 1;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s ease, color 0.2s ease, background 0.2s ease;
+    transition: color 0.2s ease, background 0.2s ease;
     -webkit-app-region: no-drag;
 }
 
-.todo-shell .tab:hover .tab-close {
-    opacity: 1;
+.todo-shell .tab[data-hover] .tab-close {
+    display: flex;
 }
 
 .todo-shell .tab-close:hover {
-    opacity: 1 !important;
     background: var(--redd-coral-soft);
     color: var(--danger);
 }
 
+/* The same button as the groups row's +. */
 .todo-shell .add-tab-btn-subtle {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     border: none;
     border-radius: 4px;
     background: transparent;
     color: var(--text-tertiary);
-    font-size: 18px;
-    line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background 0.2s ease, color 0.2s ease, opacity 0.15s ease;
-    margin-left: 2px;
+    /* Close to the last tab: the row's gap is 8px. */
+    margin-left: -4px;
     -webkit-app-region: no-drag;
     flex-shrink: 0;
     padding-top: 0;
@@ -878,19 +906,37 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 /*
-  The + shows only while the pointer is on the tabs, so the row is quiet.
+  The + shows only while the pointer is on its row, so the row is quiet.
   It keeps its place, so the tabs do not move when it comes. A keyboard
-  reader who tabs to it sees it, and a touch screen, with no hover, always
-  shows it.
-*/
-@media (hover: hover) {
-    .todo-shell .add-tab-btn-subtle {
-        opacity: 0;
-    }
+  reader who tabs to it sees it, and a touch screen always shows it.
 
-    .todo-shell .tabs-container:hover .add-tab-btn-subtle,
-    .todo-shell .add-tab-btn-subtle:focus-visible {
-        opacity: 1;
+  "On its row" is data-hover, set by HoverRow, not :hover, which stayed on
+  in the Mac app's web view after the pointer had left. And no
+  @media (hover: hover) around the hiding: if that web view says it cannot
+  hover, the + would show all the time. Only a real touch screen (no hover
+  and a coarse pointer) shows it always.
+
+  Hidden with visibility and no fade. The Mac app's web view did take the
+  + away, but now and then did not draw that for seconds: a fading opacity
+  is not always painted again there. A change of visibility is.
+*/
+.todo-shell .add-tab-btn-subtle,
+.todo-shell .add-group-btn {
+    visibility: hidden;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.todo-shell .tabs-container[data-hover] .add-tab-btn-subtle,
+.todo-shell .groups-container[data-hover] .add-group-btn,
+.todo-shell .add-tab-btn-subtle:focus-visible,
+.todo-shell .add-group-btn:focus-visible {
+    visibility: visible;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .todo-shell .add-tab-btn-subtle,
+    .todo-shell .add-group-btn {
+        visibility: visible;
     }
 }
 
@@ -1786,6 +1832,25 @@ html.redd-native-shell .todo-shell .title-bar {
     align-items: center;
 }
 
+/* A card linked to GitHub: the mark that opens its issue, in front of the
+   list icon (task-github-item.tsx). It stays on screen at rest, so the
+   linked tasks can be seen at a glance. */
+.todo-shell .task-github-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 18px;
+    border-radius: 4px;
+    color: var(--text-tertiary);
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.todo-shell .task-github-link:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg);
+}
+
 .todo-shell .task-list-origin {
     display: inline-flex;
     align-items: center;
@@ -1868,6 +1933,56 @@ html.redd-native-shell .todo-shell .title-bar {
     box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
 }
 
+/* The search box of a long list menu (SearchableListMenu). It stays at
+   the top while the lists under it scroll. */
+.todo-shell .list-menu-search {
+    position: sticky;
+    top: -4px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -4px -4px 4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color-light, var(--border-color-medium));
+    background: var(--modal-bg);
+    color: var(--text-tertiary);
+}
+
+.todo-shell .list-menu-search input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 13px;
+}
+
+.todo-shell .list-menu-heading {
+    padding: 8px 10px 3px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.todo-shell .list-menu-heading:empty {
+    padding: 0;
+    margin: 4px 0;
+}
+
+.todo-shell .list-menu-none {
+    padding: 7px 10px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+}
+
 .todo-shell .task-list-picker-item {
     display: flex;
     align-items: center;
@@ -1902,13 +2017,18 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 .todo-shell .task-list-picker-item:focus-visible,
-.todo-shell .board-sort-item:focus-visible {
+.todo-shell .board-sort-item:focus-visible,
+/* Focused by the menu's keys: WebKit leaves :focus-visible off then (see
+   [data-focus-walked] and MenuKeys). */
+.todo-shell .task-list-picker-item[data-focus-walked]:focus,
+.todo-shell .board-sort-item[data-focus-walked]:focus {
     outline: none;
     background: var(--focus-btn-bg);
     color: var(--focus-btn-text);
 }
 
-.todo-shell .task-list-picker-item:focus-visible .task-list-picker-icon {
+.todo-shell .task-list-picker-item:focus-visible .task-list-picker-icon,
+.todo-shell .task-list-picker-item[data-focus-walked]:focus .task-list-picker-icon {
     color: inherit;
 }
 
@@ -1919,7 +2039,9 @@ html.redd-native-shell .todo-shell .title-bar {
  * item's cream text, and the name could not be read.
  */
 .todo-shell .task-list-picker-item:focus-visible:hover,
-.todo-shell .board-sort-item:focus-visible:hover {
+.todo-shell .board-sort-item:focus-visible:hover,
+.todo-shell .task-list-picker-item[data-focus-walked]:focus:hover,
+.todo-shell .board-sort-item[data-focus-walked]:focus:hover {
     background: var(--focus-btn-bg);
 }
 
@@ -3054,6 +3176,23 @@ html.redd-native-shell .todo-shell .title-bar {
     color: var(--text-primary);
 }
 
+/* The person's GitHub username, on a board with a list on GitHub. */
+.todo-shell .people-editor-github {
+    width: 120px;
+    flex: none;
+    padding: 3px 8px;
+    border: 1px solid var(--border-color-medium);
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+    background: var(--input-surface);
+    color: var(--text-primary);
+}
+
+.todo-shell .people-editor-github::placeholder {
+    color: var(--text-tertiary, var(--text-secondary));
+}
+
 /* The "Me" mark. On the person who is the reader it shows always. On the
    others it shows under the pointer, and on every row while nobody is
    marked, so the reader can find it. */
@@ -4176,6 +4315,32 @@ html.redd-native-shell .todo-shell .title-bar {
     box-shadow: 0 16px 40px rgba(30, 45, 62, 0.18);
 }
 
+/* The bin in an edit dialog's top-right corner: the same delete as the tab's ×. */
+.todo-shell #tab-name-modal .modal-content {
+    position: relative;
+}
+
+.todo-shell .modal-delete-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+}
+
+.todo-shell .modal-delete-btn:hover {
+    background: var(--redd-coral-soft);
+    color: var(--danger);
+}
+
 .todo-shell #settings-modal .modal-content {
     display: flex;
     flex-direction: column;
@@ -4341,6 +4506,287 @@ html.redd-native-shell .todo-shell .title-bar {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+/*
+ * Deleted lists, under Tasks and lists. One row that folds open to the
+ * lists; a list folds open to its first tasks, read only.
+ */
+.todo-shell #settings-modal .settings-deleted {
+    display: block;
+}
+
+.todo-shell #settings-modal .settings-deleted-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.todo-shell #settings-modal .settings-deleted-count {
+    font-size: 13px;
+    color: var(--text-tertiary);
+}
+
+.todo-shell #settings-modal .settings-deleted-head-chevron {
+    margin-left: auto;
+    color: var(--text-tertiary);
+}
+
+.todo-shell #settings-modal .settings-deleted-lists {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+}
+
+.todo-shell #settings-modal .settings-deleted-item {
+    border-top: 1px solid var(--border-color-medium);
+    padding: 10px 0;
+}
+
+.todo-shell #settings-modal .settings-deleted-item:last-child {
+    padding-bottom: 0;
+}
+
+.todo-shell #settings-modal .settings-deleted-item-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.todo-shell #settings-modal .settings-deleted-item-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--text-tertiary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.todo-shell #settings-modal .settings-deleted-item-toggle > svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+}
+
+.todo-shell #settings-modal .settings-deleted-item-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.todo-shell #settings-modal .settings-deleted-item-name {
+    font-size: 15px;
+    line-height: 1.3;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.todo-shell #settings-modal .settings-deleted-item-icon {
+    margin-right: 6px;
+    vertical-align: -2px;
+    color: var(--text-secondary);
+}
+
+.todo-shell #settings-modal .settings-deleted-item-meta {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-tertiary);
+}
+
+/* A word at rest; solid on the list that is open. */
+.todo-shell #settings-modal .settings-deleted-restore {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.todo-shell #settings-modal .settings-deleted-restore:hover:not(:disabled) {
+    background: var(--hover-bg);
+}
+
+.todo-shell #settings-modal .settings-deleted-restore.is-primary {
+    background: var(--accent-primary);
+    color: #fff;
+}
+
+.todo-shell #settings-modal .settings-deleted-restore.is-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.todo-shell #settings-modal .settings-deleted-restore:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.todo-shell #settings-modal .settings-deleted-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.todo-shell #settings-modal .settings-deleted-actions.is-confirming {
+    gap: 8px;
+}
+
+/* The bin: grey at rest, coral under the pointer. */
+.todo-shell #settings-modal .settings-deleted-bin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.todo-shell #settings-modal .settings-deleted-bin:hover:not(:disabled) {
+    color: var(--danger);
+    background: var(--hover-bg);
+}
+
+.todo-shell #settings-modal .settings-deleted-ask {
+    font-size: 14px;
+    color: var(--danger);
+    white-space: nowrap;
+}
+
+.todo-shell #settings-modal .settings-deleted-cancel,
+.todo-shell #settings-modal .settings-deleted-delete {
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.todo-shell #settings-modal .settings-deleted-cancel {
+    background: none;
+    color: var(--text-secondary);
+}
+
+.todo-shell #settings-modal .settings-deleted-cancel:hover {
+    background: var(--hover-bg);
+}
+
+.todo-shell #settings-modal .settings-deleted-delete {
+    background: var(--danger);
+    color: #fff;
+}
+
+.todo-shell #settings-modal .settings-deleted-delete:hover:not(:disabled) {
+    filter: brightness(0.92);
+}
+
+.todo-shell #settings-modal .settings-deleted-delete:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.todo-shell #settings-modal .settings-deleted-tasks {
+    margin: 10px 0 0 23px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--hover-bg);
+    min-height: 20px;
+}
+
+.todo-shell #settings-modal .settings-deleted-tasks ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.todo-shell #settings-modal .settings-deleted-task {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.todo-shell #settings-modal .settings-deleted-task-box {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--border-color-strong, var(--border-color-medium));
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.todo-shell #settings-modal .settings-deleted-task.is-done .settings-deleted-task-box {
+    background: var(--text-tertiary);
+    border-color: var(--text-tertiary);
+}
+
+.todo-shell #settings-modal .settings-deleted-task-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.todo-shell #settings-modal .settings-deleted-task.is-done .settings-deleted-task-text {
+    color: var(--text-tertiary);
+    text-decoration: line-through;
+}
+
+.todo-shell #settings-modal .settings-deleted-task-meta {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--text-tertiary);
+}
+
+.todo-shell #settings-modal .settings-deleted-more {
+    margin: 2px 0 2px 24px;
+    padding: 2px 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+}
+
+.todo-shell #settings-modal .settings-deleted-more:hover {
+    color: var(--text-primary);
+}
+
+.todo-shell #settings-modal .settings-deleted-task-none {
+    font-size: 13px;
+    color: var(--text-tertiary);
 }
 
 .todo-shell #settings-modal .settings-blocklists-io-btn {
@@ -4862,6 +5308,25 @@ html.redd-native-shell .todo-shell .title-bar {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+/* The GitHub sign-in code, to type on github.com. */
+.todo-shell .settings-github-user-code {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-primary);
+    user-select: all;
+}
+
+.todo-shell .settings-github-code-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.todo-shell .settings-github-code-actions .modal-btn {
+    text-decoration: none;
 }
 
 .todo-shell .enforcement-switch {
@@ -5878,6 +6343,16 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     border-color: var(--border-color);
 }
 
+.todo-shell .focus-task-switch-tab-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+}
+
+.todo-shell .focus-task-switch-tab.active .focus-task-switch-tab-icon {
+    color: var(--text-secondary);
+}
+
 .todo-shell .focus-task-switch-tab-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -6270,6 +6745,12 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     margin-bottom: 8px;
 }
 
+.todo-shell .bc-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
 .todo-shell .bc-select {
     width: 100%;
     padding: 8px 10px;
@@ -6419,6 +6900,15 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .todo-select-option--current,
 .todo-select-dropdown--portal .todo-select-option--current {
     background: var(--border-color-light, #e5e2dc);
+}
+
+/* Dark: no theme sets --border-color-light, so the rows above fall back to
+   the light highlight, and the light text on it can not be read. */
+.todo-shell[data-theme="dark"] .todo-select-option:hover,
+.todo-shell[data-theme="dark"] .todo-select-option--current,
+.todo-select-dropdown--portal[data-theme="dark"] .todo-select-option:hover,
+.todo-select-dropdown--portal[data-theme="dark"] .todo-select-option--current {
+    background: rgba(255, 255, 255, 0.10);
 }
 
 .todo-shell .todo-select-option-label,
@@ -6769,7 +7259,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     display: block;
 }
 
-.todo-shell .reminders-icon {
+.todo-shell .reminders-icon,
+.todo-shell .github-icon {
     color: var(--text-tertiary);
 }
 
@@ -6914,6 +7405,9 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     border: 1px solid var(--border-color);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     box-sizing: border-box;
+    color: var(--text-primary);
+    /* On document.body, out of the shell's font too. */
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
 }
 
 .todo-shell .icon-picker-search,
@@ -6960,6 +7454,25 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     color: var(--text-secondary);
     cursor: pointer;
     padding: 0;
+}
+
+/* The tools' logos and the upload button: one short row, above the search. */
+.icon-picker-popover.todo-icon-picker-popover .icon-picker-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-tertiary, var(--text-secondary));
+}
+
+.icon-picker-popover.todo-icon-picker-popover .icon-picker-logos {
+    flex: none;
+    overflow: visible;
+}
+
+.icon-picker-popover.todo-icon-picker-popover .icon-picker-upload:disabled {
+    opacity: 0.5;
+    cursor: progress;
 }
 
 .todo-shell .icon-picker-item:hover,
@@ -7413,7 +7926,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .group-tab.active.tab-bg-purple,
 .todo-shell .group-tab.active.tab-bg-pink,
 .todo-shell .group-tab.active.tab-bg-gray {
-    font-weight: 600;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Dimmed group tabs with colors - ensure colors are properly muted */
@@ -7928,6 +8442,20 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 /* The notes editor, on Trix                                            */
 /* ==================================================================== */
 
+/* Every box one types in shows the text cursor. A notes editor is not an
+   input, so it took the arrow or hand of the card around it. :where keeps
+   this weak, so a box that asks for another cursor still gets it. */
+.todo-shell :where(
+    trix-editor,
+    [contenteditable="true"],
+    textarea:not(:disabled, [readonly]),
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"],
+        [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"],
+        :disabled, [readonly])
+) {
+    cursor: text;
+}
+
 /*
  * Trix ships almost no styling for the writing area — its stylesheet is
  * nearly all attachment furniture — so the box is ours. What it does bring
@@ -8021,7 +8549,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell trix-editor ol { padding-left: 1.4em; margin: 6px 0; }
 /* Half the column, not all of it: a picture in a note is an aside to the
    words, and Basecamp hands them over at full camera size. */
-.todo-shell trix-editor img { max-width: 50%; height: auto; }
+.todo-shell trix-editor img { width: auto; height: auto; max-width: 50%; max-height: 240px; }
 .todo-shell trix-editor .attachment--preview { text-align: left; }
 
 /*
@@ -8042,54 +8570,143 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 /*
- * On the caret's line, not under it.
+ * A picture on its own: nothing types beside it, and the caret after it
+ * stands where the next words go, at the start of the line below. A block
+ * that starts its own layout sits beside the floated corner that keeps the
+ * expand button clear, instead of under it.
  *
- * Trix puts an invisible caret stop before and after each attachment. A
- * figure is a block by default, so each stop got a text line of its own —
- * an empty line above the picture and one below. A click on the picture
- * selects both stops, and the selection painted the empty line above blue
- * from edge to edge.
- *
- * Inline, the figure shares one line with its stops. It also has to fit
- * beside the floated corner that keeps the expand button and the tick
- * clear, or a picture that opens the note drops under the float and the
- * empty line is back. `--dh-notes-corner` is that float's width.
+ * Trix puts an invisible caret stop before and after each attachment. The
+ * one before is taken out of the flow, or it made an empty line above the
+ * picture, which a click on the picture painted blue.
  */
 .todo-shell trix-editor figure.attachment {
-    display: inline-block;
-    vertical-align: top;
-    width: calc(100% - var(--dh-notes-corner, 0px));
+    display: flow-root;
     margin: 0;
 }
 
-.todo-shell .notes-editor-wrapper.active trix-editor { --dh-notes-corner: 58px; }
-.todo-shell .focus-notes-editor-wrapper.active trix-editor { --dh-notes-corner: 32px; }
+.todo-shell trix-editor [data-trix-cursor-target="left"] {
+    position: absolute;
+}
 
-.todo-shell trix-editor [data-trix-cursor-target]::selection {
+.todo-shell trix-editor [data-trix-cursor-target]::selection,
+/* A chosen picture shows its own ring; the browser's highlight of the caret
+   stops around it only drew a blue strip above it. Trix marks the chosen
+   picture's figure as mutable; every picture's img is always marked, so
+   matching that hid all highlight in any note with a picture. */
+.todo-shell trix-editor:has(.attachment[data-trix-mutable]) *::selection {
     background: transparent;
 }
 
-.todo-shell trix-editor .attachment--preview img {
-    border-radius: 10px;
-    display: block;
+/*
+ * A picture is as wide as itself, up to the column, and its caption is as
+ * wide as the picture. The caption adds no width of its own: `width: 0`
+ * keeps it out of the figure's measure, and `min-width: 100%` then
+ * stretches it to the picture.
+ */
+.todo-shell trix-editor figure.attachment--preview {
+    width: fit-content;
+    max-width: 100%;
 }
 
-/* Teal, not the operating system's highlight blue. */
+.todo-shell trix-editor .attachment--preview img {
+    max-width: 100%;
+    max-height: 240px;
+    border-radius: 6px;
+    display: block;
+    cursor: pointer;
+}
+
+.todo-shell trix-editor figure.attachment--preview .attachment__caption {
+    width: 0;
+    min-width: 100%;
+}
+
+/* The full-screen card has the room for a picture to be read. */
+.todo-shell .task-overlay-notes-band trix-editor figure.attachment--preview {
+    max-width: min(100%, 720px);
+}
+
+.todo-shell .task-overlay-notes-band trix-editor .attachment--preview img {
+    max-height: 440px;
+}
+
+/*
+ * Pictures side by side. Trix puts pictures that follow each other in one
+ * paragraph into a gallery block; they share the row at equal width, each
+ * with its own caption.
+ */
+.todo-shell trix-editor .attachment-gallery {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    position: relative;
+}
+
+.todo-shell trix-editor .attachment-gallery > figure.attachment--preview {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+}
+
+.todo-shell trix-editor .attachment-gallery > figure.attachment--preview img,
+.todo-shell .task-overlay-notes-band trix-editor .attachment-gallery > figure.attachment--preview img {
+    width: 100%;
+    max-height: none;
+}
+
+/* Trix's caret stop after each picture is a flex item too. It takes no
+   room, and its margin gives back the gap it would add. */
+.todo-shell trix-editor .attachment-gallery > [data-trix-cursor-target="right"] {
+    flex: 0 0 0;
+    width: 0;
+    margin-left: -16px;
+}
+
+.todo-shell trix-editor .attachment-gallery > br {
+    display: none;
+}
+
+/* A picture given a width keeps its shape at that width. */
+.todo-shell trix-editor .attachment--preview img.is-sized,
+.todo-shell .task-overlay-notes-band trix-editor .attachment--preview img.is-sized {
+    max-height: none;
+}
+
+/* The chosen picture's corners, which drag it bigger or smaller. Set on
+   the ring, which stands 3px off the picture: the handles sit on it. */
+.todo-shell trix-editor .dh-resize-handle {
+    position: absolute;
+    z-index: 6;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    box-sizing: border-box;
+    border: 2px solid color-mix(in srgb, var(--accent-primary) 55%, var(--text-primary));
+    border-radius: 3px;
+    background: var(--modal-bg);
+    touch-action: none;
+}
+
+.todo-shell trix-editor .dh-resize-handle[data-corner="nw"] { transform: translate(-3px, -3px); cursor: nwse-resize; }
+.todo-shell trix-editor .dh-resize-handle[data-corner="se"] { transform: translate(3px, 3px); cursor: nwse-resize; }
+.todo-shell trix-editor .dh-resize-handle[data-corner="ne"] { transform: translate(3px, -3px); cursor: nesw-resize; }
+.todo-shell trix-editor .dh-resize-handle[data-corner="sw"] { transform: translate(-3px, 3px); cursor: nesw-resize; }
+
+/* A thin ring a little off the picture: it says "chosen" without a frame
+   of colour round the artwork. Teal leaning to the ink, in either theme. */
 .todo-shell trix-editor [data-trix-mutable].attachment img {
-    box-shadow: 0 0 0 2px var(--accent-primary);
+    outline: 2px solid color-mix(in srgb, var(--accent-primary) 55%, var(--text-primary));
+    outline-offset: 3px;
 }
 
 .todo-shell trix-editor [data-trix-mutable].attachment.attachment--file {
-    box-shadow: 0 0 0 2px var(--accent-primary);
+    outline: 2px solid color-mix(in srgb, var(--accent-primary) 55%, var(--text-primary));
+    outline-offset: 3px;
 }
 
-/* The name and the size, at the end of the caption's line rather than in a
-   tooltip over the picture. */
+/* No name-and-size label: the caption already names the picture. */
 .todo-shell trix-editor .attachment__metadata-container {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    max-width: 60%;
+    display: none;
 }
 
 .todo-shell trix-editor .attachment__metadata {
@@ -8112,22 +8729,67 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 .todo-shell trix-editor .attachment__caption {
-    color: var(--text-tertiary);
-    font-size: 13px;
-    padding-right: 40%;
+    display: block;
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: left;
+    cursor: text;
 }
 
-/* Clear of the frame, centred on it, and dark like the app's own toasts. */
-/* Out of the flow, or a chosen picture grows a strip above itself the
-   height of the toolbar — which the selection then paints blue, so a
-   click on the picture looked as if it had selected the line above. */
+/* No caption set, no caption line. Trix would write the file's name and
+   size there; a picture is not its file name. */
+.todo-shell trix-editor .attachment__caption:not(.attachment__caption--edited):not(.attachment__caption--editing) {
+    display: none;
+}
+
+/* While the caption is typed, Trix draws a second, plain one: one is enough. */
+.todo-shell trix-editor .attachment__caption--editing ~ .attachment__caption {
+    display: none;
+}
+
+/* While the picture is chosen, its caption is a field of its own. */
+.todo-shell trix-editor .attachment__caption--editing {
+    margin-top: 14px;
+}
+
+.todo-shell trix-editor .attachment__caption-editor {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding: 11px 14px;
+    border: 1px solid var(--border-color-medium);
+    border-radius: 8px;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    background: var(--input-surface);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.todo-shell trix-editor .attachment__caption-editor:focus {
+    border-color: var(--border-color-strong);
+}
+
+.todo-shell trix-editor .attachment__caption-editor::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* Inside the picture's top-right corner, so a scrolling notes box cannot
+   cut it off, and over the rest of the note. */
 .todo-shell trix-editor .attachment__toolbar {
     position: absolute;
-    top: -16px;
-    left: 0;
-    width: 100%;
-    text-align: center;
-    z-index: 1;
+    top: 12px;
+    right: 12px;
+    left: auto;
+    width: auto;
+    z-index: 5;
     user-select: none;
     -webkit-user-select: none;
 }
@@ -8138,10 +8800,10 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 .todo-shell trix-editor .attachment__toolbar .trix-button-group {
-    background: #1b2432;
-    border-radius: 9px;
-    padding: 3px;
-    gap: 2px;
+    background: rgba(30, 45, 62, 0.92);
+    border-radius: 10px;
+    padding: 5px;
+    gap: 4px;
     box-shadow: 0 6px 16px rgba(15, 23, 32, 0.28);
 }
 
@@ -8149,8 +8811,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
    The bin keeps to the far end, behind a divider: it is the one action
    here that takes something away. */
 .todo-shell trix-editor .dh-image-action {
-    width: 26px;
-    height: 24px;
+    width: 34px;
+    height: 32px;
     padding: 0;
     border: none;
     border-radius: 6px;
@@ -8163,8 +8825,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 .todo-shell trix-editor .dh-image-action svg {
-    width: 15px;
-    height: 15px;
+    width: 18px;
+    height: 18px;
     display: block;
 }
 
@@ -8182,22 +8844,24 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 
 /* A bin, in the app's coral, in place of Trix's white cross-in-a-circle. */
 .todo-shell trix-editor .trix-button--remove {
-    width: 26px;
-    height: 24px;
-    line-height: 24px;
+    width: 34px;
+    height: 32px;
+    line-height: 32px;
     border: none;
     border-radius: 6px;
     background-color: transparent;
     box-shadow: none;
+    cursor: pointer;
 }
 
 .todo-shell trix-editor .trix-button--remove:hover {
-    background-color: rgba(255, 255, 255, 0.12);
+    background-color: rgba(228, 134, 127, 0.22);
 }
+
 
 .todo-shell trix-editor .trix-button--remove::before {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e4867f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h18'/%3E%3Cpath d='M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/%3E%3Cpath d='M10 11v6'/%3E%3Cpath d='M14 11v6'/%3E%3C/svg%3E");
-    background-size: 15px 15px;
+    background-size: 18px 18px;
     background-position: center;
     background-repeat: no-repeat;
     opacity: 1;
@@ -8268,7 +8932,11 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     overflow-y: auto;
     font-size: 15px;
     line-height: 1.65;
-    padding: 0;
+    /* Room at each side for a chosen picture's ring and corner handles,
+       which the scrolling box would cut off, given back by the margin so
+       the words stay where they were. */
+    padding: 0 10px;
+    margin: 0 -10px;
 }
 
 /*
@@ -8422,9 +9090,11 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .trix-notes-bubble {
     /* Fixed, not absolute: a card that clips its overflow was cropping the
        bubble, and a selection near the foot of a note put it out of sight
-       under the card's edge. TrixNotesEditor gives it window coordinates. */
+       under the card's edge. TrixNotesEditor gives it window coordinates.
+       Over the full-screen card (2000), level with the menus and lightbox
+       that also sit on the body. */
     position: fixed;
-    z-index: 400;
+    z-index: 2200;
     display: flex;
     visibility: hidden;
     pointer-events: none;
@@ -8621,19 +9291,172 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 
 /* ------------------------------------------------------------ overlay */
 
-/* The big card is the whole task now. The title goes serif, as the
-   session's and the morning's headings do. */
-/* Beside a 26px serif line the box needs a nudge down to sit on it. */
-.todo-shell .task-overlay-card .notes-overlay-head .task-checkbox {
-    margin-top: 7px;
+/*
+ * The big card is the whole task. Its parts reach the card's edges — the
+ * green band of a done task, the cream band of the notes — so the card has
+ * no padding of its own and each part brings its own. The tick stands in a
+ * gutter, and everything under the words starts where the words do.
+ */
+.todo-shell .task-overlay-card {
+    --overlay-gutter: 52px;
+    --overlay-side: 40px;
+    --overlay-done-band: #285c55;
+    --overlay-done-ink: #ffffff;
+    /* The page's cream. --bg-subtle names it, but through --cream-section,
+       which only the planner's stylesheet defines. */
+    --overlay-cream: var(--cream-section, #f1eeea);
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    border-radius: 20px;
 }
 
-.todo-shell .task-overlay-card .notes-overlay-title {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 26px;
-    font-weight: 600;
-    line-height: 1.25;
+.todo-shell[data-theme="dark"] .task-overlay-card {
+    --overlay-done-band: #1f4a44;
+    --overlay-cream: rgba(255, 255, 255, 0.04);
 }
+
+.todo-shell .task-overlay-card .notes-overlay-head {
+    align-items: flex-start;
+    gap: 0;
+    padding: 36px var(--overlay-side) 22px;
+}
+
+.todo-shell .task-overlay-gutter {
+    flex-shrink: 0;
+    width: var(--overlay-gutter);
+    display: flex;
+    /* On the first line of a 36px serif title. */
+    padding-top: 11px;
+}
+
+.todo-shell .task-overlay-card .notes-overlay-head .task-checkbox {
+    width: 24px;
+    height: 24px;
+    margin: 0;
+    border-radius: 6px;
+    border-color: var(--border-color-strong);
+}
+
+.todo-shell .task-overlay-card .notes-overlay-title,
+.todo-shell .task-overlay-card .notes-overlay-title-input {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 36px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+
+.todo-shell .task-overlay-card .notes-collapse-btn {
+    width: 32px;
+    height: 32px;
+    margin-left: 16px;
+    margin-top: 4px;
+}
+
+/* The words can be changed: a click opens them in a box of the same type. */
+.todo-shell .notes-overlay-title.is-editable {
+    cursor: text;
+    border-radius: 6px;
+}
+
+.todo-shell .notes-overlay-title.is-editable:focus-visible {
+    outline: 2px solid var(--redd-teal);
+    outline-offset: 2px;
+}
+
+.todo-shell .notes-overlay-title-input {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    background: transparent;
+    font: inherit;
+    color: var(--text-primary);
+}
+
+/* ---- done: the head is a green band */
+
+.todo-shell .task-overlay-done-band {
+    align-items: center;
+    background: var(--overlay-done-band);
+    color: var(--overlay-done-ink);
+}
+
+.todo-shell .task-overlay-card .task-overlay-done-band {
+    padding-bottom: 34px;
+}
+
+/* The mark sits beside the line that says when, at the top of the words. */
+.todo-shell .task-overlay-done-band .task-overlay-gutter {
+    padding-top: 6px;
+}
+
+.todo-shell .task-overlay-done-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: #f5f0e8;
+    color: var(--overlay-done-band);
+}
+
+.todo-shell .task-overlay-done-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.todo-shell .task-overlay-done-when {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #a9dccf;
+}
+
+.todo-shell .task-overlay-done-band .notes-overlay-title,
+.todo-shell .task-overlay-done-band .notes-overlay-title-input {
+    color: var(--overlay-done-ink);
+}
+
+.todo-shell .task-overlay-done-band .notes-overlay-title.is-editable:focus-visible {
+    outline-color: #a9dccf;
+}
+
+.todo-shell .task-overlay-undone-btn {
+    flex-shrink: 0;
+    margin-left: 16px;
+    padding: 8px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--overlay-done-ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.todo-shell .task-overlay-undone-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.8);
+}
+
+.todo-shell .task-overlay-done-band .notes-collapse-btn {
+    margin-top: 0;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.todo-shell .task-overlay-done-band .notes-collapse-btn:hover {
+    color: var(--overlay-done-ink);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* ---- the body: the task's facts on white, then the notes on cream */
 
 .todo-shell .task-overlay-scroll {
     position: relative;
@@ -8649,112 +9472,122 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    padding-right: 4px;
+}
+
+.todo-shell .task-overlay-top {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 0 var(--overlay-side) 28px calc(var(--overlay-side) + var(--overlay-gutter));
+}
+
+.todo-shell .task-overlay-card.is-done .task-overlay-top {
+    padding-top: 30px;
+}
+
+/* The cream goes down to the card's foot, however short the note. */
+.todo-shell .task-overlay-notes-band {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 26px var(--overlay-side) 36px calc(var(--overlay-side) + var(--overlay-gutter));
+    background: var(--overlay-cream);
+    border-top: 1px solid var(--border-color-medium);
+}
+
+.todo-shell .task-overlay-band-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-hover);
+}
+
+/* Room to click into below the last line, so the end of a note is easy to
+   reach and carry on from. */
+.todo-shell .task-overlay-notes-band .notes-overlay-editor trix-editor {
+    min-height: 120px;
 }
 
 .todo-shell .task-overlay-fade {
     position: absolute;
     left: 0;
-    right: 4px;
+    right: 0;
     bottom: 0;
     height: 56px;
     background: linear-gradient(to top, var(--modal-bg), transparent);
     pointer-events: none;
 }
 
-.todo-shell .task-overlay-row {
-    display: grid;
-    grid-template-columns: 110px minmax(0, 1fr);
-    gap: 16px;
-    align-items: start;
+/* Over the notes, the veil is the notes' own cream. */
+.todo-shell .task-overlay-card .task-overlay-fade {
+    background: linear-gradient(to top, var(--overlay-cream), transparent);
 }
 
-.todo-shell .task-overlay-label {
-    padding-top: 4px;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-primary);
-}
+/* ---- the chips under the words */
 
-.todo-shell .task-overlay-value {
-    position: relative;
-    min-width: 0;
+.todo-shell .task-overlay-chips {
     display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.todo-shell .task-overlay-list-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    padding: 4px 8px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: 14px;
-    cursor: pointer;
-}
-
-.todo-shell .task-overlay-list-btn:hover:not(:disabled) {
-    background: var(--hover-bg);
-}
-
-/* The picker opens under the row, not under a tiny origin square. */
-.todo-shell .task-overlay-value .task-list-picker {
-    top: calc(100% + 4px);
-    left: 0;
-}
-
-.todo-shell .task-overlay-assign-btn {
-    display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
-    padding: 4px 8px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
+}
+
+.todo-shell .task-overlay-chip-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.todo-shell .task-overlay-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 16px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--overlay-cream);
     color: var(--text-primary);
-    font-size: 14px;
+    font: inherit;
+    font-size: 15px;
     cursor: pointer;
+    white-space: nowrap;
 }
 
-.todo-shell .task-overlay-assign-btn:hover {
-    background: var(--hover-bg);
-}
-
-.todo-shell .task-overlay-assign-names {
+.todo-shell .task-overlay-chip svg {
+    flex-shrink: 0;
     color: var(--text-secondary);
 }
 
-.todo-shell .task-overlay-placeholder {
-    color: var(--text-tertiary);
+.todo-shell .task-overlay-chip:hover:not(:disabled),
+.todo-shell .task-overlay-chip[aria-expanded="true"] {
+    border-color: var(--border-color-strong);
 }
 
-.todo-shell .task-overlay-duration {
-    /* Wide enough for its own placeholder to finish the sentence; with a
-       number in it, an inline width shrinks the box to fit — see the
-       onInput handler — so the unit reads right after the digits. */
-    width: 210px;
-    min-width: 3ch;
-    padding: 4px 8px;
-    border: 1px solid transparent;
-    border-radius: 8px;
+.todo-shell .task-overlay-chip.is-ghost {
     background: transparent;
+    border-color: var(--border-color-medium);
+    color: var(--text-secondary);
+}
+
+.todo-shell .task-overlay-chip.is-ghost:hover {
+    border-color: var(--border-color-strong);
     color: var(--text-primary);
-    font-size: 14px;
 }
 
-.todo-shell .task-overlay-duration::placeholder {
-    color: var(--text-tertiary);
+.todo-shell .task-overlay-chip.is-editing {
+    cursor: default;
+    background: transparent;
+    border-color: var(--border-color-strong);
 }
 
-.todo-shell .task-overlay-duration:hover,
-.todo-shell .task-overlay-duration:focus {
-    background: var(--hover-bg);
+.todo-shell .task-overlay-chip-input {
+    width: 5ch;
+    padding: 0;
+    border: none;
     outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
 }
 
 .todo-shell .task-overlay-unit {
@@ -8762,15 +9595,91 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     color: var(--text-tertiary);
 }
 
-/* Notes is exactly what is written: one line empty, growing with the
-   words. Any reserved page here reads as a hole between Notes and
-   Subtasks — the rows keep one rhythm, 18px apart. */
-.todo-shell .task-overlay-notes .notes-overlay-editor trix-editor {
-    min-height: 24px;
+/* The people are their faces, with no chip around them. */
+.todo-shell .task-overlay-faces {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
 }
 
-.todo-shell .task-overlay-notes .task-overlay-value {
-    align-items: stretch;
+.todo-shell .task-overlay-faces:hover {
+    background: var(--hover-bg);
+}
+
+/* The list stands at the far end of the row. */
+.todo-shell .task-overlay-list-wrap {
+    margin-left: auto;
+}
+
+.todo-shell .task-overlay-list-chip {
+    font-weight: 600;
+}
+
+.todo-shell .task-overlay-list-wrap .task-list-picker {
+    left: auto;
+    right: 0;
+}
+
+/* The day, with its × inside the same chip. Red when it has gone by. */
+.todo-shell .task-overlay-chips .task-overlay-due-value {
+    gap: 0;
+    height: 38px;
+    padding: 0 8px 0 4px;
+    border-radius: 999px;
+    background: var(--overlay-cream);
+}
+
+.todo-shell .task-overlay-chips .task-overlay-due {
+    height: 38px;
+    padding: 0 8px 0 12px;
+    gap: 8px;
+    border: none;
+    border-radius: 999px;
+    font-size: 15px;
+}
+
+.todo-shell .task-overlay-chips .task-overlay-due:hover,
+.todo-shell .task-overlay-chips .task-overlay-due:focus-visible,
+.todo-shell .task-overlay-chips .task-overlay-due[aria-expanded="true"] {
+    border: none;
+}
+
+.todo-shell .task-overlay-chips .task-overlay-due-value:hover,
+.todo-shell .task-overlay-chips .task-overlay-due-value:has([aria-expanded="true"]) {
+    box-shadow: inset 0 0 0 1px var(--border-color-strong);
+}
+
+.todo-shell .task-overlay-chips .task-overlay-due-value.is-empty {
+    padding-right: 4px;
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--border-color-medium);
+}
+
+.todo-shell .task-overlay-chips .task-overlay-due-value.is-overdue .task-overlay-due,
+.todo-shell .task-overlay-chips .task-overlay-due-value.is-overdue .task-overlay-due svg,
+.todo-shell .task-overlay-chips .task-overlay-due-value.is-overdue .task-overlay-due-clear {
+    color: var(--redd-coral);
+}
+
+.todo-shell .task-overlay-chips .task-overlay-due-value.is-overdue .task-overlay-due {
+    font-weight: 600;
+}
+
+/* Today in the app's green. */
+.todo-shell .task-overlay-chips .task-overlay-due-value.is-today .task-overlay-due,
+.todo-shell .task-overlay-chips .task-overlay-due-value.is-today .task-overlay-due svg {
+    color: var(--accent-hover);
+    font-weight: 600;
+}
+
+/* A task on no list says so, in a dashed chip that asks to be given one. */
+.todo-shell .task-overlay-list-chip.is-ghost {
+    border-style: dashed;
+    font-weight: 400;
 }
 
 /* ---------------------------------------------------------- subtasks */
@@ -8989,13 +9898,6 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     -webkit-user-select: none;
 }
 
-/* The unit belongs to a number. An empty box already says "in minutes"
-   in its placeholder, and "Estimated time… min" read as a sentence that
-   trailed off. */
-.todo-shell .task-overlay-duration:placeholder-shown + .task-overlay-unit {
-    display: none;
-}
-
 /* ------------------------------------------------------------------ */
 /* A subtask's own controls: the card's, on a smaller row.             */
 /* ------------------------------------------------------------------ */
@@ -9053,6 +9955,41 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     color: var(--focus-btn-text);
 }
 
+/* Who a subtask in the Today session is for: its faces, on the first line
+   beside the words, as the check circle stands. */
+.todo-shell .today-session-subtask-people {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* The focus button: a square with the target in its middle. Its one
+   child sat a pixel off in the padded, gapped box the others share. */
+.todo-shell .task-subtask-focus {
+    width: 22px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+}
+
+.todo-shell .task-subtask-focus svg {
+    display: block;
+}
+
+/* On, it says so as the task's own focus button does: coral on pink. It
+   stays when the pointer leaves, like any mark that carries state. */
+.todo-shell .task-subtask-focus.is-focusing {
+    opacity: 1;
+    background: var(--redd-coral-soft);
+    color: var(--redd-coral);
+}
+
+.todo-shell .task-subtask-focus.is-focusing:hover {
+    background: var(--redd-coral-soft);
+    color: var(--redd-coral);
+    box-shadow: inset 0 0 0 1px var(--redd-coral);
+}
+
 .todo-shell .task-subtask-dur-input {
     width: 5ch;
     height: 22px;
@@ -9099,18 +10036,39 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 @container task-card (max-width: 560px) {
-    .todo-shell .task-overlay-row {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 4px;
+    /* Less margin and a smaller title, so the words keep their width. */
+    /* On the card's parts: a container query cannot style the container. */
+    .todo-shell .task-overlay-card > * {
+        --overlay-gutter: 38px;
+        --overlay-side: 20px;
     }
 
-    .todo-shell .task-overlay-label {
-        padding-top: 0;
+    .todo-shell .task-overlay-card .notes-overlay-title,
+    .todo-shell .task-overlay-card .notes-overlay-title-input {
+        font-size: 26px;
     }
 
-    .todo-shell .task-overlay-duration {
-        width: 100%;
-        max-width: 210px;
+    .todo-shell .task-overlay-gutter {
+        padding-top: 6px;
+    }
+
+    /* The band's button goes under the words rather than squeezing them. */
+    .todo-shell .task-overlay-done-band {
+        flex-wrap: wrap;
+        row-gap: 14px;
+    }
+
+    .todo-shell .task-overlay-done-title {
+        flex-basis: calc(100% - var(--overlay-gutter) - 48px);
+    }
+
+    .todo-shell .task-overlay-undone-btn {
+        order: 3;
+        margin-left: var(--overlay-gutter);
+    }
+
+    .todo-shell .task-overlay-list-wrap {
+        margin-left: 0;
     }
 
     .todo-shell .task-subtask-row {
@@ -10016,24 +10974,28 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 .todo-shell .task-overlay-due {
-    padding: 4px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
     border: 1px solid transparent;
     border-radius: 8px;
     background: transparent;
     color: var(--text-primary);
     font: inherit;
     font-size: 14px;
+    cursor: pointer;
+}
+
+.todo-shell .task-overlay-due.is-empty {
+    color: var(--text-tertiary);
 }
 
 .todo-shell .task-overlay-due:hover,
-.todo-shell .task-overlay-due:focus {
+.todo-shell .task-overlay-due:focus-visible,
+.todo-shell .task-overlay-due[aria-expanded="true"] {
     border-color: var(--border-color-strong);
     outline: none;
-}
-
-.todo-shell .task-overlay-due-said {
-    color: var(--text-tertiary);
-    font-size: 13px;
 }
 
 .todo-shell .task-overlay-due-clear {
@@ -10302,6 +11264,14 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     outline-offset: 2px;
 }
 
+/* Reached by Tab or an arrow through the keyboard walk (focus-walk.ts):
+   the ring shows whatever WebKit makes of :focus-visible. Not under
+   .todo-shell, for a menu drawn outside it. */
+[data-focus-walked]:focus {
+    outline: 2px solid var(--accent-primary, #2a9d8f);
+    outline-offset: 2px;
+}
+
 /* The quiet row at the foot of a picker that clears what it set. */
 .todo-shell .popover-remove-row {
     display: flex;
@@ -10466,19 +11436,6 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     opacity: 0.7;
 }
 
-/* The small note in the top right corner that says the zoom ("110%"). The
-   toasts are drawn outside .todo-shell, so this rule has no shell in front. */
-[data-sonner-toast].todo-zoom-toast {
-    width: auto;
-    min-width: 0;
-    left: auto;
-    right: 0;
-    padding: 8px 16px;
-    font-size: 14px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
 /* The card of a task over the Calendar, beside the task there. The card in
    it is the card of the lists view. The space at the top is for the card's
    hover bubble, which sits on the card's top edge. Under the full-screen
@@ -10510,6 +11467,43 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
         0 8px 24px rgba(30, 45, 62, 0.14);
 }
 
+/* "New task" or "Existing task", at the top of the add-task box. */
+.todo-shell .calendar-task-mode {
+    display: inline-flex;
+    gap: 2px;
+    margin: 0 0 8px;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--bg-subtle);
+}
+
+.todo-shell .calendar-task-mode-btn {
+    border: 0;
+    border-radius: 6px;
+    padding: 4px 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.todo-shell .calendar-task-mode-btn.active {
+    background: var(--modal-bg);
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.12);
+}
+
+/* The task switcher of the focus window, for an existing task. Its list
+   scrolls; the box keeps to a height that fits over the week. */
+.todo-shell .calendar-task-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 340px;
+    min-height: 0;
+}
+
 /* The box stays solid with the focus in its date or time popup, which is
    drawn outside it: it was white only while it held the focus. */
 .todo-shell .calendar-task-popover .input-wrapper {
@@ -10524,9 +11518,92 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
         0 8px 24px rgba(30, 45, 62, 0.14);
 }
 
+/* The tasks of a day (renderCalendarDay): a frame round the cards, as the
+   add-task box has, so the cards stand together over the week. */
+.todo-shell .calendar-task-popover.calendar-day-popover {
+    display: flex;
+    flex-direction: column;
+    max-height: min(70vh, 640px);
+    padding: 14px 10px 10px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    background: var(--modal-bg);
+    box-shadow:
+        0 2px 4px rgba(30, 45, 62, 0.06),
+        0 16px 36px rgba(30, 45, 62, 0.18);
+    pointer-events: auto;
+}
+
+.todo-shell .calendar-day-head {
+    margin: 0 8px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--redd-teal);
+}
+
+.todo-shell .calendar-day-tasks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    overflow-y: auto;
+    /* Room above the first card for its hover pill, which stands over the
+       card's top edge: the scroll box cut it off. The room comes out of the
+       space under the title, as the board's columns do it. */
+    padding-top: var(--task-pill-overhang);
+    margin-top: calc(-1 * var(--task-pill-overhang));
+}
+
+.todo-shell .calendar-day-tasks .task-item {
+    margin: 0;
+    background: var(--task-bg);
+    box-shadow: none;
+}
+
+.todo-shell .calendar-day-tasks.is-dragging {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: grabbing;
+}
+
+/* The card being moved, in the place it would go. */
+.todo-shell .calendar-day-card.is-carried .task-item {
+    opacity: 0.55;
+    border-style: dashed;
+}
+
+.todo-shell .calendar-day-add {
+    margin-top: 8px;
+    padding: 9px 12px;
+    border: 1px dashed var(--border-color-strong, var(--border-color));
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.todo-shell .calendar-day-add:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg);
+}
+
 @keyframes calendar-task-popover-in {
     from {
         opacity: 0;
         transform: translateY(4px);
     }
 }
+
+/* A list icon that is a picture (a tool's logo or an upload), drawn where a
+   Lucide icon would be, at the same size. See list-icons.tsx. */
+.list-icon-picture {
+    display: inline-block;
+    flex-shrink: 0;
+    object-fit: contain;
+    border-radius: 3px;
+    vertical-align: middle;
+}
+

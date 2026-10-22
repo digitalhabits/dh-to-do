@@ -829,7 +829,8 @@ async function listDialog() {
   flushed(() => r().setModalName("Kitchen"));
   calls.length = 0;
   await r().submitListModal();
-  check("a plain group is made and the All tab opens", calls.some((c) => c.path === "/api/todo/groups" && c.body.name === "Kitchen") && (await until(() => r().currentListId === "__all__")));
+  const kitchenList = () => calls.find((c) => c.path === "/api/todo/lists" && c.method === "POST")?.body;
+  check("a plain group is made and opens on its new list", calls.some((c) => c.path === "/api/todo/groups" && c.body.name === "Kitchen") && kitchenList()?.name === "newGroupList" && kitchenList()?.groupId === "g-new" && (await until(() => r().currentListId === kitchenList()?.id)), JSON.stringify(kitchenList()));
   flushed(() => r().openCreateListModal());
   calls.length = 0;
   await r().submitListModal();
@@ -2388,8 +2389,14 @@ async function calendarCard() {
   document.body.appendChild(plan);
   flushed(() => card.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true })));
   check("a press on the card keeps it", r().calendarCard?.taskId === "a");
+  let planPresses = 0;
+  plan.addEventListener("mousedown", () => { planPresses += 1; });
   flushed(() => plan.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true })));
   check("a press on the Calendar puts it away", r().calendarCard === null);
+  plan.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+  check("and only that: its mousedown does not start a note", planPresses === 0);
+  plan.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+  check("the next press reaches the Calendar", planPresses === 1);
   flushed(() => r().openCalendarTask("a", anchor));
   check("the click of that press does not bring it back", r().calendarCard === null);
   await sleep(520);

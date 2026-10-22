@@ -273,6 +273,63 @@ export async function walkLists(page) {
 
   check("and its tab comes back", await until(() => Boolean(tabNamed("Garden shed"))));
 
+  // Deleted again, without Undo: Settings shows it, its tasks, and brings it back.
+  click(tabNamed("Garden shed"));
+  await until(() => tabNamed("Garden shed")?.classList.contains("active"));
+  click($(".tab.active .tab-close"));
+  await until(() => Boolean($(".delete-confirm-btn")));
+  click($(".delete-confirm-btn"));
+  await until(() => !listNamed("Garden shed"));
+  click($(".title-bar-settings-btn"));
+  check("Settings has a Deleted lists row", await until(() => Boolean($(".settings-deleted-head"))));
+  check("folded at first", !$(".settings-deleted-lists"));
+  click($(".settings-deleted-head"));
+  const deletedItem = () =>
+    $$(".settings-deleted-item").find((li) => li.querySelector(".settings-deleted-item-name")?.textContent === "Garden shed");
+  check("open, it shows the list", await until(() => Boolean(deletedItem())));
+  check("with what it holds", (deletedItem()?.querySelector(".settings-deleted-item-meta")?.textContent ?? "").startsWith("1 open"));
+  click(deletedItem().querySelector(".settings-deleted-item-toggle"));
+  check(
+    "the list opens to its tasks",
+    await until(() => deletedItem()?.querySelector(".settings-deleted-task-text")?.textContent === "Hang the rake")
+  );
+  check("and its Restore is solid", deletedItem().querySelector(".settings-deleted-restore").classList.contains("is-primary"));
+  click(deletedItem().querySelector(".settings-deleted-restore"));
+  check("Restore brings the list back", await until(() => Boolean(listNamed("Garden shed"))));
+  check("and the row goes, with nothing left deleted", await until(() => !$(".settings-deleted-head")));
+  click($("#settings-modal .cancel-btn"));
+  await until(() => !$("#settings-modal"));
+  check("its tab is back", await until(() => Boolean(tabNamed("Garden shed"))));
+
+  // Deleted again, then deleted forever from Settings: the bin asks on the row.
+  click(tabNamed("Garden shed"));
+  await until(() => tabNamed("Garden shed")?.classList.contains("active"));
+  click($(".tab.active .tab-close"));
+  await until(() => Boolean($(".delete-confirm-btn")));
+  click($(".delete-confirm-btn"));
+  await until(() => !listNamed("Garden shed"));
+  click($(".title-bar-settings-btn"));
+  await until(() => Boolean($(".settings-deleted-head")));
+  click($(".settings-deleted-head"));
+  await until(() => Boolean(deletedItem()));
+  click(deletedItem().querySelector(".settings-deleted-bin"));
+  check("the bin asks on the row", await until(() => Boolean(deletedItem()?.querySelector(".settings-deleted-ask"))));
+  click(deletedItem().querySelector(".settings-deleted-cancel"));
+  check("Cancel puts Restore back", await until(() => Boolean(deletedItem()?.querySelector(".settings-deleted-restore"))));
+  const everywhere = (name) => board.query("SELECT id FROM todo_lists WHERE name = ?", [name]);
+  check("and nothing is deleted", everywhere("Garden shed").length === 1);
+  click(deletedItem().querySelector(".settings-deleted-bin"));
+  await until(() => Boolean(deletedItem()?.querySelector(".settings-deleted-delete")));
+  click(deletedItem().querySelector(".settings-deleted-delete"));
+  check("Delete takes the list out of the store", await until(() => everywhere("Garden shed").length === 0));
+  check(
+    "with its task",
+    board.query("SELECT id FROM todo_tasks WHERE text = ?", ["Hang the rake"]).length === 0
+  );
+  check("and the row goes", await until(() => !$(".settings-deleted-head")));
+  click($("#settings-modal .cancel-btn"));
+  await until(() => !$("#settings-modal"));
+
   // Groups: on in Settings, then one made by its dialog, then deleted.
   click($(".title-bar-settings-btn"));
   await until(() => Boolean(settingsSwitch(t("enableTabGroups"))));
@@ -294,7 +351,7 @@ export async function walkLists(page) {
   check("the new group is saved", await until(() => groups().some((g) => g.name === "Holiday")));
   const holidayTab = () => $$(".group-tab").find((g) => g.textContent.startsWith("Holiday"));
   check("the new group is open", await until(() => holidayTab()?.classList.contains("active")));
-  check("its lists are its own: none yet", await until(() => $$(".tabs .tab[data-list-id]").length === 0));
+  check("its lists are its own: one made with it", await until(() => $$(".tabs .tab[data-list-id]").length === 1 && lists().some((l) => l.name === "Holiday tasks")));
   click($(".add-tab-btn-subtle"));
   await until(() => Boolean($("#tab-name-modal")));
   typeInto($("#tab-name-input"), "Suitcase");
@@ -321,7 +378,13 @@ export async function walkLists(page) {
   click(holidayTab());
   await settle(100);
   check("the click at the end of a carry does not open the group's name", !$("#tab-name-modal"));
-  check("the groups stay in the new order while the save is on its way", groupOrder() === "Holiday,General", groupOrder());
+  // Everything is fixed in front of the groups (9f0d8473): the carry
+  // moves Holiday before General, not before Everything.
+  check(
+    "the groups stay in the new order while the save is on its way",
+    groupOrder() === "Everything,Holiday,General",
+    groupOrder()
+  );
   holdGroups();
   const groupRow = (name) => board.query("SELECT position FROM todo_groups WHERE name = ?", [name])[0];
   check(
@@ -329,7 +392,7 @@ export async function walkLists(page) {
     await until(() => groupRow("Holiday").position < groupRow("General").position),
     JSON.stringify(groups())
   );
-  check("and drawn there", await until(() => groupOrder() === "Holiday,General"), groupOrder());
+  check("and drawn there", await until(() => groupOrder() === "Everything,Holiday,General"), groupOrder());
   click(holidayTab().querySelector(".group-delete-btn"));
   if (await until(() => Boolean($(".delete-confirm-btn")))) click($(".delete-confirm-btn"));
   check("the group is deleted", await until(() => !groups().some((g) => g.name === "Holiday")));

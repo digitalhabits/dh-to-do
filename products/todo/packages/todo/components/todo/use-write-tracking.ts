@@ -2,6 +2,22 @@
 
 import * as React from "react";
 
+import { BOARD_WROTE_MESSAGE, FOCUS_CHANNEL } from "@/lib/todo/types";
+
+/** This page's board, so it can skip its own "board-wrote". */
+export const BOARD_ID =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : String(Math.random());
+
+/** Tell the other boards (other tiles, other windows) to read again. */
+function tellOtherBoards() {
+  if (typeof BroadcastChannel === "undefined") return;
+  const channel = new BroadcastChannel(FOCUS_CHANNEL);
+  channel.postMessage({ type: BOARD_WROTE_MESSAGE, from: BOARD_ID });
+  channel.close();
+}
+
 /** The page's API: a path, a method and a body, answered with JSON. */
 export type TodoApi = (
   path: string,
@@ -18,7 +34,7 @@ export type TodoApi = (
  * response arrives.
  *
  * `api` is the page's API with the tracking on it. Reads go straight
- * through.
+ * through. A write that succeeds is told to the other boards.
  */
 export function useWriteTracking(offlineApi: TodoApi) {
   const mutationSeqRef = React.useRef(0);
@@ -33,7 +49,10 @@ export function useWriteTracking(offlineApi: TodoApi) {
       const settle = () => {
         inFlight.delete(write);
       };
-      write.then(settle, settle);
+      write.then(() => {
+        settle();
+        tellOtherBoards();
+      }, settle);
       return write;
     },
     [offlineApi]

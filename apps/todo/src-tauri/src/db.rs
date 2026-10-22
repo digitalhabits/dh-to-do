@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 
-const SCHEMA_VERSION: i32 = 15;
+const SCHEMA_VERSION: i32 = 18;
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -498,6 +498,62 @@ impl TodoDb {
          );
         DELETE FROM schema_version;
         INSERT INTO schema_version (version) VALUES (15);
+        "#,
+      )?;
+    }
+
+    if version < 16 {
+      // A list can be linked to a GitHub repository, and a task to one of
+      // its issues. See Postgres migration 099.
+      conn.execute_batch(
+        r#"
+        ALTER TABLE todo_lists ADD COLUMN github_repo TEXT;
+        ALTER TABLE todo_lists ADD COLUMN github_cursor TEXT;
+        ALTER TABLE todo_lists ADD COLUMN github_etag TEXT;
+        ALTER TABLE todo_tasks ADD COLUMN github_public INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE todo_tasks ADD COLUMN github_repo TEXT;
+        ALTER TABLE todo_tasks ADD COLUMN github_number INTEGER;
+        ALTER TABLE todo_tasks ADD COLUMN github_base TEXT;
+        CREATE UNIQUE INDEX IF NOT EXISTS todo_tasks_github_issue_idx
+          ON todo_tasks (github_repo, github_number)
+          WHERE github_number IS NOT NULL;
+        ALTER TABLE todo_people ADD COLUMN github_login TEXT;
+        CREATE UNIQUE INDEX IF NOT EXISTS todo_people_github_login_idx
+          ON todo_people (github_login)
+          WHERE github_login IS NOT NULL;
+        DELETE FROM schema_version;
+        INSERT INTO schema_version (version) VALUES (16);
+        "#,
+      )?;
+    }
+
+    if version < 17 {
+      // The person's GitHub sign-in, from the device flow
+      // (lib/todo/github-device.ts). The planner signs in as a GitHub App
+      // on its server and has no such table.
+      conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS todo_github_connection (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          access_token TEXT NOT NULL,
+          login TEXT,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        DELETE FROM schema_version;
+        INSERT INTO schema_version (version) VALUES (17);
+        "#,
+      )?;
+    }
+
+    if version < 18 {
+      // Review requests as tasks: what a task's GitHub number names, and
+      // the list's poll of open pull requests. See Postgres migration 101.
+      conn.execute_batch(
+        r#"
+        ALTER TABLE todo_lists ADD COLUMN github_pulls_etag TEXT;
+        ALTER TABLE todo_tasks ADD COLUMN github_kind TEXT;
+        DELETE FROM schema_version;
+        INSERT INTO schema_version (version) VALUES (18);
         "#,
       )?;
     }

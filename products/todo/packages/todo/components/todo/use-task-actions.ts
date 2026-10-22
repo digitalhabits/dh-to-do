@@ -575,6 +575,17 @@ export function useTaskActions({
         completedAt,
       });
     });
+    /*
+      The focus window of this task closes on a tick (TodoFocusPanel). This
+      path writes the task itself rather than through mutateTask, so it
+      tells the window here, at once: on 2026-10-13 a task ticked on the
+      board left its window up, because only mutateTask said anything.
+    */
+    focusChannelRef.current?.postMessage({
+      type: BOARD_TASK_CHANGED_MESSAGE,
+      taskId: task.id,
+      task: { ...task, ...extra, completed: nextCompleted, completedAt } as TodoTask,
+    });
     const releaseRows = holdRowsInPlace(
       rowLists,
       rowsBefore,

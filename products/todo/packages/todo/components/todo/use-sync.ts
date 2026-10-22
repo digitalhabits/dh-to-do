@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 
+import { GITHUB_PUBLISH_EVENT } from "@/components/todo/task-github-item";
 import { REMINDERS_CONNECTED_KEY } from "@/components/todo/TodoSettingsModal";
 import type { TodoApi } from "@/components/todo/use-write-tracking";
 import { isOfflineNow } from "@/lib/offline/todo-offline";
@@ -47,6 +48,65 @@ export function useSyncState() {
     syncChainRef,
     remindersConnectedRef,
   };
+}
+
+/**
+ * One GitHub sync of a list, as the summary line says it. The people GitHub
+ * could not take join Basecamp's in the one note after the sync.
+ */
+async function syncGithubOnce(
+  api: TodoApi,
+  t: (key: string) => string,
+  list: TodoList,
+  people: GithubPeopleNotes
+): Promise<string> {
+  const json = await api("/api/todo/github/sync", "POST", { listId: list.id });
+  const result = json.result as {
+    pulled: number;
+    pushed: number;
+    updated: number;
+    unpushableAssignees?: string[];
+    nameLinkedPeople?: string[];
+    reviewsNeedPermission?: boolean;
+  };
+  if (result.reviewsNeedPermission) people.reviewsNeedPermission = true;
+  for (const name of result.unpushableAssignees ?? []) people.blocked.add(name);
+  for (const name of result.nameLinkedPeople ?? []) people.byName.add(name);
+  // GitHub removes nothing from the board: a gone issue unlinks its task.
+  return formatSyncCounts(t, "GitHub", { removed: 0, ...result });
+}
+
+type GithubPeopleNotes = {
+  blocked: Set<string>;
+  byName: Set<string>;
+  /** The app may not read pull requests, so review requests are missing. */
+  reviewsNeedPermission?: boolean;
+};
+
+/** Who did not go on an issue, and who was matched by name: said, not hidden. */
+function noteGithubPeople(t: (key: string) => string, people: GithubPeopleNotes) {
+  if (people.reviewsNeedPermission) {
+    toast.message(t("githubReviewsNeedPermission"), {
+      description: t("githubReviewsNeedPermissionHint"),
+      duration: 9000,
+    });
+  }
+  if (people.blocked.size) {
+    toast.warning(t("githubPeopleNotSent"), {
+      description: fillText(t("githubPeopleNotSentHint"), {
+        names: [...people.blocked].join(", "),
+      }),
+      duration: 9000,
+    });
+  }
+  if (people.byName.size) {
+    toast.message(t("githubPeopleByName"), {
+      description: fillText(t("githubPeopleByNameHint"), {
+        names: [...people.byName].join(", "),
+      }),
+      duration: 9000,
+    });
+  }
 }
 
 /** Reads the two connections again each time Settings closes. */
@@ -135,6 +195,7 @@ export function useSync({
     if (!list) return false;
     return Boolean(
       list.basecampListId ||
+        list.githubRepo ||
         (list.remindersListId && isNativeShell() && remindersOk)
     );
   }
@@ -155,6 +216,7 @@ export function useSync({
     const silent = Boolean(opts?.silent);
     const summaries: string[] = [];
     const blockedAssignees = new Set<string>();
+    const githubPeople: GithubPeopleNotes = { blocked: new Set(), byName: new Set() };
     const nameLinkedPeople = new Set<string>();
     const ambiguousPeople = new Set<string>();
     for (const list of listsToSync) {
@@ -183,6 +245,9 @@ export function useSync({
         summaries.push(
           `${list.name}: ${formatSyncCounts(t, "Basecamp", result)}`
         );
+      }
+      if (list.githubRepo) {
+        summaries.push(`${list.name}: ${await syncGithubOnce(api, t, list, githubPeople)}`);
       }
       if (
         list.remindersListId &&
@@ -226,6 +291,7 @@ export function useSync({
         duration: 9000,
       });
     }
+    if (!silent) noteGithubPeople(t, githubPeople);
     if (!silent && nameLinkedPeople.size) {
       toast.message(t("syncPeopleByName"), {
         description: fillText(t("syncPeopleByNameHint"), {
@@ -296,6 +362,7 @@ export function useSync({
       )
         ? t("appleReminders")
         : null,
+      listsToSync.some((l) => l.githubRepo) ? "GitHub" : null,
     ].filter(Boolean);
     const toastId = toast.loading(
       fillText(t("syncingWith"), { name: label, sources: syncSources.join(" + ") })
@@ -305,6 +372,7 @@ export function useSync({
       const quiet = [
         syncUpToDateLine(t, "Basecamp"),
         syncUpToDateLine(t, t("remindersShort")),
+        syncUpToDateLine(t, "GitHub"),
       ];
       const allQuiet = summaries.every((s) => quiet.some((line) => s.endsWith(line)));
       toast.success(fillText(t(allQuiet ? "listUpToDate" : "syncedList"), { name: label }), {
@@ -347,6 +415,21 @@ export function useSync({
     autoSyncList(prevList);
     autoSyncList(nextList);
   }, [view, currentListId, isAllListsView, autoSyncKeyRef, listsRef]);
+
+  // A task made public on GitHub: its list syncs now, so the issue and its
+  // number come at once and not at the next ten-minute sync.
+  React.useEffect(() => {
+    const onPublish = (e: Event) => {
+      const listId = (e as CustomEvent<{ listId?: string }>).detail?.listId;
+      const list = listsRef.current.find((l) => l.id === listId);
+      if (!list?.githubRepo || isOfflineNow()) return;
+      void enqueueSync([list], { silent: true }).catch((err) => {
+        toast.error(describeError(err, t("syncFailed")));
+      });
+    };
+    window.addEventListener(GITHUB_PUBLISH_EVENT, onPublish);
+    return () => window.removeEventListener(GITHUB_PUBLISH_EVENT, onPublish);
+  });
 
   // If Reminders connects while a linked list is already open, sync once.
   React.useEffect(() => {
@@ -398,11 +481,14 @@ export function useSync({
         Boolean(list.remindersListId) &&
         isNativeShell() &&
         remindersConnectedRef.current;
-      if (!list.basecampListId && !remindersOk) return;
+      if (!list.basecampListId && !list.githubRepo && !remindersOk) return;
       void (async () => {
         try {
           if (list.basecampListId) {
             await api("/api/todo/basecamp/sync", "POST", { listId: list.id });
+          }
+          if (list.githubRepo) {
+            await api("/api/todo/github/sync", "POST", { listId: list.id });
           }
           if (remindersOk) {
             await syncRemindersList(

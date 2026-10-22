@@ -10,7 +10,9 @@
  * from it. The JSX is TodoPage's own, word for word.
  */
 
-import type { DeletedTodoList } from "@/lib/todo/store";
+import type { DeletedListTask, DeletedTodoList } from "@/lib/todo/store";
+import { Trash2 } from "lucide-react";
+
 import { ListAppearancePicker } from "@/components/todo/ListAppearancePicker";
 import { TodayFocusSession } from "@/components/todo/TodayFocusSession";
 import { TodoPeopleEditor } from "@/components/todo/TodoPeopleEditor";
@@ -39,6 +41,9 @@ export function renderListDialog(m: TodoPageModel) {
     modalBcProjectId,
     modalBcListId,
     modalRemindersListId,
+    githubConfigured,
+    githubRepos,
+    modalGithubRepo,
     importingGroup,
     bcConnected,
     remindersConnected,
@@ -46,8 +51,20 @@ export function renderListDialog(m: TodoPageModel) {
     selectBcProject,
     selectBcList,
     selectRemindersList,
+    selectGithubRepo,
     submitListModal,
+    lists,
+    groupsSorted,
+    removeList,
+    removeGroup,
   } = m;
+  // The same delete as the tab's ×, where the tab has one.
+  const remove =
+    listModal?.mode !== "rename"
+      ? null
+      : listModal.kind === "list"
+        ? lists.length > 1 ? () => removeList(listModal.list) : null
+        : groupsSorted.length > 1 ? () => removeGroup(listModal.group) : null;
   return (
     listModal ? (
       <div
@@ -58,6 +75,20 @@ export function renderListDialog(m: TodoPageModel) {
         }}
       >
         <div className="modal-content">
+          {remove ? (
+            <button
+              type="button"
+              className="modal-delete-btn"
+              title={listModal.kind === "list" ? t("deleteList") : t("deleteGroup")}
+              aria-label={listModal.kind === "list" ? t("deleteList") : t("deleteGroup")}
+              onClick={() => {
+                setListModal(null);
+                remove();
+              }}
+            >
+              <Trash2 size={16} aria-hidden />
+            </button>
+          ) : null}
           <h3>
             {listModal.kind === "group"
               ? listModal.mode === "create"
@@ -89,6 +120,9 @@ export function renderListDialog(m: TodoPageModel) {
               onColourChange={setModalColour}
               emojiLabel={t("listEmoji")}
               colourLabel={t("listColour")}
+              logosLabel={t("listIconLogos")}
+              uploadLabel={t("listIconUpload")}
+              uploadFailedLabel={t("pictureAddFailed")}
             />
           ) : (
             <div className="tab-color-selection">
@@ -185,6 +219,27 @@ export function renderListDialog(m: TodoPageModel) {
               />
             </div>
           ) : null}
+          {listModal.kind === "list" && githubConfigured ? (
+            <div className="basecamp-selection">
+              <div className="bc-label">{t("githubRepository")}</div>
+              <TodoSelect
+                aria-label={t("githubRepository")}
+                value={modalGithubRepo}
+                // The first row is "none": choosing it unlinks the list.
+                placeholder={t("notLinked")}
+                options={
+                  // A linked repository the app can no longer see still shows.
+                  [...new Set([...githubRepos, modalGithubRepo].filter(Boolean))].map(
+                    (repo) => ({ value: repo, label: repo })
+                  )
+                }
+                onChange={selectGithubRepo}
+              />
+              {modalGithubRepo ? (
+                <div className="bc-hint">{t("githubRepositoryHint")}</div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="modal-buttons">
             <button
               className="modal-btn cancel-btn"
@@ -229,6 +284,7 @@ export function renderPeopleEditor(m: TodoPageModel) {
     searchPeopleCandidates,
     addBoardPerson,
     setPersonPhoto,
+    setPersonGithubLogin,
     removeBoardPerson,
   } = m;
   return (
@@ -241,6 +297,10 @@ export function renderPeopleEditor(m: TodoPageModel) {
       onRemove={removeBoardPerson}
       onSearch={searchPeopleCandidates}
       onSetPhoto={setPersonPhoto}
+      // Only where a list is on GitHub: elsewhere the field means nothing.
+      onSetGithubLogin={
+        state.lists.some((l) => l.githubRepo) ? setPersonGithubLogin : undefined
+      }
       meIds={mePersonIds}
       // In the planner the login says who the reader is.
       onSetMe={standalone ? markMe : undefined}
@@ -344,9 +404,19 @@ export function renderSettings(m: TodoPageModel) {
         loadDeletedLists={async () =>
           ((await m.api("/api/todo/lists/deleted", "GET")) as { lists: DeletedTodoList[] }).lists
         }
+        loadDeletedListTasks={async (id) =>
+          (
+            (await m.api(`/api/todo/lists/deleted?id=${encodeURIComponent(id)}`, "GET")) as {
+              tasks: DeletedListTask[];
+            }
+          ).tasks
+        }
         onRestoreList={async (id) => {
           await m.api("/api/todo/lists/deleted", "POST", { id });
           await m.refresh();
+        }}
+        onDeleteListForever={async (id) => {
+          await m.api(`/api/todo/lists/deleted?id=${encodeURIComponent(id)}`, "DELETE");
         }}
       />
     ) : null
@@ -415,6 +485,16 @@ export function renderTodaySession(m: TodoPageModel) {
             void mutateTask(taskId, { timeSpentSeconds: totalSeconds }),
           onEditText: (task, text) => void mutateTask(task.id, { text }),
           onToggleSubtask: toggleSubtaskDone,
+          peopleOf: (ids) =>
+            ids
+              .map((id) => m.peopleById.get(id))
+              .filter((p): p is NonNullable<typeof p> => Boolean(p)),
+          subtaskFocus: m.nativeShell
+            ? {
+                isActive: (subtask) => activeFocusTaskIds.has(subtask.id),
+                toggle: (subtask) => m.toggleTaskFocusPopout(subtask),
+              }
+            : undefined,
           onExit: () => setSessionIds(null),
         }}
       />

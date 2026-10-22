@@ -13,6 +13,7 @@ import {
   click,
   installBroadcastChannel,
   mountPage,
+  press,
   settle,
   typeInto,
   until,
@@ -55,7 +56,7 @@ const task = (id, listId, text, flags = {}) => ({
 
 export async function walkFocus() {
   const { TodoFocusPanel } = await import("@/components/todo/TodoFocusPanel");
-  installBroadcastChannel();
+  const channels = installBroadcastChannel();
   const lists = [list("l-house", "House", 2), list("l-garden", "Garden", 1)];
   const tasks = [
     task("t-focus", "l-house", "Sweep the path"),
@@ -91,7 +92,8 @@ export async function walkFocus() {
     const now = items();
     return now.length === words.length && words.every((w) => now.some((text) => text.includes(w)));
   };
-  check("a tab for each list, in board order", tabs() === "Garden,House", tabs());
+  // Everything comes first, then a tab per list (45b0565b).
+  check("Everything, then a tab for each list, in board order", tabs() === "Everything,Garden,House", tabs());
   check("it opens on the focused task's list", active() === "House", active());
   check(
     "the list's open tasks, not the done one and not the one in focus",
@@ -121,6 +123,18 @@ export async function walkFocus() {
     await until(() => groups() === "Today,Soon (-ish)"),
     groups()
   );
+  press($(".focus-task-switch-search-input"), "Escape");
+  await until(() => !$(".focus-task-switch-menu"));
+
+  // The task ticked on the board: the window saves its time and goes.
+  const board = channels.channel("redd-plan-todo-focus");
+  const ended = () => channels.posts.some((p) => p.data.type === "focus-ended" && p.data.taskId === "t-water-garden");
+  board.postMessage({ type: "board-task-changed", taskId: "t-seeds", task: { ...tasks[4], completed: true } });
+  await settle(50);
+  check("another task ticked on the board leaves the window up", !ended());
+  board.postMessage({ type: "board-task-changed", taskId: "t-water-garden", task: { ...tasks[5], completed: true } });
+  check("its own task ticked on the board closes the window", await until(() => ended()));
+  board.close();
 
   view.unmount();
 }

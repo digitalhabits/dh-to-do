@@ -1,6 +1,7 @@
 import { PlanError } from "@/lib/plan/errors";
 
 import { todoDb, type SqlStatement } from "./db-driver";
+import { normalizeGithubLogin, normalizeGithubRepo } from "./github-names";
 import { randomUUID } from "./uuid";
 import {
   isTodoPersonSourceKind,
@@ -56,6 +57,8 @@ export type TodoRemoteAction = {
   /** Subtask actions: the local row, its Basecamp step when it has one. */
   subtaskId?: string;
   subtaskBasecampId?: string | null;
+  /** A delete: the GitHub issue (or, kind "review", pull request) the task was linked to. */
+  github?: { repo: string; number: number; kind?: string | null } | null;
 };
 
 let pushBasecamp: (action: TodoRemoteAction) => Promise<void> = async () => {};
@@ -115,6 +118,7 @@ function rowToList(row: Row): TodoList {
     basecampProjectId: (row.basecamp_project_id as string | null) ?? null,
     basecampListId: (row.basecamp_list_id as string | null) ?? null,
     remindersListId: (row.reminders_list_id as string | null) ?? null,
+    githubRepo: (row.github_repo as string | null) ?? null,
   };
 }
 
@@ -147,6 +151,10 @@ function rowToTask(row: Row, assigneeIds: string[] = []): TodoTask {
     position: Number(row.position),
     basecampId: (row.basecamp_id as string | null) ?? null,
     remindersId: (row.reminders_id as string | null) ?? null,
+    githubPublic: Boolean(row.github_public),
+    githubRepo: (row.github_repo as string | null) ?? null,
+    githubNumber: row.github_number == null ? null : Number(row.github_number),
+    githubKind: (row.github_kind as string | null) ?? null,
     parentTaskId: (row.parent_task_id as string | null) ?? null,
     createdBy: (row.created_by as string | null) ?? null,
     createdAt: new Date(row.created_at as string).toISOString(),
@@ -340,6 +348,9 @@ export async function updateTodoPerson(
   if (patch.colour !== undefined) set("colour", patch.colour);
   if (patch.photoUrl !== undefined) set("photo_url", patch.photoUrl);
   if (patch.position !== undefined) set("position", patch.position);
+  if (patch.githubLogin !== undefined) {
+    set("github_login", normalizeGithubLogin(patch.githubLogin));
+  }
   if (!sets.length) throw new PlanError("Empty person update", 400);
   values.push(id);
   const { rows } = await todoDb().query(
@@ -420,6 +431,8 @@ export async function createTodoList(input: {
   basecampProjectId?: string | null;
   basecampListId?: string | null;
   remindersListId?: string | null;
+  /** "owner/name": the list is born linked, and its first sync pulls. */
+  githubRepo?: string | null;
 }): Promise<TodoList> {
   if (input.id && !UUID_RE.test(input.id)) {
     throw new PlanError("id must be a uuid", 400);
@@ -428,11 +441,11 @@ export async function createTodoList(input: {
   const { rows } = await todoDb().query(
     `INSERT INTO todo_lists (
        id, name, group_id, colour, emoji, position,
-       basecamp_project_id, basecamp_list_id, reminders_list_id
+       basecamp_project_id, basecamp_list_id, reminders_list_id, github_repo
      )
      VALUES ($1, $2, $3, $4, $5,
              (SELECT COALESCE(MAX(position), 0) + 1 FROM todo_lists),
-             $6, $7, $8)
+             $6, $7, $8, $9)
      ON CONFLICT (id) DO NOTHING
      RETURNING *`,
     [
@@ -444,6 +457,7 @@ export async function createTodoList(input: {
       input.basecampProjectId ?? null,
       input.basecampListId ?? null,
       input.remindersListId ?? null,
+      normalizeGithubRepo(input.githubRepo ?? null),
     ]
   );
   if (rows[0]) return rowToList(rows[0]);
@@ -475,6 +489,11 @@ export async function updateTodoList(
     set("basecamp_list_id", patch.basecampListId);
   if (patch.remindersListId !== undefined)
     set("reminders_list_id", patch.remindersListId);
+  if (patch.githubRepo !== undefined) {
+    set("github_repo", normalizeGithubRepo(patch.githubRepo));
+    // Another repository, or none: the poll starts again (github-sync.ts).
+    sets.push("github_cursor = NULL", "github_etag = NULL");
+  }
   if (!sets.length) throw new PlanError("Empty list update", 400);
   values.push(id);
   const { rows } = await todoDb().query(
@@ -524,6 +543,45 @@ export async function listDeletedTodoLists(): Promise<DeletedTodoList[]> {
     openCount: Number(row.open_count),
     doneCount: Number(row.done_count),
   }));
+}
+
+/** A task of a deleted list, as Settings shows it: read only. */
+export type DeletedListTask = {
+  id: string;
+  text: string;
+  completed: boolean;
+  dueOn: string | null;
+  expectedDurationMinutes: number | null;
+};
+
+/** The tasks of a deleted list, open first, then done. Not subtasks. */
+export async function listDeletedTodoListTasks(listId: string): Promise<DeletedListTask[]> {
+  const { rows } = await todoDb().query(
+    `SELECT t.id, t.text, t.completed, t.due_on, t.expected_duration_minutes
+       FROM todo_tasks t
+       JOIN todo_lists l ON l.id = t.list_id
+      WHERE t.list_id = $1 AND l.deleted_at IS NOT NULL AND t.parent_task_id IS NULL
+      ORDER BY t.completed, t.position`,
+    [listId]
+  );
+  return rows.map((row) => ({
+    id: row.id as string,
+    text: row.text as string,
+    completed: Boolean(row.completed),
+    dueOn: (row.due_on as string | null) ?? null,
+    expectedDurationMinutes:
+      row.expected_duration_minutes == null ? null : Number(row.expected_duration_minutes),
+  }));
+}
+
+/**
+ * Delete a deleted list for good, with its tasks and their subtasks and
+ * people (ON DELETE CASCADE). Only a list already in Deleted lists: a
+ * list on the board is never deleted this way. Basecamp is not told; a
+ * deleted list was already unlinked from the sync.
+ */
+export async function deleteTodoListForever(id: string): Promise<void> {
+  await todoDb().query("DELETE FROM todo_lists WHERE id = $1 AND deleted_at IS NOT NULL", [id]);
 }
 
 /** Bring a deleted list back, at the end of the tabs, with all its tasks. */
@@ -712,6 +770,7 @@ function taskUpdateSets(patch: TodoTaskPatch) {
   if (patch.listId !== undefined) set("list_id", patch.listId);
   if (patch.text !== undefined) set("text", patch.text);
   if (patch.notesHtml !== undefined) set("notes_html", patch.notesHtml);
+  if (patch.githubPublic !== undefined) set("github_public", patch.githubPublic);
   if (patch.dueOn !== undefined) {
     set("due_on", patch.dueOn);
     // A new date has not had its day yet — unless this same write puts
@@ -1085,7 +1144,9 @@ export async function deleteTodoSubtask(id: string): Promise<void> {
 
 export async function deleteTodoTask(id: string): Promise<void> {
   const { rows } = await todoDb().query(
-    "DELETE FROM todo_tasks WHERE id = $1 RETURNING list_id, basecamp_id, parent_task_id",
+    // Every column, not a named few: a column a migration adds later (here
+    // github_kind, 101) must not make a delete fail on a board before it.
+    `DELETE FROM todo_tasks WHERE id = $1 RETURNING *`,
     [id]
   );
   // Idempotent for offline replay — already gone is success.
@@ -1095,6 +1156,15 @@ export async function deleteTodoTask(id: string): Promise<void> {
     listId: rows[0].list_id as string,
     taskId: id,
     basecampId: (rows[0].basecamp_id as string | null) ?? null,
+    ...(rows[0].github_repo && rows[0].github_number != null
+      ? {
+          github: {
+            repo: rows[0].github_repo as string,
+            number: Number(rows[0].github_number),
+            kind: (rows[0].github_kind as string | null) ?? null,
+          },
+        }
+      : {}),
   });
   // A deleted step's people may have no open work left on the task.
   const parentId = (rows[0].parent_task_id as string | null) ?? null;

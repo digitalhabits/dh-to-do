@@ -49,6 +49,8 @@ export async function walkSettings(page) {
   const list = (await call("/api/todo/lists", "POST", { name: "Loft" })).list;
   const pip = (await call("/api/todo/people", "POST", { name: "Pip Moss", sourceKind: "manual" })).person;
   await call("/api/todo/tasks", "POST", { listId: list.id, text: "Box the books", assigneeIds: [pip.id] });
+  // Made while assigning is off: nobody on it.
+  await call("/api/todo/tasks", "POST", { listId: list.id, text: "Sweep the loft" });
   // Pictures for the backup: Pip's photo is in the app's store; Rue's is
   // gone from it. The desktop app keeps pictures behind Tauri, the planner
   // behind /api/media.
@@ -137,6 +139,10 @@ export async function walkSettings(page) {
   check(
     "assigning on shows the people on a card",
     await until(() => Boolean(cardOf("Box the books")?.querySelector(".task-chip-assign.is-set")))
+  );
+  check(
+    "and a task made while it was off can take a person",
+    await until(() => Boolean(cardOf("Sweep the loft")?.querySelector(".task-chip-assign")))
   );
   await flip(t("enableAssignTasks"));
   await closeSettings();

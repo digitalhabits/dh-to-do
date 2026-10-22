@@ -21,7 +21,9 @@ import { listenOpenSettings } from "@/lib/native-shell";
 import { useWriteTracking } from "@/components/todo/use-write-tracking";
 import { useZoomKeys } from "@/components/todo/use-zoom-keys";
 import { useUndoKey, useUndoState } from "@/components/todo/use-undo";
-import { useFocusChannel, useFocusWindowState } from "@/components/todo/use-focus-windows";
+// Installs the guard that keeps a dialog open when a drag ends outside it.
+import "@/lib/todo/press-origin";
+import { tickFromFocus, useFocusChannel, useFocusWindowState } from "@/components/todo/use-focus-windows";
 import {
   useSearchField,
   useSearchResults,
@@ -52,7 +54,6 @@ import { useTitleEdit } from "@/components/todo/use-title-edit";
 import { useCalendarCard, useCalendarCardState } from "@/components/todo/use-calendar-card";
 import { useCardMenusClose, useCardMenusState } from "@/components/todo/use-card-menus";
 import { useBoardNudge } from "@/components/todo/use-board-nudge";
-import { useWindowFitsView } from "@/components/todo/use-window-fits-view";
 import { rescueBrowserTasks } from "@/lib/todo/browser-tasks-rescue";
 import {
   addStarterList,
@@ -76,8 +77,10 @@ import {
   activeGroupOf,
   byPositionOrder,
   favKey,
+  groupOfTab,
   inPreviewOrder,
   listScopeOf,
+  moveTargetLists,
   listsInScope,
 } from "@/lib/todo/list-scope";
 import { normalizeTaskAssignees } from "@/lib/todo/task-helpers";
@@ -100,9 +103,6 @@ import { useViewTasks } from "@/components/todo/use-view-tasks";
 import { useLockedState } from "@/components/todo/use-locked-state";
 import type { TodoBoardExtension } from "@/lib/todo/board-extension";
 export type { TodoPageSnapshot } from "@/components/todo/use-board-reads";
-
-/** How long a task ticked from the focus window stands ticked before it goes. */
-const FOCUS_COMPLETE_HOLD_MS = 500;
 
 export type TodoPageProps = {
   initialState: TodoState | null;
@@ -448,29 +448,18 @@ export function useTodoPage({
 
   // Floating always-on-top focus windows — desktop shell only.
   /**
-   * The focus window's tick, applied here. The row is found on the page so
-   * the tick can play as the board's own does; a row not on screen — another
-   * list, another tab — is completed without the flight.
+   * The focus window's tick, applied here: see tickFromFocus. It is seen
+   * in the lists, not on the Calendar, so the board goes back to them first
+   * and ticks once their rows are drawn. The Calendar tab stays (setView
+   * does nothing there).
    */
   function completeFromFocus(taskId: string, timeSpentSeconds?: number) {
-    const existing = tasksRef.current.find((t) => t.id === taskId);
-    if (!existing || existing.completed) return;
-    // The window's time goes with the tick, in the board's own write. The
-    // window says the task is done before it saves its time, so the
-    // answer to a write without it would put the old time back; and a
-    // task only the board holds is not found by the window's save at all.
-    const extra =
-      typeof timeSpentSeconds === "number" &&
-      timeSpentSeconds >= existing.timeSpentSeconds
-        ? { timeSpentSeconds }
-        : {};
-    const row = document.querySelector<HTMLElement>(
-      `.task-item[data-task-id="${CSS.escape(taskId)}"]`
-    );
-    const box = row?.querySelector<HTMLInputElement>("input.task-checkbox") ?? null;
-    // Ticked, then half a second standing so, then away — as redd-do does
-    // it: the focus window has just closed, and the eye arrives after.
-    completeTaskWithFlight(existing, true, box, row, FOCUS_COMPLETE_HOLD_MS, extra);
+    if (view === "plan" && !calendarOnly && tasksRef.current.some((t) => t.id === taskId && !t.completed)) {
+      setView("lists");
+      window.setTimeout(() => completeFromFocusRef.current(taskId, timeSpentSeconds), 50);
+      return;
+    }
+    tickFromFocus(tasksRef.current, taskId, timeSpentSeconds, completeTaskWithFlight);
   }
   const {
     nativeShell,
@@ -573,8 +562,6 @@ export function useTodoPage({
     if (kanbanEnabled && view === "favourites") setView("lists");
   }, [kanbanEnabled, view]);
 
-  useWindowFitsView(kanbanEnabled);
-
   /** Same rule for the Planner View: its toggle off means the view goes. */
   React.useEffect(() => {
     if (!planEnabled && view === "plan") setView("lists");
@@ -605,7 +592,7 @@ export function useTodoPage({
 
   useIntegrationStatus({ settingsOpen, api, setRemindersConnected, setBcConnected });
 
-  const { selectBcProject, selectBcList, selectRemindersList } = useListDialogLinks({
+  const { selectBcProject, selectBcList, selectRemindersList, selectGithubRepo } = useListDialogLinks({
     listDialog,
     api,
     bcConnected,
@@ -621,6 +608,7 @@ export function useTodoPage({
   const { toggleTaskFocusPopout } = useFocusChannel({
     nativeShell,
     refresh,
+    setState,
     standalone,
     activeFocusTaskIds,
     setActiveFocusTaskIds,
@@ -645,7 +633,7 @@ export function useTodoPage({
     };
   }, []);
 
-  useZoomKeys(zoom, setZoom);
+  useZoomKeys(zoom, setZoom, calendarOnly);
 
   const { revealSearch } = useSearchField({
     liveRef,
@@ -695,9 +683,16 @@ export function useTodoPage({
   const activeGroup = activeGroupOf(groupsEnabled, groupsSorted, currentGroupId);
 
   const lists = React.useMemo(
-    () => listsInScope(listsSorted, groupsEnabled, activeGroup, listPreviewIds),
-    [listsSorted, listPreviewIds, groupsEnabled, activeGroup]
+    () => listsInScope(listsSorted, groupsEnabled, activeGroup, listPreviewIds, currentListId),
+    [listsSorted, listPreviewIds, groupsEnabled, activeGroup, currentListId]
   );
+  /** Where a task can move: every list, the open group's first. */
+  const moveTargets = React.useMemo(() => {
+    const targets = moveTargetLists(listsSorted, groupsSorted, groupsEnabled, activeGroup);
+    const headings = new Map(targets.map((x) => [x.list.id, x.heading]));
+    const headingOf = (list: TodoList) => headings.get(list.id) ?? null;
+    return { lists: targets.map((x) => x.list), headingOf };
+  }, [listsSorted, groupsSorted, groupsEnabled, activeGroup]);
   const { isAllListsView, activeList } = listScopeOf(lists, currentListId);
   /** Named list for creates; All-tab creates stay local (no list). */
   const addTargetList = activeList;
@@ -707,8 +702,9 @@ export function useTodoPage({
   remindersConnectedRef.current = remindersConnected;
 
   // All is virtual and only exists with 2+ lists. With one list, select it.
+  // A group's tab in Everything stays itself, even with one list in it.
   React.useEffect(() => {
-    if (lists.length > 1) return;
+    if (lists.length > 1 || groupOfTab(currentListId)) return;
     if (lists.length === 1) {
       const onlyId = lists[0].id;
       if (currentListId !== onlyId) {
@@ -1170,7 +1166,7 @@ export function useTodoPage({
    * the full-screen card. The shell is zoomed by CSS, and a fixed box in it
    * counts in zoomed pixels, so the window's pixels are divided by the zoom.
    */
-  const { calendarPopoverPlace, openCalendarTask, openCalendarNewTask } = useCalendarCard({
+  const calendarCardActions = useCalendarCard({
     calendarCardState,
     state,
     zoom,
@@ -1229,6 +1225,7 @@ export function useTodoPage({
     searchPeopleCandidates,
     addBoardPerson,
     setPersonPhoto,
+    setPersonGithubLogin,
     removeBoardPerson,
     toggleTaskAssignee,
     closeAssignMenu,
@@ -1300,6 +1297,7 @@ export function useTodoPage({
     setView,
     focusMode,
     setFocusMode,
+    currentListId,
     setCurrentListId,
     justAddedTaskId,
     boardStacked,
@@ -1370,6 +1368,7 @@ export function useTodoPage({
     selectBcProject,
     selectBcList,
     selectRemindersList,
+    selectGithubRepo,
     listOfTask,
     toggleTaskFocusPopout,
     revealSearch,
@@ -1377,6 +1376,8 @@ export function useTodoPage({
     groupsForRender,
     activeGroup,
     lists,
+    listsSorted,
+    moveTargets,
     isAllListsView,
     activeList,
     addTargetList,
@@ -1430,6 +1431,7 @@ export function useTodoPage({
     moveTaskToEdge,
     toggleFavourite,
     toggleTaskCompleted,
+    completeTaskWithFlight,
     addTask,
     removeTask,
     clearDone,
@@ -1453,9 +1455,7 @@ export function useTodoPage({
     toggleNotes,
     saveNotes,
     openTaskOverlay,
-    calendarPopoverPlace,
-    openCalendarTask,
-    openCalendarNewTask,
+    ...calendarCardActions,
     subtasksByTask,
     toggleSubtaskDone,
     subtaskNotesId,
@@ -1488,6 +1488,7 @@ export function useTodoPage({
     searchPeopleCandidates,
     addBoardPerson,
     setPersonPhoto,
+    setPersonGithubLogin,
     removeBoardPerson,
     toggleTaskAssignee,
     closeAssignMenu,

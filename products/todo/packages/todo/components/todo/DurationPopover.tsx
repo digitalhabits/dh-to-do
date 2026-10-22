@@ -9,6 +9,10 @@ import {
   formatDurationShort,
   parseDurationText,
 } from "@/lib/todo/duration";
+import { markWalked, walkTabStops } from "@/lib/todo/focus-walk";
+
+/** The presets stand in a grid this many wide. Up and Down jump a row. */
+const PRESET_COLUMNS = 2;
 
 /**
  * The duration picker (design "7a"): four presets for most tasks, and a
@@ -16,6 +20,12 @@ import {
  * Enter commits the field, Escape closes. With a value set, a quiet
  * "Remove estimate" row sits at the foot: one popover for set, change
  * and clear. The same popover serves the add row and the card's chip.
+ *
+ * From the keyboard it opens on a preset — the task's own, or 15m — so
+ * Enter alone sets the common case. The arrows walk the grid, Down from
+ * its last row goes to the field and Up comes back, and a digit typed on
+ * a preset goes into the field. A value that is no preset opens in the
+ * field, ready to change.
  */
 export function DurationPopover({
   open,
@@ -34,7 +44,9 @@ export function DurationPopover({
   onClose: () => void;
   t: (key: string) => string;
 }) {
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const presetRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
   const [text, setText] = React.useState("");
   const minuteUnit = t("minutes");
   const hourUnit = t("hoursShort");
@@ -43,9 +55,14 @@ export function DurationPopover({
   React.useEffect(() => {
     if (!open) return;
     setText(minutes == null ? "" : formatDurationShort(minutes, minuteUnit, hourUnit));
+    const at = minutes == null ? 0 : DURATION_PRESETS.indexOf(minutes as never);
     const frame = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      if (at === -1) {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      } else {
+        focusPreset(at);
+      }
     });
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -62,6 +79,38 @@ export function DurationPopover({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open, anchorEl, onClose]);
 
+  /** WebKit shows no ring for a focus a script moved: mark it. */
+  function focusPreset(index: number) {
+    const el = presetRefs.current[index];
+    if (!el) return;
+    el.focus();
+    markWalked(el);
+  }
+
+  function onPresetKey(e: React.KeyboardEvent<HTMLButtonElement>, index: number) {
+    const last = DURATION_PRESETS.length - 1;
+    let next: number | null = null;
+    if (e.key === "ArrowRight") next = Math.min(last, index + 1);
+    else if (e.key === "ArrowLeft") next = Math.max(0, index - 1);
+    else if (e.key === "ArrowUp") next = Math.max(0, index - PRESET_COLUMNS);
+    else if (e.key === "ArrowDown") {
+      if (index + PRESET_COLUMNS > last) {
+        e.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
+      next = index + PRESET_COLUMNS;
+    } else if (/^[0-9.,]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // The number goes into the field: the key lands where the caret now is.
+      setText("");
+      inputRef.current?.focus();
+      return;
+    }
+    if (next == null) return;
+    e.preventDefault();
+    focusPreset(next);
+  }
+
   function commitText() {
     const parsed = parseDurationText(text);
     if (parsed == null) return;
@@ -77,19 +126,31 @@ export function DurationPopover({
       ariaLabel={t("fieldDuration")}
     >
       <div
+        ref={rootRef}
+        onKeyDown={(e) => {
+          // Tab stays in the popover: WebKit would take it to the next
+          // text box on the page (see focus-walk).
+          walkTabStops(e, rootRef.current, { wrap: true });
+        }}
+      >
+      <div
         className="duration-popover-presets"
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
         }}
       >
-        {DURATION_PRESETS.map((preset) => (
+        {DURATION_PRESETS.map((preset, index) => (
           <button
             key={preset}
+            ref={(el) => {
+              presetRefs.current[index] = el;
+            }}
             type="button"
             className={`duration-popover-preset${
               minutes === preset ? " is-current" : ""
             }`}
             onClick={() => onPick(preset)}
+            onKeyDown={(e) => onPresetKey(e, index)}
           >
             {formatDurationShort(preset, minuteUnit, hourUnit)}
           </button>
@@ -108,6 +169,9 @@ export function DurationPopover({
             if (e.key === "Enter") {
               e.preventDefault();
               commitText();
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              focusPreset(DURATION_PRESETS.length - PRESET_COLUMNS);
             } else if (e.key === "Escape") {
               e.preventDefault();
               onClose();
@@ -128,6 +192,7 @@ export function DurationPopover({
           {t("removeEstimate")}
         </button>
       ) : null}
+      </div>
     </MenuPortal>
   );
 }

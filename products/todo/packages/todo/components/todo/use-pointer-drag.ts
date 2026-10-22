@@ -7,6 +7,7 @@ import type { TodoApi } from "@/components/todo/use-write-tracking";
 import { planTaskDrop, positionFromNeighbours } from "@/lib/todo/board-drop";
 import { placeInColumn } from "@/lib/todo/board-order";
 import { describeError } from "@/lib/todo/errors";
+import { fillText } from "@/lib/todo/i18n";
 import type { TodoView } from "@/lib/todo/list-scope";
 import {
   TODO_ALL_LIST_ID,
@@ -65,6 +66,9 @@ export function useDragState() {
   const [taskDropListId, setTaskDropListId] = React.useState<string | null>(null);
   const taskDropListIdRef = React.useRef<string | null>(null);
   const [listPreviewIds, setListPreviewIds] = React.useState<string[] | null>(null);
+  /** The group tab a carried list tab is over: let go, the list joins it. */
+  const [tabDropGroupId, setTabDropGroupId] = React.useState<string | null>(null);
+  const tabDropGroupIdRef = React.useRef<string | null>(null);
   const [groupPreviewIds, setGroupPreviewIds] = React.useState<string[] | null>(null);
   const [personPreviewIds, setPersonPreviewIds] = React.useState<
     string[] | null
@@ -131,6 +135,9 @@ export function useDragState() {
     taskDropListIdRef,
     listPreviewIds,
     setListPreviewIds,
+    tabDropGroupId,
+    setTabDropGroupId,
+    tabDropGroupIdRef,
     groupPreviewIds,
     setGroupPreviewIds,
     personPreviewIds,
@@ -228,6 +235,8 @@ export function usePointerDrag({
     setTaskDropListId,
     taskDropListIdRef,
     setListPreviewIds,
+    setTabDropGroupId,
+    tabDropGroupIdRef,
     setGroupPreviewIds,
     setPersonPreviewIds,
     taskDragRef,
@@ -481,6 +490,16 @@ export function usePointerDrag({
         setDraggingListId(tabDrag.listId);
       }
       e.preventDefault();
+      // Over a group tab of another group: the list would join that group.
+      const dropGroupId = groupTabUnder(e, tabDrag.listId);
+      if (dropGroupId !== tabDropGroupIdRef.current) {
+        tabDropGroupIdRef.current = dropGroupId;
+        setTabDropGroupId(dropGroupId);
+      }
+      if (dropGroupId) {
+        setListPreviewIds(null);
+        return;
+      }
       const row = tabsRowRef.current;
       if (!row) return;
       const tabEls = Array.from(
@@ -510,6 +529,24 @@ export function usePointerDrag({
       );
     };
 
+    /** The group tab under the pointer, unless it is the list's own group. */
+    const groupTabUnder = (e: PointerEvent, listId: string): string | null => {
+      const row = groupsRowRef.current;
+      if (!row) return null;
+      const ownGroupId =
+        liveRef.current.state.lists.find((l) => l.id === listId)?.groupId ?? null;
+      for (const el of Array.from(row.querySelectorAll<HTMLElement>(".group-tab"))) {
+        const rect = el.getBoundingClientRect();
+        const inside =
+          e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top && e.clientY <= rect.bottom;
+        if (inside && el.dataset.groupId && el.dataset.groupId !== ownGroupId) {
+          return el.dataset.groupId;
+        }
+      }
+      return null;
+    };
+
     /** A group tab is carried along its row. */
     const moveGroupDrag = (
       e: PointerEvent,
@@ -527,9 +564,10 @@ export function usePointerDrag({
       e.preventDefault();
       const row = groupsRowRef.current;
       if (!row) return;
+      // Everything has no group id: it stays first and is no place to drop.
       const groupEls = Array.from(
         row.querySelectorAll<HTMLElement>(".group-tab")
-      ).filter((el) => el.dataset.groupId !== groupDrag.groupId);
+      ).filter((el) => el.dataset.groupId && el.dataset.groupId !== groupDrag.groupId);
       let index = groupEls.length;
       for (let i = 0; i < groupEls.length; i++) {
         const rect = groupEls[i].getBoundingClientRect();
@@ -731,8 +769,15 @@ export function usePointerDrag({
 
   function finishTabDrag(listId: string) {
     const { listPreviewIds: ids, state: liveState } = liveRef.current;
+    const dropGroupId = tabDropGroupIdRef.current;
+    tabDropGroupIdRef.current = null;
+    setTabDropGroupId(null);
     setDraggingListId(null);
     setListPreviewIds(null);
+    if (dropGroupId) {
+      moveListToGroup(listId, dropGroupId);
+      return;
+    }
     if (!ids) return;
     const position = positionFromNeighbours(ids, listId, liveState.lists);
     if (position === null) return;
@@ -746,6 +791,32 @@ export function usePointerDrag({
         void refresh();
       }
     );
+  }
+
+  /**
+   * A list tab let go on another group's tab: the list joins that group,
+   * at the end of its tabs. The group shown stays the same, so the tab
+   * leaves the row, and a note says where it went.
+   */
+  function moveListToGroup(listId: string, groupId: string) {
+    const { state: liveState } = liveRef.current;
+    const list = liveState.lists.find((l) => l.id === listId);
+    const group = liveState.groups.find((g) => g.id === groupId);
+    if (!list || !group) return;
+    const position =
+      Math.max(0, ...liveState.lists.filter((l) => l.groupId === groupId).map((l) => l.position)) + 1;
+    setState((s) => ({
+      ...s,
+      lists: s.lists.map((l) => (l.id === listId ? { ...l, groupId, position } : l)),
+    }));
+    void api("/api/todo/lists", "PATCH", { id: listId, groupId, position })
+      .then(() => {
+        toast.success(fillText(t("listMovedToGroup"), { list: list.name, group: group.name }));
+      })
+      .catch((err) => {
+        toast.error(describeError(err, t("saveFailed")));
+        void refresh();
+      });
   }
 
   function finishGroupDrag(groupId: string) {

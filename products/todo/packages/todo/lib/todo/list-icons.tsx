@@ -23,6 +23,9 @@ import {
 } from "lucide-react";
 import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 
+import { noteMediaSrc } from "./basecamp-image";
+import { listLogo, listLogoSrc } from "./list-logos";
+
 /** Default swatches in the list appearance picker. */
 export const LIST_ICON_PRESETS = [
   "megaphone",
@@ -46,8 +49,33 @@ export const LIST_ICON_PRESETS = [
 
 export type ListIconPresetId = (typeof LIST_ICON_PRESETS)[number];
 
-/** Any Lucide kebab-case name we can store / render. */
-export type ListIconId = IconName | ListIconPresetId;
+/**
+ * A picture in place of a Lucide icon: one of the tools' logos
+ * ("logo:<id>", list-logos.ts), or a picture the reader added
+ * ("img:<media id>", kept where note pictures are kept, so each app reads
+ * it from its own store: see noteMediaSrc).
+ */
+export type ListPictureId = `logo:${string}` | `img:${string}`;
+
+/** Any Lucide kebab-case name we can store / render, or a picture. */
+export type ListIconId = IconName | ListIconPresetId | ListPictureId;
+
+/** A picture, not a Lucide icon. The calendar draws these as initials. */
+export function isListPictureId(value: string): value is ListPictureId {
+  return (
+    (value.startsWith("logo:") && listLogo(value.slice(5)) !== null) ||
+    /^img:[A-Za-z0-9_-]{8,80}$/.test(value)
+  );
+}
+
+/** The address a picture id is drawn from. */
+export function listPictureSrc(id: ListPictureId): string | null {
+  if (id.startsWith("logo:")) {
+    const logo = listLogo(id.slice(5));
+    return logo ? listLogoSrc(logo) : null;
+  }
+  return noteMediaSrc(id.slice(4));
+}
 
 const PRESET_ICONS: Record<ListIconPresetId, LucideIcon> = {
   megaphone: Megaphone,
@@ -90,7 +118,7 @@ export function listInitials(name: string): string {
 }
 
 export function isListIconId(value: string): value is ListIconId {
-  return ICON_NAME_SET.has(value);
+  return ICON_NAME_SET.has(value) || isListPictureId(value);
 }
 
 export function isListIconPresetId(value: string): value is ListIconPresetId {
@@ -116,6 +144,7 @@ export function resolveListIconId(
   return null;
 }
 
+/** The Lucide icons, for the search. Pictures are offered on their own. */
 export function getAllListIconIds(): readonly ListIconId[] {
   return iconNames;
 }
@@ -132,6 +161,22 @@ export function ListIcon({
   size?: number;
   strokeWidth?: number;
 } & Omit<LucideProps, "ref" | "name">) {
+  if (isListPictureId(id)) {
+    const src = listPictureSrc(id);
+    return src ? (
+      // A small fixed-size picture the app made: no next/image needed.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        aria-hidden="true"
+        width={size}
+        height={size}
+        className={["list-icon-picture", className].filter(Boolean).join(" ")}
+        draggable={false}
+      />
+    ) : null;
+  }
   const Preset = isListIconPresetId(id) ? PRESET_ICONS[id] : null;
   if (Preset) {
     return (

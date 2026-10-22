@@ -9,6 +9,7 @@ import { fetchRemindersLists, isNativeShell, type RemindersList } from "@/lib/na
 import { describeError } from "@/lib/todo/errors";
 import { countText, fillText } from "@/lib/todo/i18n";
 import { resolveListIconId } from "@/lib/todo/list-icons";
+import { isEverythingGroup } from "@/lib/todo/list-scope";
 import { newClientId } from "@/lib/todo/optimistic-task";
 import { syncRemindersList } from "@/lib/todo/reminders-sync";
 import { CURRENT_GROUP_KEY, persistPref } from "@/lib/todo/saved-prefs";
@@ -35,6 +36,7 @@ type ListLinks = {
   basecampProjectId: string | null;
   basecampListId: string | null;
   remindersListId: string | null;
+  githubRepo: string | null;
 };
 
 /** How a list looks, as the dialog saves it. */
@@ -56,8 +58,21 @@ export function useListDialogState() {
   const [modalBcProjectId, setModalBcProjectId] = React.useState("");
   const [modalBcListId, setModalBcListId] = React.useState("");
   const [modalRemindersListId, setModalRemindersListId] = React.useState("");
+  /* GitHub: whether this server can reach it, the repositories the app is
+     on, and the one picked. Only the planner has a GitHub connection yet;
+     in the desktop app the status route is not there and the field stays
+     hidden. */
+  const [githubConfigured, setGithubConfigured] = React.useState(false);
+  const [githubRepos, setGithubRepos] = React.useState<string[]>([]);
+  const [modalGithubRepo, setModalGithubRepo] = React.useState("");
   const [importingGroup, setImportingGroup] = React.useState(false);
   return {
+    githubConfigured,
+    setGithubConfigured,
+    githubRepos,
+    setGithubRepos,
+    modalGithubRepo,
+    setModalGithubRepo,
     listModal,
     setListModal,
     modalName,
@@ -112,6 +127,9 @@ export function useListDialogLinks({
     setModalBcProjectId,
     setModalBcListId,
     setModalRemindersListId,
+    setModalGithubRepo,
+    setGithubConfigured,
+    setGithubRepos,
   } = listDialog;
   // Load link options when list/group dialogs open with integrations connected.
   const needsBcProjects =
@@ -132,6 +150,17 @@ export function useListDialogLinks({
         .then(setRemindersLists)
         .catch(() => setRemindersLists([]));
     }
+    if (listModalOpen) {
+      void api("/api/todo/github/status", "GET")
+        .then(async (json: { configured?: boolean }) => {
+          setGithubConfigured(Boolean(json.configured));
+          if (!json.configured) return;
+          // A failed list still leaves the picker, with the linked repository.
+          const repos = await api("/api/todo/github/repos", "GET").catch(() => ({ repos: [] }));
+          setGithubRepos((repos.repos as string[]) ?? []);
+        })
+        .catch(() => setGithubConfigured(false));
+    }
   }, [
     listModal,
     needsBcProjects,
@@ -140,6 +169,8 @@ export function useListDialogLinks({
     remindersConnected,
     setBcProjects,
     setRemindersLists,
+    setGithubConfigured,
+    setGithubRepos,
   ]);
 
   async function selectBcProject(projectId: string) {
@@ -183,7 +214,14 @@ export function useListDialogLinks({
     if (list) setModalName(list.name);
   }
 
-  return { selectBcProject, selectBcList, selectRemindersList };
+  function selectGithubRepo(repo: string) {
+    setModalGithubRepo(repo);
+    if (!repo || modalName.trim()) return;
+    // "owner/repo" gives the name "repo".
+    setModalName(repo.split("/").pop() ?? repo);
+  }
+
+  return { selectBcProject, selectBcList, selectRemindersList, selectGithubRepo };
 }
 
 /** Opening the dialog for a list or a group, and saving what it holds. */
@@ -233,6 +271,8 @@ export function useListDialogActions({
     setModalBcListId,
     modalRemindersListId,
     setModalRemindersListId,
+    modalGithubRepo,
+    setModalGithubRepo,
     importingGroup,
     setImportingGroup,
   } = listDialog;
@@ -244,6 +284,7 @@ export function useListDialogActions({
     setModalBcListId("");
     setBcTodolists([]);
     setModalRemindersListId("");
+    setModalGithubRepo("");
     setListModal({ mode: "create", kind: "list" });
   }
 
@@ -260,6 +301,7 @@ export function useListDialogActions({
     setModalBcListId(list.basecampListId ?? "");
     setBcTodolists([]);
     setModalRemindersListId(list.remindersListId ?? "");
+    setModalGithubRepo(list.githubRepo ?? "");
     if (list.basecampProjectId) void selectBcProjectKeepList(list);
     setListModal({ mode: "rename", kind: "list", list });
   }
@@ -315,7 +357,7 @@ export function useListDialogActions({
       (isBcGroupImport
         ? projectName || "New Group"
         : modal.kind === "list"
-          ? bcListName || remindersListName || ""
+          ? bcListName || remindersListName || modalGithubRepo.split("/").pop() || ""
           : "")
     );
   }
@@ -387,6 +429,13 @@ export function useListDialogActions({
       setState((s) => ({ ...s, groups: [...s.groups, group] }));
       setCurrentListId(TODO_ALL_LIST_ID);
       persistPref(TODO_CURRENT_LIST_KEY, TODO_ALL_LIST_ID);
+      // A new group starts with one list, so it is not empty.
+      await createList(
+        fillText(t("newGroupList"), { name }),
+        { colour: null, emoji: null },
+        { basecampProjectId: null, basecampListId: null, remindersListId: null, githubRepo: null },
+        group.id
+      );
     }
   }
 
@@ -481,18 +530,46 @@ export function useListDialogActions({
     void refresh();
   }
 
+  /** A list newly linked to GitHub takes in the repository's open issues. */
+  async function importListFromGithub(list: TodoList) {
+    suppressAutoSyncListIdsRef.current.add(list.id);
+    const toastId = toast.loading(
+      fillText(t("importingFromGithub"), { name: list.name })
+    );
+    try {
+      const json = await api("/api/todo/github/sync", "POST", { listId: list.id });
+      toast.success(fillText(t("syncedList"), { name: list.name }), {
+        id: toastId,
+        // GitHub removes nothing from the board: a gone issue unlinks.
+        description: formatSyncCounts(t, "GitHub", {
+          removed: 0,
+          ...(json.result as { pulled: number; pushed: number; updated: number }),
+        }),
+        duration: 5000,
+      });
+    } catch (err) {
+      toast.error(describeError(err, t("importFromGithubFailed")), { id: toastId });
+    } finally {
+      suppressAutoSyncListIdsRef.current.delete(list.id);
+    }
+    void refresh();
+  }
+
   async function createList(
     name: string,
     appearance: ListAppearance,
-    links: ListLinks
+    links: ListLinks,
+    inGroupId?: string
   ) {
     const listId = newClientId();
+    // Everything holds no lists of its own: a list made there joins none.
+    const groupId = inGroupId ?? (groupsEnabled && !isEverythingGroup(activeGroup) ? (activeGroup?.id ?? null) : null);
     const json = await api("/api/todo/lists", "POST", {
       id: listId,
       name,
       ...appearance,
       ...links,
-      groupId: groupsEnabled ? (activeGroup?.id ?? null) : null,
+      groupId,
     });
     const list = {
       ...(json.list as TodoList),
@@ -500,7 +577,7 @@ export function useListDialogActions({
       name,
       ...appearance,
       ...links,
-      groupId: groupsEnabled ? (activeGroup?.id ?? null) : null,
+      groupId,
     } as TodoList;
     setState((s) => ({ ...s, lists: [...s.lists, list] }));
     setCurrentListId(list.id);
@@ -516,6 +593,7 @@ export function useListDialogActions({
     if (list.basecampListId && !isOfflineNow()) {
       await importNewListFromBasecamp(list);
     }
+    if (list.githubRepo && !isOfflineNow()) await importListFromGithub(list);
   }
 
   async function renameList(
@@ -533,12 +611,17 @@ export function useListDialogActions({
           : l
       ),
     }));
-    await api("/api/todo/lists", "PATCH", {
+    const json = await api("/api/todo/lists", "PATCH", {
       id,
       name,
       ...appearance,
       ...links,
     });
+    // Linked to another repository: its open issues come in now, not at
+    // the next poll.
+    if (links.githubRepo && links.githubRepo !== (list.githubRepo ?? null) && !isOfflineNow()) {
+      await importListFromGithub(json.list as TodoList);
+    }
   }
 
   async function submitListModal() {
@@ -569,6 +652,7 @@ export function useListDialogActions({
         basecampProjectId: modalBcListId ? modalBcProjectId || null : null,
         basecampListId: modalBcListId || null,
         remindersListId: modalRemindersListId || null,
+        githubRepo: modalGithubRepo || null,
       };
       const appearance: ListAppearance = {
         colour: modalColour || null,

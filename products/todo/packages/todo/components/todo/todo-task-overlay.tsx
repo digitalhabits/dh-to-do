@@ -10,21 +10,19 @@
 
 import * as React from "react";
 
-import { Plus, User, X } from "lucide-react";
+import { Plus, User } from "lucide-react";
 
-import { MenuKeys } from "@/components/todo/MenuKeys";
 import { TaskAssignMenu, TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
+import { TaskOverlayChips, TaskOverlayHead } from "@/components/todo/task-overlay-chips";
 import { TrixNotesEditor } from "@/components/todo/TrixNotesEditor";
 import { ClockIcon, FocusIcon, NotesIcon } from "@/components/todo/task-icons";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
 import { minutesFromTyped } from "@/lib/todo/duration-input";
 import { popCheck } from "@/lib/todo/list-flip";
-import { ListIcon, resolveListIconId } from "@/lib/todo/list-icons";
-import { shortPersonName } from "@/lib/todo/people";
 import { spawnCompletionParty, randomSubtaskPartyEmoji } from "@/lib/todo/task-celebration";
-import { formatDueOn, notesHtmlIsEmpty } from "@/lib/todo/task-draft";
-import { dueDatePatch, listOriginLetters, toggleId } from "@/lib/todo/task-helpers";
+import { notesHtmlIsEmpty } from "@/lib/todo/task-draft";
+import { toggleId } from "@/lib/todo/task-helpers";
 import { type TodoPerson, type TodoTask } from "@/lib/todo/types";
 
 /** The assign menu's key for the subtask still being written, which has no id yet. */
@@ -94,6 +92,73 @@ export function renderNotesEditor(m: TodoPageModel, task: TodoTask) {
   );
 }
 
+/**
+ * The task's words at the top of the open card. A click opens them for
+ * changing, in the same type. Enter or a click elsewhere saves; Escape
+ * puts the words back. Empty words are not saved.
+ */
+function OverlayTitle({ text, onSave }: { text: string; onSave: (text: string) => void }) {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const boxRef = React.useRef<HTMLTextAreaElement | null>(null);
+  React.useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (draft === null || !box) return;
+    box.style.height = "0px";
+    box.style.height = `${box.scrollHeight}px`;
+  }, [draft]);
+  React.useEffect(() => {
+    const box = boxRef.current;
+    if (draft === null || !box || document.activeElement === box) return;
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+    // Only as the box opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft === null]);
+  if (draft === null) {
+    return (
+      <h2
+        className="notes-overlay-title is-editable"
+        tabIndex={0}
+        title="Click to change"
+        onClick={() => setDraft(text)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            setDraft(text);
+          }
+        }}
+      >
+        {text}
+      </h2>
+    );
+  }
+  const commit = () => {
+    const next = draft.replace(/\s+/g, " ").trim();
+    setDraft(null);
+    if (next && next !== text) onSave(next);
+  };
+  return (
+    <textarea
+      ref={boxRef}
+      className="notes-overlay-title notes-overlay-title-input"
+      value={draft}
+      rows={1}
+      aria-label="Task name"
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setDraft(null);
+        }
+      }}
+    />
+  );
+}
+
 export function renderNotesOverlay(m: TodoPageModel) {
   const {
     state,
@@ -105,10 +170,6 @@ export function renderNotesOverlay(m: TodoPageModel) {
     setPeopleEditorOpen,
     openNotesTaskId,
     notesExpanded,
-    overlayListOpen,
-    setOverlayListOpen,
-    overlayAssignAnchor,
-    setOverlayAssignAnchor,
     overlayMoreBelow,
     updateOverlayFade,
     setOverlayFieldsNode,
@@ -118,11 +179,9 @@ export function renderNotesOverlay(m: TodoPageModel) {
     setNotesDraft,
     nativeShell,
     activeFocusTaskIds,
-    lang,
     t,
     toggleTaskFocusPopout,
     mutateTask,
-    toggleTaskCompleted,
     removeTask,
     resizeEditTextarea,
     uploaderForTask,
@@ -162,11 +221,6 @@ export function renderNotesOverlay(m: TodoPageModel) {
   if (!openNotesTaskId || !notesExpanded) return null;
   const task = state.tasks.find((t) => t.id === openNotesTaskId);
   if (!task) return null;
-  const taskList = state.lists.find((l) => l.id === task.listId);
-  const listIconId = resolveListIconId(taskList?.emoji);
-  const assignees = task.assigneeIds
-    .map((id) => peopleById.get(id))
-    .filter((p): p is TodoPerson => Boolean(p));
   const mySubtasks = subtasksByTask.get(task.id) ?? [];
   /* While a row is carried, the list is drawn in the order the pointer
      is making, and the stored order takes over again on the drop. */
@@ -366,239 +420,33 @@ export function renderNotesOverlay(m: TodoPageModel) {
       }}
     >
       <div
-        className="notes-overlay-card task-overlay-card"
+        className={`notes-overlay-card task-overlay-card${task.completed ? " is-done" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={task.text}
       >
-        <div className="notes-overlay-head">
-          <input
-            type="checkbox"
-            className="task-checkbox"
-            checked={task.completed}
-            onChange={(event) => toggleTaskCompleted(task, event)}
-            aria-label={t("markDone")}
-          />
-          <h2 className="notes-overlay-title">{task.text}</h2>
-          <button
-            type="button"
-            className="notes-collapse-btn"
-            title={t("collapseTask")}
-            aria-label={t("collapseTask")}
-            onClick={() => saveNotes(task.id)}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="4 14 10 14 10 20" />
-              <polyline points="20 10 14 10 14 4" />
-              <line x1="14" y1="10" x2="21" y2="3" />
-              <line x1="3" y1="21" x2="10" y2="14" />
-            </svg>
-          </button>
-        </div>
+        <TaskOverlayHead
+          m={m}
+          task={task}
+          title={
+            <OverlayTitle
+              key={task.id}
+              text={task.text}
+              onSave={(text) => void mutateTask(task.id, { text })}
+            />
+          }
+        />
         <div className="task-overlay-scroll">
         <div
           className="task-overlay-fields"
           ref={setOverlayFieldsNode}
           onScroll={updateOverlayFade}
         >
-          {/* The list it is on. The picker is the card's own, drawn here. */}
-          <div className="task-overlay-row">
-            <span className="task-overlay-label">{t("fieldList")}</span>
-            <div className="task-overlay-value">
-              <div
-                className={`task-list-origin-wrap${overlayListOpen ? " is-open" : ""}`}
-              >
-                <button
-                  type="button"
-                  className="task-overlay-list-btn"
-                  aria-haspopup="menu"
-                  aria-expanded={overlayListOpen}
-                  disabled={state.lists.length === 0}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOverlayListOpen((v) => !v);
-                  }}
-                >
-                  {listIconId ? (
-                    <ListIcon id={listIconId} size={15} />
-                  ) : null}
-                  <span>{taskList?.name ?? "—"}</span>
-                </button>
-                {overlayListOpen ? (
-                  <MenuKeys
-                    className="task-list-picker"
-                    onClose={() => setOverlayListOpen(false)}
-                  >
-                    {state.lists.map((l) => {
-                      const iconId = resolveListIconId(l.emoji);
-                      const selected = l.id === task.listId;
-                      return (
-                        <button
-                          key={l.id}
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={selected}
-                          className={`task-list-picker-item${
-                            selected ? " is-current" : ""
-                          }`}
-                          onClick={() => {
-                            setOverlayListOpen(false);
-                            if (!selected) void mutateTask(task.id, { listId: l.id });
-                          }}
-                        >
-                          <span
-                            className={`task-list-picker-icon${iconId ? " has-icon" : ""}`}
-                          >
-                            {iconId ? (
-                              <ListIcon id={iconId} size={14} />
-                            ) : (
-                              listOriginLetters(l)
-                            )}
-                          </span>
-                          <span className="task-list-picker-name">{l.name}</span>
-                        </button>
-                      );
-                    })}
-                  </MenuKeys>
-                ) : null}
-              </div>
-            </div>
-          </div>
-          {assignEnabled ? (
-            <div className="task-overlay-row">
-              <span className="task-overlay-label">{t("fieldAssignedTo")}</span>
-              <div className="task-overlay-value">
-                <button
-                  type="button"
-                  className="task-overlay-assign-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const el = e.currentTarget;
-                    setOverlayAssignAnchor((now) => (now ? null : el));
-                  }}
-                >
-                  {assignees.length ? (
-                    <>
-                      <TaskAssigneeStack people={assignees} size={26} />
-                      <span className="task-overlay-assign-names">
-                        {assignees.map((p) => shortPersonName(p.name)).join(", ")}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="task-overlay-placeholder">{t("assignPerson")}</span>
-                  )}
-                </button>
-                <TaskAssignMenu
-                  open={Boolean(overlayAssignAnchor)}
-                  anchorEl={overlayAssignAnchor}
-                  people={state.people}
-                  assigneeIds={task.assigneeIds}
-                  t={t}
-                  onToggle={(personId) => toggleTaskAssignee(task.id, personId)}
-                  onEditPeople={() => {
-                    setOverlayAssignAnchor(null);
-                    setPeopleEditorOpen(true);
-                  }}
-                  onClose={() => setOverlayAssignAnchor(null)}
-                />
-              </div>
-            </div>
-          ) : null}
-          <div className="task-overlay-row">
-            <span className="task-overlay-label">{t("fieldDuration")}</span>
-            <div className="task-overlay-value">
-              <input
-                key={`${task.id}:${task.expectedDurationMinutes ?? ""}`}
-                type="text"
-                inputMode="numeric"
-                className="task-overlay-duration"
-                defaultValue={
-                  task.expectedDurationMinutes == null
-                    ? ""
-                    : String(task.expectedDurationMinutes)
-                }
-                /* As wide as its number, so "min" sits right after it.
-                   Empty, the inline width goes and the stylesheet's
-                   width takes over — the placeholder needs the room.
-                   The box has 8px of padding and a 1px border on each
-                   side, and its width counts them. Two spare characters
-                   were less than that, so "90" showed as "9". */
-                style={
-                  task.expectedDurationMinutes == null
-                    ? undefined
-                    : {
-                        width: `calc(${String(task.expectedDurationMinutes).length}ch + 22px)`,
-                      }
-                }
-                onInput={(e) => {
-                  const el = e.currentTarget;
-                  el.style.width = el.value ? `calc(${el.value.length}ch + 22px)` : "";
-                }}
-                placeholder={t("estimateTime")}
-                onBlur={(e) => {
-                  const next = minutesFromTyped(e.target.value);
-                  if (next === (task.expectedDurationMinutes ?? null)) return;
-                  void mutateTask(task.id, { expectedDurationMinutes: next });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
-              />
-              <span className="task-overlay-unit">min</span>
-            </div>
-          </div>
-          <div className="task-overlay-row">
-            <span className="task-overlay-label">{t("fieldDue")}</span>
-            <div className="task-overlay-value task-overlay-due-value">
-              <input
-                type="date"
-                className="task-overlay-due"
-                aria-label={t("fieldDue")}
-                value={task.dueOn ?? ""}
-                onChange={(e) =>
-                  void mutateTask(task.id, dueDatePatch(e.target.value || null, task))
-                }
-              />
-              {task.dueOn ? (
-                <>
-                  <span className="task-overlay-due-said">
-                    {formatDueOn(task.dueOn, lang, t)}
-                  </span>
-                  <button
-                    type="button"
-                    className="task-overlay-due-clear"
-                    title={t("composerClear")}
-                    aria-label={t("composerClear")}
-                    onClick={() => void mutateTask(task.id, { dueOn: null })}
-                  >
-                    <X size={13} strokeWidth={2.5} aria-hidden />
-                  </button>
-                </>
-              ) : null}
-            </div>
-          </div>
-          <div className="task-overlay-row task-overlay-notes">
-            <span className="task-overlay-label">{t("fieldNotes")}</span>
-            <div className="task-overlay-value notes-overlay-body">
-              <TrixNotesEditor
-                value={notesDraft}
-                onChange={setNotesDraft}
-                placeholder="Add notes..."
-                resolveImageSrc={resolveBasecampImage}
-                uploadImage={uploaderForTask(task)}
-                onPendingChange={(n) => (notesUploading.current = n)}
-                readCurrentRef={notesReadCurrent}
-                className="notes-overlay-editor"
-                /* The full-window note has no tick of its own — the same
-                   save puts it away, so the key means one thing in both. */
-                onDone={() => saveNotes(task.id)}
-              />
-            </div>
-          </div>
-          {(
-          <div className="task-overlay-row task-overlay-subtasks">
-            <span className="task-overlay-label">{t("subtasks")}</span>
-            <div className="task-overlay-value">
+        {/* The task's own facts and steps, on the card's white. The notes
+            follow on the page's cream, as a band of their own. */}
+        <div className="task-overlay-top">
+          <TaskOverlayChips m={m} task={task} />
+          <div className="task-overlay-subtasks" aria-label={t("subtasks")}>
               <div className="task-subtask-list" ref={subtaskListRef}>
                 {/* One flat list, the add row keyed in it like a row. It
                     moves down as steps are added, and React keeps it:
@@ -804,9 +652,9 @@ export function renderNotesOverlay(m: TodoPageModel) {
                       {nativeShell && !subtask.completed ? (
                         <button
                           type="button"
-                          className={`task-subtask-action${
+                          className={`task-subtask-action task-subtask-focus${
                             activeFocusTaskIds.has(subtask.id)
-                              ? " is-active"
+                              ? " is-focusing"
                               : ""
                           }`}
                           title={
@@ -865,9 +713,26 @@ export function renderNotesOverlay(m: TodoPageModel) {
                 ]),
                 ]}
               </div>
-            </div>
           </div>
-          )}
+        </div>
+        <div className="task-overlay-notes-band">
+          <span className="task-overlay-band-label">{t("fieldNotes")}</span>
+          <div className="notes-overlay-body">
+            <TrixNotesEditor
+              value={notesDraft}
+              onChange={setNotesDraft}
+              placeholder="Add notes..."
+              resolveImageSrc={resolveBasecampImage}
+              uploadImage={uploaderForTask(task)}
+              onPendingChange={(n) => (notesUploading.current = n)}
+              readCurrentRef={notesReadCurrent}
+              className="notes-overlay-editor"
+              /* The full-window note has no tick of its own — the same
+                 save puts it away, so the key means one thing in both. */
+              onDone={() => saveNotes(task.id)}
+            />
+          </div>
+        </div>
         </div>
         {/* More below the fold. Gone at the bottom, so the last row is
             never read through a veil. */}

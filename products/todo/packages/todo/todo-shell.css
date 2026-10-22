@@ -419,6 +419,10 @@
   flex-direction: column;
   gap: 14px;
   padding: 22px 28px 32px;
+  /* Room above the task in hand for its hover pill, which straddles the
+     card's top edge (--task-pill-overhang): the card scrolls, so whatever
+     sticks out above its padding is cut off. */
+  padding-top: max(22px, calc(var(--task-pill-overhang, 10px) + 16px));
   border-radius: 18px;
   /* The cream of a board column. */
   background: #f4f1ec;
@@ -1111,6 +1115,7 @@ textarea.today-session-edit.today-session-now-title {
   .today-session-card {
     gap: 12px;
     padding: 16px 14px 24px;
+    padding-top: max(16px, calc(var(--task-pill-overhang, 10px) + 12px));
     border-radius: 14px;
   }
 

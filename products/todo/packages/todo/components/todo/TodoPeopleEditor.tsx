@@ -326,6 +326,7 @@ export function TodoPeopleEditor({
   onRemove,
   onSearch,
   onSetPhoto,
+  onSetGithubLogin,
   meIds = [],
   onSetMe,
 }: {
@@ -338,6 +339,8 @@ export function TodoPeopleEditor({
   onSearch: (query: string) => Promise<TodoPersonCandidate[]>;
   /** A picture for the person's avatar, or null to go back to initials. */
   onSetPhoto?: (personId: string, file: File | null) => Promise<void>;
+  /** The person's GitHub username, or null. Given where a list is on GitHub. */
+  onSetGithubLogin?: (personId: string, login: string | null) => Promise<void>;
   /** The people who are the reader. They show a "Me" mark. */
   meIds?: string[];
   /**
@@ -488,6 +491,27 @@ export function TodoPeopleEditor({
                 <span className="people-editor-name">
                   {shortPersonName(person.name)}
                 </span>
+                {onSetGithubLogin ? (
+                  <input
+                    // A new key after a save, so a refused name goes back.
+                    key={`${person.id}:${person.githubLogin ?? ""}`}
+                    className="people-editor-github"
+                    defaultValue={person.githubLogin ?? ""}
+                    placeholder={t("githubUsername")}
+                    aria-label={`${t("githubUsername")}: ${person.name}`}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                    onBlur={(e) => {
+                      const login = e.currentTarget.value.trim() || null;
+                      if (login !== (person.githubLogin ?? null)) {
+                        void onSetGithubLogin(person.id, login);
+                      }
+                    }}
+                  />
+                ) : null}
                 {onSetMe ? (
                   <button
                     type="button"

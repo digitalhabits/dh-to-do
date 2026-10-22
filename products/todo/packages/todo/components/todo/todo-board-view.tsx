@@ -25,6 +25,7 @@ import { renderTask } from "@/components/todo/todo-task-card";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
 import { COLUMN_SORTS, SORT_LABEL_KEY } from "@/lib/todo/column-sort";
+import { todayDueOn } from "@/lib/todo/task-draft";
 import { type TodoBoardColumn } from "@/lib/todo/types";
 
 /**
@@ -32,6 +33,9 @@ import { type TodoBoardColumn } from "@/lib/todo/types";
  * aside in brackets at the end — "Soon (-ish)" — stays in small letters
  * and a shade lighter: it is a wink, not part of the name.
  */
+/** The Today column's add-task box starts with today as the due date. */
+const todayDraft = () => ({ dueOn: todayDueOn() });
+
 export function boardColumnName(
   m: TodoPageModel,
   column: TodoBoardColumn
@@ -395,6 +399,8 @@ export function renderBoardColumn(
             addLabel={t("addTask")}
             minutesLabel={t("minutes")}
             onSubmit={(draft) => void addTask(column, draft)}
+            // A task added under Today is for today.
+            initialDraft={column === "today" ? todayDraft : undefined}
             uploadImageForList={uploaderForList}
             resolveImageSrc={resolveBasecampImage}
             people={state.people}

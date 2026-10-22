@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-note-image"
+description = "Enables the save_note_image command without any pre-configured scope."
+commands.allow = ["save_note_image"]
+
+[[permission]]
+identifier = "deny-save-note-image"
+description = "Denies the save_note_image command without any pre-configured scope."
+commands.deny = ["save_note_image"]

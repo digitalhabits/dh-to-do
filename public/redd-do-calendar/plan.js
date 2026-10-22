@@ -50,7 +50,8 @@ const PlanModule = (function () {
     let resizeObserver = null;
     let resizeTimer = null;
     let onWindowResize = null;
-    let onPopoverResize = null;
+    // Closes the Manage calendars drawer; set once its listeners are.
+    let closeCalendarDrawer = () => {};
     // Keeps the week's hour labels in line (see watchWeekHourGutter); here
     // so that destroy can stop it.
     let weekHourGutterObserver = null;
@@ -149,6 +150,12 @@ const PlanModule = (function () {
         if (!container) return;
         const select = container.querySelector('.plan-week-goal-assignee-select');
         fillGoalAssigneeSelect(select ? select.value : '');
+        // A task in the week shows who it is for, with these people. Only
+        // while the calendar is up: after destroy() its page is empty.
+        if (isInitialized && calendarViewMode === 'week' && calendarTasks.some((t) => t.assigneeIds.length)) {
+            renderCalendar();
+            scheduleLayoutRefresh();
+        }
         renderWeekGoals();
     }
 
@@ -434,18 +441,38 @@ const PlanModule = (function () {
         return holidays;
     }
 
+    /*
+     * The search of the bar: what is typed narrows what the calendar shows
+     * to the things whose words hold it — tasks (their name and list),
+     * notes and events, deadlines and courses. Holidays, the Roadmap and
+     * the goals stay. Not kept: it starts empty each time.
+     */
+    let barSearch = '';
+
+    function foldWords(text) {
+        return String(text || '').replace(/<[^>]*>/g, ' ')
+            .normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+    }
+
+    function matchesSearch(...texts) {
+        const q = foldWords(barSearch).trim();
+        if (!q) return true;
+        return texts.some(text => foldWords(text).includes(q));
+    }
+
     // Open application deadlines, when the Applications tab has them on.
     // CalendarView puts them on window before a render. Like holidays, they
     // are drawn fresh each time and never saved into the notes.
     function createDeadlineEl(dateKey, className) {
         const all = window.PlanApplicationDeadlines;
         if (!Array.isArray(all)) return null;
-        const names = all.filter(d => d && d.dateKey === dateKey).map(d => d.name);
-        if (!names.length) return null;
+        const deadlines = all.filter(d => d && d.dateKey === dateKey && matchesSearch(d.name, d.funder));
+        if (!deadlines.length) return null;
         const el = document.createElement('span');
         el.className = className + ' application-deadline';
         el.appendChild(createDeadlineIcon());
-        el.appendChild(document.createTextNode(names.join(' · ')));
+        el.appendChild(document.createTextNode(deadlines.map(d => d.name).join(' · ')));
+        setupDeadlineOpen(el, deadlines);
         return el;
     }
 
@@ -458,12 +485,55 @@ const PlanModule = (function () {
         return wrap.firstChild;
     }
 
+    // Upcoming facilitator courses, when the host shows them: one item for
+    // each day of a course, as window.PlanFacilitatorCourses
+    //   [{ dateKey, name, title, courseKey, kind }]
+    // Like deadlines, drawn fresh each time and never saved into the notes.
+    function facilitatorCourseDays(dateKey) {
+        const all = window.PlanFacilitatorCourses;
+        if (!Array.isArray(all)) return [];
+        return all.filter(d => d && d.dateKey === dateKey && matchesSearch(d.name, d.title));
+    }
+
+    function createCoursesEl(dateKey, className) {
+        const days = facilitatorCourseDays(dateKey);
+        if (!days.length) return null;
+        const el = document.createElement('span');
+        el.className = className + ' facilitator-course';
+        el.title = days.map(d => d.title).join('\n');
+        el.appendChild(createCourseIcon());
+        el.appendChild(document.createTextNode(days.map(d => d.name).join(' · ')));
+        setupCourseOpen(el, days);
+        return el;
+    }
+
+    // One course day, as one item of a month day (see renderMonthDays).
+    function createCourseItemEl(day) {
+        const el = document.createElement('span');
+        el.className = 'plan-note-text facilitator-course';
+        el.title = day.title;
+        el.appendChild(createCourseIcon());
+        el.appendChild(document.createTextNode(day.name));
+        setupCourseOpen(el, [day]);
+        return el;
+    }
+
+    // A graduation cap, sized on the SVG as the deadline's flag is.
+    function createCourseIcon() {
+        const label = currentLanguage === 'da' ? 'Kursus' : 'Course';
+        const wrap = document.createElement('span');
+        wrap.innerHTML = `<svg class="facilitator-course-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${label}"><title>${label}</title><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></svg>`;
+        return wrap.firstChild;
+    }
+
     // Tasks from the To-Do board that the reader asked to see here: a task
     // with a due date, on its due day. The host gives the list with
     // setTasks, as it gives the people. Like deadlines and holidays, they
     // are drawn fresh each time and never saved into the notes, so a task
     // that is done, or that loses its date, is gone at the next draw.
-    let calendarTasks = [];   // [{ id, dateKey, name, minutes, listName, initials, icon }]
+    // The week shows every task the host gives. The months show only those
+    // marked `shown`: the reader ticked "Show on the Calendar" for them.
+    let calendarTasks = [];   // [{ id, dateKey, name, minutes, shown, listName, initials, icon }]
 
     // The hours a task has in the week view: { [taskId]: { startMinutes, endMinutes } }.
     // The day is the task's own due day, so only the hours are kept here. The
@@ -471,16 +541,27 @@ const PlanModule = (function () {
     // for that, a task moves up and down in its own day.
     let taskTimes = {};
     let changeTaskDue = null;
+    // The host writes a new order of a day's tasks: (dateKey, taskIds), the
+    // ids in their new order. With none, a task keeps its place in its day.
+    let reorderDayTasks = null;
     // The host saves a Roadmap band moved or made longer here: (id, start, end),
     // ISO dates. With none, the bands stay where they are.
     let changeRoadmapItem = null;
+    let editRoadmapItem = null;     // (id, { title, category, start, end }) from the entry's card
+    let deleteRoadmapItem = null;   // (id)
     // The host opens a task for editing (a double click on it here), beside
     // the place it is given.
     let openTask = null;
+    let completeTask = null;    // (taskId, completed): a tick in the list of a day
     // The host makes a new task for a day (a double click on the day here).
     // It gets the day, the time when the click was in the hours of the week
     // view, and the place on the screen to put its box beside.
     let createTask = null;
+    // The host shows a day's tasks as its own task cards, in place of the
+    // list drawn here: ({ dateKey, title, taskIds, anchor }), and () to put
+    // them away. Without it, the list here is the list of the day.
+    let openDayTasks = null;
+    let closeDayTasks = null;
     /*
      * Calendars the reader picks from a signed-in account, rather than by
      * pasting a secret address.
@@ -568,6 +649,23 @@ const PlanModule = (function () {
     }
 
     // For the host: a task that it made for a time of the day gets its hours.
+    // The pointer is on the host's list of a day (openDayTasks): it stays.
+    // Off it: it goes after the same short wait as the list drawn here.
+    // The host can say "held" before the task's own leave comes (WebKit sends
+    // React's enter first), so a held list does not start the wait at all.
+    function holdDayTasks(held) {
+        dayListHeld = Boolean(held) && dayListHosted;
+        clearTimeout(dayListCloseTimer);
+        if (!held && dayListHosted) dayListCloseTimer = setTimeout(closeWeekDayList, DAY_LIST_CLOSE_MS);
+    }
+
+    // The host put its list of a day away itself (a press, Escape).
+    function dayTasksClosed() {
+        if (!dayListHosted) return;
+        dayListHosted = false;
+        closeWeekDayList();
+    }
+
     function setTaskTime(taskId, startMinutes, endMinutes) {
         if (!taskId || !Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return;
         taskTimes[String(taskId)] = { startMinutes, endMinutes };
@@ -592,6 +690,12 @@ const PlanModule = (function () {
                 dateKey: String(t.dateKey),
                 name: String(t.name),
                 minutes: Number.isFinite(Number(t.minutes)) && Number(t.minutes) > 0 ? Number(t.minutes) : null,
+                // A host that does not say gives only the tasks it wants shown.
+                shown: t.shown !== false,
+                assigneeIds: Array.isArray(t.assigneeIds) ? t.assigneeIds.map(String) : [],
+                // Ticked: the week strikes it through, the months leave it out.
+                completed: t.completed === true,
+                listId: t.listId ? String(t.listId) : '',
                 listName: t.listName ? String(t.listName) : '',
                 initials: t.initials ? String(t.initials).slice(0, 2) : '',
                 icon: Array.isArray(t.icon)
@@ -646,11 +750,258 @@ const PlanModule = (function () {
         return svg;
     }
 
+    /**
+     * In the week: the mark of the task's list, with the first letter of the
+     * person it is for in a small circle on its corner. Everyone it is for is
+     * in the circle's tooltip.
+     */
+    function createWeekTaskMark(task) {
+        const mark = document.createElement('span');
+        mark.className = 'calendar-task-mark';
+        mark.appendChild(createTaskIcon(task));
+        const people = task.assigneeIds
+            .map((id) => goalPeople.find((person) => person.id === id))
+            .filter(Boolean);
+        const badge = taskPeopleBadge(people);
+        if (badge) {
+            badge.classList.add('calendar-task-person');
+            mark.appendChild(badge);
+        }
+        return mark;
+    }
+
+    /*
+     * The tasks of a day, in a list that shows when the pointer rests on one
+     * of them in the week. Each has its whole name, its list and who it is
+     * for, and a box at the left to tick it done. A click on a task opens it.
+     * The list stays while the pointer is on the task or on the list.
+     */
+    const DAY_LIST_OPEN_MS = 350;
+    const DAY_LIST_CLOSE_MS = 220;
+    let dayListEl = null;
+    let dayListHosted = false;  // the host shows it (openDayTasks)
+    let dayListFor = null;      // the date key it shows
+    let dayListOpenTimer = null;
+    let dayListCloseTimer = null;
+    let dayListHeld = false;    // the pointer is on the host's list
+
+    function closeWeekDayList() {
+        clearTimeout(dayListOpenTimer);
+        clearTimeout(dayListCloseTimer);
+        dayListEl?.remove();
+        dayListEl = null;
+        dayListHeld = false;
+        if (dayListHosted) {
+            dayListHosted = false;
+            closeDayTasks?.();
+        }
+        dayListFor = null;
+        document.removeEventListener('keydown', onDayListKey, true);
+        calendarContainer?.removeEventListener('scroll', closeWeekDayList);
+    }
+
+    function onDayListKey(event) {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        closeWeekDayList();
+    }
+
+    function setupWeekDayListHover(el, dateKey) {
+        el.addEventListener('pointerenter', (event) => {
+            if (event.pointerType === 'touch') return;
+            clearTimeout(dayListCloseTimer);
+            if (dayListFor === dateKey && (dayListEl || dayListHosted)) return;
+            clearTimeout(dayListOpenTimer);
+            dayListOpenTimer = setTimeout(() => {
+                // Not while something is dragged, or another card is open.
+                if (isWeekGoalDragInProgress || isDragInProgress || roadmapCardEl || !el.isConnected) return;
+                openWeekDayList(dateKey, el);
+            }, DAY_LIST_OPEN_MS);
+        });
+        el.addEventListener('pointerleave', () => {
+            clearTimeout(dayListOpenTimer);
+            if (dayListHeld) return;
+            if (dayListEl || dayListHosted) dayListCloseTimer = setTimeout(closeWeekDayList, DAY_LIST_CLOSE_MS);
+        });
+        // A press starts a drag or opens the task: the list goes.
+        el.addEventListener('pointerdown', closeWeekDayList);
+    }
+
+    function openWeekDayList(dateKey, anchorEl) {
+        closeWeekDayList();
+        const tasks = calendarTasks.filter((task) => task.dateKey === dateKey && taskShown(task));
+        if (!tasks.length) return;
+        const da = currentLanguage === 'da';
+        const date = parseDateKey(dateKey);
+        const weekday = (da ? WEEKDAYS_FULL_DA : WEEKDAYS_FULL_EN)[(date.getDay() + 6) % 7];
+        const title = da
+            ? `Frist ${weekday.toLowerCase()} ${date.getDate()}`
+            : `Due ${weekday} ${date.getDate()}`;
+
+        if (openDayTasks) {
+            // The host's own task cards, the same as a click on a task opens.
+            closeRoadmapCard();
+            closeDeadlineCard();
+            dayListHosted = true;
+            dayListFor = dateKey;
+            openDayTasks({ dateKey, title, taskIds: tasks.map((task) => task.id), anchor: taskAnchorOf(anchorEl) });
+            calendarContainer?.addEventListener('scroll', closeWeekDayList);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'plan-day-list';
+        list.setAttribute('role', 'dialog');
+        const head = document.createElement('div');
+        head.className = 'plan-day-list-head';
+        head.textContent = title;
+        list.setAttribute('aria-label', head.textContent);
+        list.appendChild(head);
+        tasks.forEach((task) => list.appendChild(weekDayListRow(task, da)));
+        if (createTask) {
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'plan-day-list-add';
+            add.textContent = da ? '+ Tilføj en opgave' : '+ Add a task';
+            add.addEventListener('click', () => {
+                const at = rectOf(add);
+                closeWeekDayList();
+                createTask({
+                    dateKey,
+                    startMinutes: null,
+                    anchor: { left: toScreen(at.left), right: toScreen(at.right), top: toScreen(at.top), bottom: toScreen(at.bottom) },
+                });
+            });
+            list.appendChild(add);
+        }
+        list.addEventListener('pointerenter', () => clearTimeout(dayListCloseTimer));
+        list.addEventListener('pointerleave', () => {
+            dayListCloseTimer = setTimeout(closeWeekDayList, DAY_LIST_CLOSE_MS);
+        });
+        // The calendar's own handlers must not take a press in the list.
+        ['pointerdown', 'mousedown', 'click', 'dblclick'].forEach((type) =>
+            list.addEventListener(type, (event) => event.stopPropagation()));
+        container.appendChild(list);
+        dayListEl = list;
+        dayListFor = dateKey;
+
+        // Under the task, at the left of its day; inside the window.
+        const at = rectOf(anchorEl);
+        const rect = rectOf(list);
+        const zoom = zoomInfo().zoom;
+        const winW = window.innerWidth / zoom;
+        const winH = window.innerHeight / zoom;
+        const below = at.bottom + 6 + rect.height <= winH - 8;
+        list.style.left = `${Math.max(8, Math.min(at.left - 8, winW - rect.width - 8))}px`;
+        list.style.top = `${below ? at.bottom + 6 : Math.max(8, at.top - rect.height - 6)}px`;
+        document.addEventListener('keydown', onDayListKey, true);
+        // Scrolled, it would stand away from its day.
+        calendarContainer.addEventListener('scroll', closeWeekDayList);
+    }
+
+    /**
+     * Who a task is for, in one small circle: the first person's picture, or
+     * their letters on their colour, as on a goal; everyone in its tooltip.
+     * No one: nothing, so the task shows its list's mark alone.
+     */
+    function taskPeopleBadge(people) {
+        if (!people.length) return null;
+        const dot = goalPersonDot(people[0]);
+        dot.title = people.map((person) => person.name).join(', ');
+        return dot;
+    }
+
+    /** A task's chip in the week's rows, if it has one there. */
+    function weekTaskChipOf(taskId) {
+        return Array.from(container.querySelectorAll('.plan-week-allday-item.calendar-task'))
+            .find((chip) => chip.dataset.taskId === taskId) || null;
+    }
+
+    function weekDayListRow(task, da) {
+        const row = document.createElement('div');
+        row.className = 'plan-day-list-row';
+
+        const tick = document.createElement('button');
+        tick.type = 'button';
+        tick.className = 'plan-day-list-tick';
+        tick.setAttribute('role', 'checkbox');
+        tick.setAttribute('aria-checked', 'false');
+        tick.setAttribute('aria-label', da ? `Marker "${task.name}" som færdig` : `Mark "${task.name}" as done`);
+        let done = false;
+        const show = () => {
+            row.classList.toggle('is-done', done);
+            tick.setAttribute('aria-checked', String(done));
+        };
+        tick.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (!completeTask) return;
+            done = !done;
+            show();
+            Promise.resolve()
+                .then(() => completeTask(task.id, done))
+                .catch((err) => {
+                    console.warn('[Plan] Could not tick the task:', err);
+                    done = !done;
+                    show();
+                });
+        });
+        if (!completeTask) tick.disabled = true;
+
+        const words = document.createElement('button');
+        words.type = 'button';
+        words.className = 'plan-day-list-words';
+        const name = document.createElement('span');
+        name.className = 'plan-day-list-name';
+        name.textContent = task.name;
+        const detail = document.createElement('span');
+        detail.className = 'plan-day-list-detail';
+        if (task.listName) {
+            detail.appendChild(createTaskIcon(task));
+            detail.appendChild(document.createTextNode(task.listName));
+        }
+        // Who it is for, as their pictures (or letters); no one, as an
+        // empty dashed circle. The names are in the tooltips.
+        const people = task.assigneeIds
+            .map((id) => goalPeople.find((person) => person.id === id))
+            .filter(Boolean);
+        if (people.length) {
+            detail.appendChild(goalPersonDots(people));
+        } else {
+            const nobody = taskPeopleBadge(people);
+            if (nobody) detail.appendChild(nobody);
+        }
+        words.append(name, detail);
+        words.addEventListener('click', () => {
+            const anchor = taskAnchorOf(row);
+            closeWeekDayList();
+            if (openTask) openTaskCard(task.id, anchor);
+        });
+        // Taken by its words, a task goes to another day, or to a time, as
+        // its task in the week does. The list goes once it moves.
+        if (changeTaskDue) {
+            words.classList.add('is-draggable');
+            setupWeekBlockDrag(words, { kind: 'task', id: task.id }, {
+                liftFrom: () => weekTaskChipOf(task.id),
+                onDragStart: closeWeekDayList,
+            });
+        }
+
+        row.append(tick, words);
+        return row;
+    }
+
     // Where the task is on the screen, so the host can put its card beside it.
     function taskAnchorOf(el) {
         const r = rectOf(el);
         // The host counts in the pixels of the screen.
         return { left: toScreen(r.left), top: toScreen(r.top), right: toScreen(r.right), bottom: toScreen(r.bottom) };
+    }
+
+    // The host's card for a task. The calendar's own cards go first: one card at a time.
+    function openTaskCard(taskId, anchor) {
+        closeRoadmapCard();
+        closeDeadlineCard();
+        openTask(taskId, anchor);
     }
 
     // A click on a task opens it for editing, when the host can do that. In
@@ -663,7 +1014,7 @@ const PlanModule = (function () {
             el.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                openTask(task.id, taskAnchorOf(el));
+                openTaskCard(task.id, taskAnchorOf(el));
             });
         }
         // A press on a task must not start a note or a highlight under it.
@@ -672,11 +1023,15 @@ const PlanModule = (function () {
 
     function createTaskItemEl(task, className) {
         const el = document.createElement('span');
-        el.className = (className || 'plan-note-text') + ' calendar-task';
+        el.className = (className || 'plan-note-text') + ' calendar-task' + (task.completed ? ' is-done' : '');
         const name = task.listName ? `${task.listName}: ${task.name}` : task.name;
         el.title = openTask ? `${name} — click to open` : name;
-        el.appendChild(createTaskIcon(task));
-        el.appendChild(document.createTextNode(task.name));
+        el.appendChild(className ? createWeekTaskMark(task) : createTaskIcon(task));
+        // In a span, so the week can cut a long name short with "…".
+        const words = document.createElement('span');
+        words.className = 'calendar-task-name';
+        words.textContent = task.name;
+        el.appendChild(words);
         // With a class name it is the week's all-day row, where it can be dragged too.
         setupTaskOpen(el, task, Boolean(className));
         if (!className && changeTaskDue) makeMonthTaskMovable(el, task);
@@ -788,7 +1143,205 @@ const PlanModule = (function () {
         el.className = 'plan-note-text application-deadline';
         el.appendChild(createDeadlineIcon());
         el.appendChild(document.createTextNode(deadline.name));
+        setupDeadlineOpen(el, [deadline]);
         return el;
+    }
+
+    // ------------------------------------------------------------------
+    // The card of an application deadline: a click on one opens it, with
+    // what the host gave about it (window.PlanApplicationDeadlines: name,
+    // dueOn, status, funder, amount, href). A press outside puts it away and
+    // does nothing else, so it does not also start a note.
+    // ------------------------------------------------------------------
+    let deadlineCardEl = null;
+    let deadlineCardFor = null;     // the item it opened from
+    let deadlineCardClosed = null;  // { el, at }: put away by a press on its own item
+
+    // The mousedown after a press that only put a card away goes nowhere:
+    // a note or a line starts on mousedown. The click still comes.
+    function swallowNextPress() {
+        const swallow = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+        };
+        window.addEventListener('mousedown', swallow, { capture: true, once: true });
+        // A touch can come with no mousedown; the trap must not wait for the next press.
+        setTimeout(() => window.removeEventListener('mousedown', swallow, true), 150);
+    }
+
+    function closeDeadlineCard() {
+        deadlineCardEl?.remove();
+        deadlineCardEl = null;
+        deadlineCardFor = null;
+        document.removeEventListener('pointerdown', onDeadlineCardOutside, true);
+        document.removeEventListener('keydown', onDeadlineCardKey, true);
+        calendarContainer?.removeEventListener('scroll', closeDeadlineCard);
+    }
+
+    function onDeadlineCardOutside(event) {
+        if (!deadlineCardEl || deadlineCardEl.contains(event.target)) return;
+        const from = deadlineCardFor;
+        closeDeadlineCard();
+        // A press on the deadline it came from closes it; its click must not open it again.
+        if (from && from.contains(event.target)) deadlineCardClosed = { el: from, at: Date.now() };
+        swallowNextPress();
+    }
+
+    function onDeadlineCardKey(event) {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            closeDeadlineCard();
+        }
+    }
+
+    function setupDeadlineOpen(el, deadlines) {
+        setupInfoCardOpen(el, 'application-deadline--opens', () =>
+            openDeadlineCard(deadlines.map(deadlineCardSection), el));
+    }
+
+    // A course opens its card as a deadline does: what the Facilitators tab
+    // knows about it, and the way there.
+    function setupCourseOpen(el, days) {
+        setupInfoCardOpen(el, 'facilitator-course--opens', () =>
+            openDeadlineCard(days.map(courseCardSection), el, 'plan-course-card'));
+    }
+
+    function setupInfoCardOpen(el, className, openCard) {
+        el.classList.add(className);
+        el.setAttribute('role', 'button');
+        el.tabIndex = 0;
+        // A press on a deadline must not start a note or a line under it.
+        el.addEventListener('mousedown', (event) => event.stopPropagation());
+        const open = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const closed = deadlineCardClosed;
+            if (closed && closed.el === el && Date.now() - closed.at < 500) return;
+            openCard();
+        };
+        el.addEventListener('click', open);
+        el.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') open(event);
+        });
+    }
+
+    function formatDeadlineDay(dateKey) {
+        const date = parseDateKey(dateKey);
+        return date.toLocaleDateString(currentLanguage === 'da' ? 'da-DK' : 'en-GB', {
+            weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+        });
+    }
+
+    function deadlineCardSection(deadline) {
+        const da = currentLanguage === 'da';
+        const section = document.createElement('div');
+        section.className = 'plan-deadline-card-item';
+        const title = document.createElement('div');
+        title.className = 'plan-deadline-card-name';
+        title.appendChild(createDeadlineIcon());
+        title.appendChild(document.createTextNode(deadline.name));
+        section.appendChild(title);
+        if (deadline.funder) {
+            const funder = document.createElement('div');
+            funder.className = 'plan-deadline-card-funder';
+            funder.textContent = deadline.funder;
+            section.appendChild(funder);
+        }
+        const rows = [
+            [da ? 'Frist' : 'Due', deadline.dueOn || formatDeadlineDay(deadline.dateKey)],
+            [da ? 'Status' : 'Status', deadline.status],
+            [da ? 'Beløb' : 'Amount', deadline.amount],
+        ];
+        const list = document.createElement('dl');
+        list.className = 'plan-deadline-card-rows';
+        rows.forEach(([label, value]) => {
+            if (!value) return;
+            const dt = document.createElement('dt');
+            dt.textContent = label;
+            const dd = document.createElement('dd');
+            dd.textContent = value;
+            list.append(dt, dd);
+        });
+        section.appendChild(list);
+        if (deadline.href) {
+            const link = document.createElement('a');
+            link.className = 'plan-deadline-card-link';
+            link.href = deadline.href;
+            link.textContent = da ? 'Åbn i Ansøgninger' : 'Open in Applications';
+            section.appendChild(link);
+        }
+        return section;
+    }
+
+    // A course's part of its card: the title, its days and hours, where, and
+    // the places taken, with the way to the course in the Facilitators tab.
+    function courseCardSection(day) {
+        const da = currentLanguage === 'da';
+        const section = document.createElement('div');
+        section.className = 'plan-deadline-card-item';
+        const title = document.createElement('div');
+        title.className = 'plan-deadline-card-name';
+        title.appendChild(createCourseIcon());
+        title.appendChild(document.createTextNode(day.title || day.name));
+        section.appendChild(title);
+        const tbc = da ? ' (kan flytte sig)' : ' (TBC)';
+        const rows = [
+            [da ? 'Datoer' : 'Dates', (day.dates || formatDeadlineDay(day.dateKey)) + (day.datesTbc ? tbc : '')],
+            [da ? 'Tid' : 'Time', day.time],
+            [da ? 'Form' : 'Format', day.format],
+            [da ? 'Sted' : 'Where', day.where],
+            [da ? 'Pladser' : 'Places', day.places],
+        ];
+        const list = document.createElement('dl');
+        list.className = 'plan-deadline-card-rows';
+        rows.forEach(([label, value]) => {
+            if (!value) return;
+            const dt = document.createElement('dt');
+            dt.textContent = label;
+            const dd = document.createElement('dd');
+            dd.textContent = value;
+            list.append(dt, dd);
+        });
+        section.appendChild(list);
+        if (day.href) {
+            const link = document.createElement('a');
+            link.className = 'plan-deadline-card-link';
+            link.href = day.href;
+            link.textContent = da ? 'Åbn i Facilitatorer' : 'Open in Facilitators';
+            section.appendChild(link);
+        }
+        return section;
+    }
+
+    // The card of a deadline or a course: the sections given, under the item.
+    function openDeadlineCard(sections, anchorEl, extraClass) {
+        closeDeadlineCard();
+        closeDayMenu();
+        const card = document.createElement('div');
+        card.className = extraClass ? `plan-deadline-card ${extraClass}` : 'plan-deadline-card';
+        card.setAttribute('role', 'dialog');
+        // Built as elements, not as text: the words come from the records.
+        sections.forEach(section => card.appendChild(section));
+        ['mousedown', 'dblclick', 'click'].forEach((type) => {
+            card.addEventListener(type, (event) => {
+                if (type !== 'click' || !event.target.closest('a')) event.stopPropagation();
+            });
+        });
+        container.appendChild(card);
+        deadlineCardEl = card;
+        deadlineCardFor = anchorEl;
+        // Under the deadline, or over it near the bottom; inside the window.
+        const at = rectOf(anchorEl);
+        const rect = rectOf(card);
+        const zoom = zoomInfo().zoom;
+        const winW = window.innerWidth / zoom;
+        const winH = window.innerHeight / zoom;
+        const below = at.bottom + 8 + rect.height <= winH - 8;
+        card.style.left = `${Math.max(8, Math.min(at.left, winW - rect.width - 8))}px`;
+        card.style.top = `${below ? at.bottom + 8 : Math.max(8, at.top - rect.height - 8)}px`;
+        document.addEventListener('pointerdown', onDeadlineCardOutside, true);
+        document.addEventListener('keydown', onDeadlineCardKey, true);
+        calendarContainer.addEventListener('scroll', closeDeadlineCard);
     }
 
     const UI_TEXT = {
@@ -923,9 +1476,15 @@ const PlanModule = (function () {
         addGoalPerson = typeof opts.onAddPerson === 'function' ? opts.onAddPerson : null;
         pickGoalPerson = typeof opts.onPickGoalPerson === 'function' ? opts.onPickGoalPerson : null;
         changeTaskDue = typeof opts.onTaskDueChange === 'function' ? opts.onTaskDueChange : null;
+        reorderDayTasks = typeof opts.onTaskReorder === 'function' ? opts.onTaskReorder : null;
         changeRoadmapItem = typeof opts.onRoadmapItemChange === 'function' ? opts.onRoadmapItemChange : null;
+        editRoadmapItem = typeof opts.onRoadmapItemEdit === 'function' ? opts.onRoadmapItemEdit : null;
+        deleteRoadmapItem = typeof opts.onRoadmapItemDelete === 'function' ? opts.onRoadmapItemDelete : null;
         openTask = typeof opts.onTaskOpen === 'function' ? opts.onTaskOpen : null;
+        completeTask = typeof opts.onTaskComplete === 'function' ? opts.onTaskComplete : null;
         createTask = typeof opts.onTaskCreate === 'function' ? opts.onTaskCreate : null;
+        openDayTasks = typeof opts.onDayTasksOpen === 'function' ? opts.onDayTasksOpen : null;
+        closeDayTasks = typeof opts.onDayTasksClose === 'function' ? opts.onDayTasksClose : null;
         listCalendarChoices =
             typeof opts.onListCalendarChoices === 'function' ? opts.onListCalendarChoices : null;
         readCalendarEvents =
@@ -937,6 +1496,7 @@ const PlanModule = (function () {
         mePersonId = opts.mePersonId ? String(opts.mePersonId) : null;
         loadTaskTimes();
         setTasks(opts.tasks);
+        setTaskLists(opts.taskLists);
 
         // Create DOM structure
         container.innerHTML = getPlanHTML();
@@ -962,7 +1522,7 @@ const PlanModule = (function () {
         // Delay initial render of freeform elements to ensure DOM is fully laid out
         setTimeout(() => {
             renderFreeformElements();
-            if (calendarViewMode === 'week') scrollWeekViewToCurrentTime();
+            if (calendarViewMode === 'week') scrollWeekViewToTop();
         }, 100);
         setupToolbarListeners();
         setupResizeObserver();
@@ -1010,6 +1570,9 @@ const PlanModule = (function () {
             document.removeEventListener('keydown', onCalendarKeyDown);
             onCalendarKeyDown = null;
         }
+        // Its listeners are on the document, which outlives the calendar.
+        closeRoadmapCard();
+        closeWeekDayList();
         clearTimeout(redrawAfterWritingTimer);
         clearTimeout(scrollTimeout);
         scrollTimeout = null;
@@ -1021,10 +1584,9 @@ const PlanModule = (function () {
             window.removeEventListener('resize', onWindowResize);
             onWindowResize = null;
         }
-        if (onPopoverResize) {
-            window.removeEventListener('resize', onPopoverResize);
-            onPopoverResize = null;
-        }
+        // Its Escape listener is on the document.
+        closeCalendarDrawer();
+        closeCalendarDrawer = () => {};
         weekHourGutterObserver?.disconnect();
         weekHourGutterObserver = null;
         if (resizeTimer) clearTimeout(resizeTimer);
@@ -1065,10 +1627,16 @@ const PlanModule = (function () {
                         </button>
                     </div>
                     <div class="plan-calendar-sync-nav">
-                        <div class="plan-calendar-toggles"></div>
                         <button class="plan-nav-btn plan-calendar-sync-all-btn" title="Sync All Calendars">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                         </button>
+                        <div class="plan-calendar-toggles"></div>
+                        <div class="plan-bar-search">
+                            <button type="button" class="plan-nav-btn plan-bar-search-btn" title="Search" aria-label="Search">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            </button>
+                            <input type="text" class="plan-bar-search-input hidden" placeholder="Search..." aria-label="Search the calendar" autocomplete="off" spellcheck="false">
+                        </div>
                         <button class="plan-nav-btn plan-calendar-add-btn" title="Add Calendar">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 19h6"/><path d="M16 2v4"/><path d="M19 16v6"/><path d="M21 12.598V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8.5"/><path d="M3 10h18"/><path d="M8 2v4"/></svg>
                         </button>
@@ -1142,12 +1710,16 @@ const PlanModule = (function () {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                 </button>
             </div>
-            <!-- Calendar Popover (Add/Manage Calendars) -->
-            <div class="plan-calendar-popover hidden">
+            <!-- Manage calendars: a drawer at the right, over a dimmed calendar -->
+            <div class="plan-calendar-scrim hidden"></div>
+            <div class="plan-calendar-popover hidden" role="dialog" aria-label="Manage calendars">
                 <div class="plan-calendar-popover-header">
-                    <span class="plan-calendar-popover-title">Calendars</span>
-                    <span class="plan-calendar-count"></span>
+                    <div class="plan-calendar-drawer-heading">
+                        <span class="plan-calendar-popover-title">Manage calendars</span>
+                        <span class="plan-calendar-status"></span>
+                    </div>
                     <span class="plan-calendar-help-icon">?</span>
+                    <button type="button" class="plan-calendar-drawer-close" aria-label="Close">×</button>
                 </div>
                 <div class="plan-calendar-help-content hidden">
                     <p>A calendar has a private address. Copy it from your calendar, and paste it below.</p>
@@ -1172,10 +1744,14 @@ const PlanModule = (function () {
                     <p>Keep the address to yourself. A person who has it can read the calendar.</p>
                 </div>
                 <div class="plan-calendar-popover-body">
+                    <div class="plan-calendar-section-head">
+                        <span class="plan-calendar-added-title">Connected calendars</span>
+                        <span class="plan-calendar-count"></span>
+                    </div>
+                    <div class="plan-calendar-list"></div>
                     <div class="plan-calendar-picker hidden">
-                        <div class="plan-calendar-picker-title">Add a calendar</div>
                         <button type="button" class="plan-calendar-select">
-                            <span class="plan-calendar-select-label">Select a calendar</span>
+                            <span class="plan-calendar-select-label">Add a calendar…</span>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
                         </button>
                         <div class="plan-calendar-menu hidden">
@@ -1186,16 +1762,22 @@ const PlanModule = (function () {
                             <div class="plan-calendar-menu-list"></div>
                         </div>
                     </div>
-                    <div class="plan-calendar-added-title hidden">Showing in this calendar</div>
-                    <div class="plan-calendar-list"></div>
                     <div class="plan-calendar-add-form">
                         <input type="text" class="plan-calendar-name-input" placeholder="Calendar name">
                         <input type="text" class="plan-calendar-url-input" placeholder="Calendar address (https:// or webcal://)">
                         <button type="button" class="plan-calendar-help-link">Where do I find the address?</button>
                         <button class="plan-calendar-add-save-btn">Add Calendar</button>
                     </div>
-                    <p class="plan-calendar-hint">Set to Marked only, a calendar shows just the events you mark, so the calendar stays calm. To mark an event, start its description with DH-TO-DO. (REDD-DO works too.)</p>
-                    <div class="plan-calendar-status"></div>
+                    <p class="plan-calendar-hint">Marked shows only events whose description starts with DH-TO-DO (REDD-DO also works). Use it to keep busy calendars calm.</p>
+                    <div class="plan-calendar-sources hidden">
+                        <div class="plan-calendar-section-head">
+                            <span class="plan-calendar-added-title">From the planner</span>
+                        </div>
+                        <div class="plan-calendar-source-list"></div>
+                    </div>
+                </div>
+                <div class="plan-calendar-drawer-foot">
+                    <button type="button" class="plan-calendar-drawer-done">Done</button>
                 </div>
             </div>
         `;
@@ -1548,7 +2130,7 @@ const PlanModule = (function () {
             if (!item) return;
             item.start = step.start;
             item.end = step.end;
-            renderRoadmapBands();
+            redrawRoadmap();
             if (changeRoadmapItem) {
                 Promise.resolve()
                     .then(() => changeRoadmapItem(item.id, item.start, item.end))
@@ -2037,6 +2619,11 @@ const PlanModule = (function () {
     }
 
     function alignWeekHourGutter() {
+        // The gutter's head is as tall as a day's, so the names of the rows
+        // (Roadmap, Due) stand level with their rows.
+        const head = container.querySelector('.plan-week-day-column .plan-week-day-header');
+        const headSpacer = container.querySelector('.plan-week-time-gutter-header');
+        if (head && headSpacer) headSpacer.style.minHeight = `${head.offsetHeight}px`;
         const hours = container.querySelector('.plan-week-time-hours');
         const grid = container.querySelector('.plan-week-time-grid');
         if (!hours || !grid) return;
@@ -2286,8 +2873,78 @@ const PlanModule = (function () {
         return null;
     }
 
+    // A note open for its words when a drag or a resize starts is closed
+    // first. While it was open, every re-draw waited for the writing to end
+    // (readerIsWriting), so the moved note stayed where it was until the
+    // reader clicked somewhere else. Its words are kept as they are typed.
+    function stopWritingIn(el) {
+        el.querySelectorAll('[contenteditable="true"]').forEach((textEl) => {
+            textEl.blur();
+            textEl.setAttribute('contenteditable', 'false');
+        });
+    }
+
+    /*
+     * A task dragged in the row of a day takes a place among that day's
+     * tasks: the place is where the pointer is, between two of them. A line
+     * shows it. The ids come in the new order, with the task in them.
+     */
+    function weekRowTaskOrder(row, taskId, y) {
+        const chips = [...row.querySelectorAll('.plan-week-allday-item.calendar-task[data-task-id]')]
+            .filter((chip) => chip.dataset.taskId !== taskId);
+        let at = chips.length;
+        for (let i = 0; i < chips.length; i++) {
+            const r = rectOf(chips[i]);
+            if (y < r.top + r.height / 2) {
+                at = i;
+                break;
+            }
+        }
+        const ids = chips.map((chip) => chip.dataset.taskId);
+        ids.splice(at, 0, taskId);
+        return { ids, before: chips[at] || null, last: chips[chips.length - 1] || null };
+    }
+
+    let weekTaskDropLineEl = null;
+    function showWeekTaskDropLine(row, place) {
+        if (!row || !place) {
+            weekTaskDropLineEl?.remove();
+            weekTaskDropLineEl = null;
+            return;
+        }
+        if (!weekTaskDropLineEl) {
+            weekTaskDropLineEl = document.createElement('div');
+            weekTaskDropLineEl.className = 'plan-week-task-drop-line';
+        }
+        if (weekTaskDropLineEl.parentElement !== row) row.appendChild(weekTaskDropLineEl);
+        // In the row's own pixels, so a zoom does not move it.
+        const top = place.before
+            ? place.before.offsetTop - 3
+            : place.last
+                ? place.last.offsetTop + place.last.offsetHeight + 2
+                : 4;
+        weekTaskDropLineEl.style.top = `${top}px`;
+    }
+
+    // The tasks of the day in the order given, here at once; the host writes it.
+    function reorderWeekDay(dateKey, ids) {
+        if (!reorderDayTasks) return;
+        const rank = new Map(ids.map((id, i) => [id, i]));
+        const inDay = calendarTasks.filter((t) => rank.has(t.id))
+            .sort((a, b) => rank.get(a.id) - rank.get(b.id));
+        let n = 0;
+        calendarTasks = calendarTasks.map((t) => (rank.has(t.id) ? inDay[n++] : t));
+        rerenderWeek();
+        Promise.resolve(reorderDayTasks(dateKey, ids)).catch((err) => {
+            console.error('[Plan] Could not write the order of the tasks:', err);
+        });
+    }
+
     // Drag for a task in the all-day row, and for a block in the time grid.
-    function setupWeekBlockDrag(el, item, { onClick } = {}) {
+    // `liftFrom`: the element to draw under the pointer while it is dragged,
+    // when that is not `el` itself (a task taken from the list of its day is
+    // drawn as its task in the week). `onDragStart`: called once it moves.
+    function setupWeekBlockDrag(el, item, options = {}) {
         el.addEventListener('pointerdown', (event) => {
             if (event.button !== 0) return;
             if (event.target.closest('.plan-week-block-handle, .plan-week-goal-remove')) return;
@@ -2295,7 +2952,17 @@ const PlanModule = (function () {
             if (event.target.closest('[contenteditable="true"]')) { event.stopPropagation(); return; }
             event.preventDefault();
             event.stopPropagation();
+            startWeekBlockDrag(el, item, options, event);
+        });
+        // The canvas must not start a highlight under a block.
+        el.addEventListener('mousedown', (event) => event.stopPropagation());
+    }
 
+    // The drag of a block or a task in the week, from the press on. With
+    // `carried`, the pointer is already moving it (a task taken out of the
+    // host's list of a day): it is lifted at once, under the pointer.
+    function startWeekBlockDrag(el, item, { onClick, liftFrom, onDragStart, carried } = {}, event) {
+        {
             const startX = pointerX(event);
             const startY = pointerY(event);
             const isBlock = el.classList.contains('plan-week-block');
@@ -2305,6 +2972,13 @@ const PlanModule = (function () {
                 : 0;
             let dragging = false;
             let chip = null;
+            const threshold = carried ? 0 : GOAL_DRAG_THRESHOLD_PX;
+            // A task in the day's row is drawn under the pointer as itself,
+            // held where it was taken, so it reads as this one task moving.
+            const isTaskChip = !isBlock && el.classList.contains('calendar-task');
+            // A task dropped in a day's row goes to the place it is dropped at.
+            const taskOrdering = item.kind === 'task' && Boolean(reorderDayTasks);
+            let held = isTaskChip && !carried ? { x: startX - rectOf(el).left, y: startY - rectOf(el).top } : null;
 
             const cleanup = () => {
                 isWeekGoalDragInProgress = false;
@@ -2313,29 +2987,53 @@ const PlanModule = (function () {
                 document.removeEventListener('pointercancel', onUp);
                 chip?.remove();
                 el.classList.remove('plan-week-block--source-hidden');
+                showWeekTaskDropLine(null);
                 showWeekBlockGhost(null);
                 clearWeekGoalDropHighlight();
             };
 
             const onMove = (moveEvent) => {
                 if (!dragging) {
-                    if (Math.hypot(pointerX(moveEvent) - startX, pointerY(moveEvent) - startY) < GOAL_DRAG_THRESHOLD_PX) return;
+                    if (Math.hypot(pointerX(moveEvent) - startX, pointerY(moveEvent) - startY) < threshold) return;
                     dragging = true;
                     isWeekGoalDragInProgress = true;
-                    chip = document.createElement('div');
-                    chip.className = 'plan-week-drag-chip';
-                    chip.textContent = el.dataset.dragLabel || el.textContent;
-                    document.body.appendChild(chip);
+                    stopWritingIn(el);
+                    const lifted = liftFrom ? liftFrom() : (isTaskChip ? el : null);
+                    if (lifted) {
+                        chip = weekTaskDragCopy(lifted);
+                        if (!held) {
+                            // Held near its left end, as a task is taken.
+                            const r = rectOf(lifted);
+                            held = { x: Math.min(24, r.width / 2), y: r.height / 2 };
+                        }
+                        container.appendChild(chip);
+                    } else {
+                        chip = document.createElement('div');
+                        chip.className = 'plan-week-drag-chip';
+                        chip.textContent = el.dataset.dragLabel || el.textContent;
+                        document.body.appendChild(chip);
+                    }
                     el.classList.add('plan-week-block--source-hidden');
+                    if (onDragStart) onDragStart();
                 }
                 moveEvent.preventDefault();
-                // The label is on the body, outside the zoomed shell: screen pixels.
-                chip.style.left = `${moveEvent.clientX + 10}px`;
-                chip.style.top = `${moveEvent.clientY + 10}px`;
+                if (held) {
+                    // In the calendar, so in its own (unzoomed) pixels.
+                    chip.style.left = `${pointerX(moveEvent) - held.x}px`;
+                    chip.style.top = `${pointerY(moveEvent) - held.y}px`;
+                } else {
+                    // The label is on the body, outside the zoomed shell: screen pixels.
+                    chip.style.left = `${moveEvent.clientX + 10}px`;
+                    chip.style.top = `${moveEvent.clientY + 10}px`;
+                }
                 const timeTarget = findWeekTimeDropTarget(pointerX(moveEvent), pointerY(moveEvent));
                 showWeekBlockGhost(timeTarget, weekItemDuration(item), grabOffsetMinutes);
                 const rowTarget = timeTarget ? null : findWeekDayRowTarget(pointerX(moveEvent), pointerY(moveEvent));
                 setWeekGoalDropHighlight(rowTarget?.element || null);
+                showWeekTaskDropLine(
+                    taskOrdering && rowTarget?.element,
+                    taskOrdering && rowTarget?.element && weekRowTaskOrder(rowTarget.element, item.id, pointerY(moveEvent))
+                );
             };
 
             const onUp = (upEvent) => {
@@ -2346,9 +3044,19 @@ const PlanModule = (function () {
                     const barTarget = timeTarget || rowTarget || item.kind !== 'goal'
                         ? null
                         : findWeekGoalDropTarget(pointerX(upEvent), pointerY(upEvent));
+                    const order = taskOrdering && rowTarget?.element
+                        ? weekRowTaskOrder(rowTarget.element, item.id, pointerY(upEvent)).ids
+                        : null;
                     cleanup();
                     if (timeTarget) placeWeekItemAtTime(item, timeTarget.dateKey, timeTarget.minutes - grabOffsetMinutes);
-                    else if (rowTarget) takeWeekItemTimeAway(item, rowTarget.dateKey);
+                    else if (rowTarget) {
+                        const task = item.kind === 'task' ? calendarTasks.find((t) => t.id === item.id) : null;
+                        const before = task
+                            ? calendarTasks.filter((t) => t.dateKey === rowTarget.dateKey && !taskTimeOf(t.id) && taskShown(t)).map((t) => t.id).join()
+                            : '';
+                        takeWeekItemTimeAway(item, rowTarget.dateKey);
+                        if (order && order.join() !== before) reorderWeekDay(rowTarget.dateKey, order);
+                    }
                     else if (barTarget) takeWeekItemTimeAway(item, barTarget.dateKey);
                     return;
                 }
@@ -2359,9 +3067,34 @@ const PlanModule = (function () {
             document.addEventListener('pointermove', onMove);
             document.addEventListener('pointerup', onUp);
             document.addEventListener('pointercancel', onUp);
-        });
-        // The canvas must not start a highlight under a block.
-        el.addEventListener('mousedown', (event) => event.stopPropagation());
+            if (carried) onMove(event);
+        }
+    }
+
+    // A task the host's list of a day carried out of the list: the
+    // Calendar takes the drag over from here, to another day or a time.
+    // Answers whether it could (the task must be in the week on show).
+    function carryTask(taskId, clientX, clientY) {
+        const chip = weekTaskChipOf(taskId);
+        if (!chip || !changeTaskDue) return false;
+        const at = { clientX, clientY, preventDefault() {}, target: chip };
+        startWeekBlockDrag(chip, { kind: 'task', id: taskId }, { liftFrom: () => chip, carried: true }, at);
+        return true;
+    }
+
+    /**
+     * A copy of a task in a day's row, to follow the pointer: the same chip,
+     * lifted. In a row of its own, so the row's rules for a task apply to it.
+     */
+    function weekTaskDragCopy(el) {
+        const row = document.createElement('div');
+        row.className = 'plan-week-allday-row plan-week-drag-copy';
+        row.style.width = `${rectOf(el).width}px`;
+        const copy = el.cloneNode(true);
+        copy.classList.remove('plan-week-block--source-hidden');
+        copy.removeAttribute('title');
+        row.appendChild(copy);
+        return row;
     }
 
     // The top and the bottom edge of a block set its start and its end.
@@ -2377,6 +3110,7 @@ const PlanModule = (function () {
             let { startMinutes, endMinutes } = time;
             const from = { startMinutes, endMinutes, y: pointerY(event) };
             isWeekGoalDragInProgress = true;
+            stopWritingIn(blockEl);
 
             // By how far the pointer went, not by where it is: a short block is
             // drawn taller than its hours, so its bottom edge is not at its end.
@@ -2509,11 +3243,12 @@ const PlanModule = (function () {
         });
         calendarTasks.forEach((task) => {
             const time = taskTimeOf(task.id);
-            if (!time) return;
+            if (!time || !taskShown(task)) return;
             let blockEl = null;
             blockEl = draw({ kind: 'task', id: task.id }, task.dateKey, task.name, time, createTaskIcon(task), () => {
-                if (openTask && blockEl) openTask(task.id, taskAnchorOf(blockEl));
+                if (openTask && blockEl) openTaskCard(task.id, taskAnchorOf(blockEl));
             });
+            blockEl?.classList.toggle('is-done', task.completed);
             if (blockEl && openTask) blockEl.title = `${blockEl.title} Click to open.`;
         });
     }
@@ -2961,22 +3696,6 @@ const PlanModule = (function () {
         });
         drawWeekDayGoals(onDays);
 
-        // The way to a new goal: words under the day's name while the pointer
-        // is in that day, and a small "+" when the day has a goal already.
-        container.querySelectorAll('.plan-week-day-goals').forEach((row) => {
-            const add = document.createElement('button');
-            add.type = 'button';
-            add.className = 'plan-week-add-goal' + (row.childElementCount > 0 ? ' plan-week-add-goal--more' : '');
-            add.textContent = row.childElementCount > 0 ? '+' : (currentLanguage === 'da' ? '+ Tilføj et mål' : '+ Add a goal');
-            add.title = currentLanguage === 'da' ? 'Tilføj et mål for dagen' : 'Add a goal for this day';
-            add.addEventListener('mousedown', (event) => event.stopPropagation());
-            add.addEventListener('click', (event) => {
-                event.stopPropagation();
-                openGoalEditor({ goal: null, dateKey: row.dataset.dateKey, anchorEl: row });
-            });
-            row.appendChild(add);
-        });
-
         renderWeekBlocks();
         requestAnimationFrame(() => syncWeekGoalGutterSpacer());
     }
@@ -3024,7 +3743,7 @@ const PlanModule = (function () {
             calendarContainer.scrollLeft = 0;
         }
         if (mode === 'week') {
-            requestAnimationFrame(() => scrollWeekViewToCurrentTime());
+            requestAnimationFrame(() => scrollWeekViewToTop());
         }
     }
 
@@ -3140,9 +3859,14 @@ const PlanModule = (function () {
     }
 
     function renderCalendar() {
-        const grid = container.querySelector('.plan-calendar-grid');
+        // Nothing to draw on: the calendar was taken off the page (destroy).
+        const grid = container && container.querySelector('.plan-calendar-grid');
+        if (!grid) return;
         grid.innerHTML = '';
         grid.classList.toggle('plan-week-grid', calendarViewMode === 'week');
+        // Its counts are of the tasks in view, which this draw may change.
+        renderPeopleToggle();
+        renderListsToggle();
 
         if (calendarViewMode === 'week') {
             renderWeekView(grid);
@@ -3169,13 +3893,14 @@ const PlanModule = (function () {
 
     function renderWeekView(grid) {
         weekRoadmapEntries = weekRoadmapItems();
+        packWeekRoadmapLanes();
         const { first, last } = weekRenderedRange();
         const carousel = first < 0;
         grid.classList.toggle('plan-week-grid--carousel', carousel);
         // Seven days fill the width. The hidden days are as wide, outside it.
         grid.style.gridTemplateColumns = carousel
-            ? `36px repeat(${last - first + 1}, calc((100% - 36px - 84px) / 7))`
-            : `36px repeat(7, minmax(0, 1fr))`;
+            ? `${WEEK_GUTTER}px repeat(${last - first + 1}, calc((100% - ${WEEK_GUTTER}px - 84px) / 7))`
+            : `${WEEK_GUTTER}px repeat(7, minmax(0, 1fr))`;
         grid.appendChild(createWeekTimeGutter());
 
         for (let i = first; i <= last; i++) {
@@ -3188,6 +3913,9 @@ const PlanModule = (function () {
         requestAnimationFrame(drawWeekRoadmap);
         requestAnimationFrame(updateWeekHeadCover);
     }
+
+    // The column at the left: the hours, and the names of the rows above them.
+    const WEEK_GUTTER = 60;
 
     // ---- Sideways scroll, a day at a time ----
     let weekShiftPx = 0;
@@ -3276,7 +4004,10 @@ const PlanModule = (function () {
         gutter.appendChild(headerSpacer);
 
         const roadmapSpacer = weekRoadmapSpace();
-        if (roadmapSpacer) gutter.appendChild(roadmapSpacer);
+        if (roadmapSpacer) {
+            roadmapSpacer.appendChild(weekRowLabel('Roadmap', 'Roadmap'));
+            gutter.appendChild(roadmapSpacer);
+        }
 
         const dayGoalsSpacer = document.createElement('div');
         dayGoalsSpacer.className = 'plan-week-day-goals-spacer';
@@ -3284,6 +4015,7 @@ const PlanModule = (function () {
 
         const alldaySpacer = document.createElement('div');
         alldaySpacer.className = 'plan-week-allday-spacer';
+        alldaySpacer.appendChild(weekRowLabel('Due', 'Frist'));
         gutter.appendChild(alldaySpacer);
 
         const hours = document.createElement('div');
@@ -3297,6 +4029,38 @@ const PlanModule = (function () {
         }
         gutter.appendChild(hours);
         return gutter;
+    }
+
+    // The name of a row of the week, in the column at the left.
+    function weekRowLabel(en, da) {
+        const label = document.createElement('span');
+        label.className = 'plan-week-row-label';
+        label.textContent = currentLanguage === 'da' ? da : en;
+        return label;
+    }
+
+    // The way to a new task for a day, under the day's tasks, while the
+    // pointer is in that day. It opens the host's task box, as a double
+    // click in the row does. It took the place of "+ Add a goal".
+    function createWeekAddTaskButton(dateKey, col) {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'plan-week-add-task';
+        add.textContent = currentLanguage === 'da' ? '+ Tilføj en opgave' : '+ Add a task';
+        add.title = currentLanguage === 'da' ? 'Tilføj en opgave for dagen' : 'Add a task for this day';
+        add.addEventListener('mousedown', (event) => event.stopPropagation());
+        add.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (!createTask) return;
+            const colRect = rectOf(col);
+            const at = rectOf(add);
+            createTask({
+                dateKey,
+                startMinutes: null,
+                anchor: { left: toScreen(colRect.left), right: toScreen(colRect.right), top: toScreen(at.top), bottom: toScreen(at.bottom) },
+            });
+        });
+        return add;
     }
 
     function createWeekDayColumn(date) {
@@ -3324,10 +4088,16 @@ const PlanModule = (function () {
         const roadmapSpace = weekRoadmapSpace();
         if (roadmapSpace) col.appendChild(roadmapSpace);
 
+        // The day's name and the Roadmap are on the page. The card of the
+        // day starts under them, with the tasks.
+        const card = document.createElement('div');
+        card.className = 'plan-week-day-card';
+        col.appendChild(card);
+
         const dayGoals = document.createElement('div');
         dayGoals.className = 'plan-week-day-goals';
         dayGoals.dataset.dateKey = dateKey;
-        col.appendChild(dayGoals);
+        card.appendChild(dayGoals);
 
         const body = document.createElement('div');
         body.className = 'plan-week-day-body';
@@ -3346,16 +4116,30 @@ const PlanModule = (function () {
         }
         const deadlineEl = createDeadlineEl(dateKey, 'plan-week-allday-item');
         if (deadlineEl) alldayRow.appendChild(deadlineEl);
-        calendarTasks
-            .filter((task) => task.dateKey === dateKey && !taskTimeOf(task.id))
+        const coursesEl = createCoursesEl(dateKey, 'plan-week-allday-item');
+        if (coursesEl) alldayRow.appendChild(coursesEl);
+        const dayTasks = calendarTasks.filter((task) => task.dateKey === dateKey);
+        // What the pills hide, not the search: a search says what it keeps.
+        const hiddenToday = dayTasks.filter(
+            (task) => matchesSearch(task.name, task.listName) && !taskShown(task)
+        ).length;
+        dayTasks
+            .filter((task) => !taskTimeOf(task.id) && taskShown(task))
             .forEach((task) => {
                 const item = createTaskItemEl(task, 'plan-week-allday-item');
-                item.title = `${item.title}. Drag it to a time of the day.`;
+                // The list of the day, on hover, has the whole name; a
+                // tooltip would show over it.
+                item.removeAttribute('title');
+                item.setAttribute('aria-label', task.name);
+                item.dataset.taskId = task.id;
+                setupWeekDayListHover(item, dateKey);
                 setupWeekBlockDrag(item, { kind: 'task', id: task.id }, {
-                    onClick: () => { if (openTask) openTask(task.id, taskAnchorOf(item)); },
+                    onClick: () => { if (openTask) openTaskCard(task.id, taskAnchorOf(item)); },
                 });
                 alldayRow.appendChild(item);
             });
+        if (hiddenToday) alldayRow.appendChild(createHiddenTasksNote(hiddenToday));
+        if (createTask) alldayRow.appendChild(createWeekAddTaskButton(dateKey, col));
         body.appendChild(alldayRow);
 
         const timeGrid = document.createElement('div');
@@ -3375,7 +4159,7 @@ const PlanModule = (function () {
             timeGrid.appendChild(slot);
         }
         body.appendChild(timeGrid);
-        col.appendChild(body);
+        card.appendChild(body);
 
         // Legacy hook for month-style note queries (hidden, unused in week layout)
         const legacyRow = document.createElement('div');
@@ -3384,7 +4168,7 @@ const PlanModule = (function () {
         const legacyNoteArea = document.createElement('div');
         legacyNoteArea.className = 'plan-note-area';
         legacyRow.appendChild(legacyNoteArea);
-        col.appendChild(legacyRow);
+        card.appendChild(legacyRow);
 
         return col;
     }
@@ -3686,20 +4470,13 @@ const PlanModule = (function () {
         grid.appendChild(marker);
     }
 
-    function scrollWeekViewToCurrentTime() {
+    // The week opens at its top: the Roadmap, the goals and the tasks due
+    // are what a week is read for first, and the hours are below them. It
+    // used to open at the time of day, which late in the day put all of
+    // that out of sight.
+    function scrollWeekViewToTop() {
         if (calendarViewMode !== 'week' || !calendarContainer) return;
-
-        const todayKey = formatDateKey(new Date());
-        if (!isDateInVisibleWeek(todayKey)) {
-            calendarContainer.scrollTop = 0;
-            return;
-        }
-
-        const now = new Date();
-        const minutes = now.getHours() * 60 + now.getMinutes();
-        const rangeStart = WEEK_VIEW_START_HOUR * 60;
-        const targetTop = Math.max(0, ((minutes - rangeStart) / 60) * WEEK_VIEW_HOUR_HEIGHT - 120);
-        calendarContainer.scrollTop = targetTop;
+        calendarContainer.scrollTop = 0;
     }
 
     function createMonthColumn(month, year) {
@@ -3827,7 +4604,7 @@ const PlanModule = (function () {
             container.querySelectorAll('.plan-week-allday-row').forEach((row) => {
                 // The notes and the calendar events are drawn again below. A holiday,
                 // a deadline and a To-Do task are made with the column, and stay.
-                row.querySelectorAll('.plan-week-allday-item:not(.holiday):not(.application-deadline):not(.calendar-task)').forEach((el) => el.remove());
+                row.querySelectorAll('.plan-week-allday-item:not(.holiday):not(.application-deadline):not(.facilitator-course):not(.calendar-task)').forEach((el) => el.remove());
             });
             container.querySelectorAll('.plan-week-time-grid').forEach((grid) => {
                 grid.querySelectorAll('.plan-week-event, .plan-week-now-marker, .plan-week-line').forEach((el) => el.remove());
@@ -3865,6 +4642,7 @@ const PlanModule = (function () {
             // Filter function to check if item should be shown
             const view = calendarViewMode === 'week' ? 'week' : 'months';
             const isVisible = item => {
+                if (!matchesSearch(item.text, item.label)) return false;
                 if (item.source !== 'calendar') return true; // User items always visible
                 if (!visibleCalendarIds.includes(item.calendarId)) return false;
                 // An unmarked event, read because one view shows all: shown
@@ -3883,6 +4661,8 @@ const PlanModule = (function () {
             // The days first: a day opened in place is taller, and the lines
             // are measured against the rows.
             renderMonthDays(freeformNotes.filter(isVisible));
+
+            repairLineDays();
 
             // Render all lines (user-drawn AND calendar-synced)
             freeformLines.filter(isVisible).forEach(l => {
@@ -3961,7 +4741,8 @@ const PlanModule = (function () {
      */
     function dayItemRank(item) {
         if (item.kind === 'deadline') return [0, 0];
-        if (item.kind === 'task') return [0, 1];
+        if (item.kind === 'course') return [0, 1];
+        if (item.kind === 'task') return [0, 2];
         const note = item.note;
         if (note.source === 'calendar') {
             if (note.isAllDay || note.startMinutes == null) return [1, 0];
@@ -3982,15 +4763,26 @@ const PlanModule = (function () {
         const deadlines = window.PlanApplicationDeadlines;
         if (Array.isArray(deadlines)) {
             deadlines.forEach(deadline => {
-                if (deadline && deadline.dateKey) add(deadline.dateKey, { kind: 'deadline', deadline });
+                if (deadline && deadline.dateKey && matchesSearch(deadline.name, deadline.funder)) {
+                    add(deadline.dateKey, { kind: 'deadline', deadline });
+                }
             });
         }
 
-        calendarTasks.forEach(task => add(task.dateKey, { kind: 'task', task }));
+        const courseDays = window.PlanFacilitatorCourses;
+        if (Array.isArray(courseDays)) {
+            courseDays.forEach(day => {
+                if (day && day.dateKey && matchesSearch(day.name, day.title)) add(day.dateKey, { kind: 'course', day });
+            });
+        }
+
+        calendarTasks.filter(task => task.shown && !task.completed && taskShown(task)).forEach(task => add(task.dateKey, { kind: 'task', task }));
 
         container.querySelectorAll('.plan-day-row.is-expanded').forEach(row => row.classList.remove('is-expanded'));
         const itemEl = item => item.kind === 'deadline'
             ? createDeadlineItemEl(item.deadline)
+            : item.kind === 'course'
+                ? createCourseItemEl(item.day)
             : item.kind === 'task'
                 ? createTaskItemEl(item.task)
                 : createNote(item.note);
@@ -4047,8 +4839,6 @@ const PlanModule = (function () {
     const ROADMAP_BAND_WIDTH = 18;
     const ROADMAP_BAND_GAP = 3;
     const ROADMAP_BAND_EDGE = 4;
-    const ROADMAP_EYE_OPEN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
-    const ROADMAP_EYE_SHUT_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
 
     function roadmapData() {
         const data = window.PlanRoadmap;
@@ -4078,6 +4868,114 @@ const PlanModule = (function () {
         } catch (e) {
             /* private window: the choice lasts this visit */
         }
+    }
+
+    /*
+     * Whose due tasks the calendar shows: everyone (null), or the people
+     * picked in the People pill. Kept on this device, as the Roadmap's
+     * choice is. A task shows when one of its people is picked; a task for
+     * no one shows only with everyone. A day says how many it hides, so
+     * nothing goes away without a word.
+     */
+    function taskPeopleKey() {
+        return STORAGE_PREFIX + 'task-people';
+    }
+
+    function readTaskPeople() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(taskPeopleKey()) || 'null');
+            return Array.isArray(saved) ? saved.map(String) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeTaskPeople(ids) {
+        try {
+            if (ids === null) localStorage.removeItem(taskPeopleKey());
+            else localStorage.setItem(taskPeopleKey(), JSON.stringify(ids));
+        } catch (e) {
+            /* private window: the choice lasts this visit */
+        }
+    }
+
+    /** The picked people who are still on the board, or null for everyone. */
+    function pickedTaskPeople() {
+        const saved = readTaskPeople();
+        if (saved === null || !goalPeople.length) return null;
+        const known = saved.filter((id) => goalPeople.some((person) => person.id === id));
+        return known.length === goalPeople.length ? null : known;
+    }
+
+    function taskShownForPeople(task) {
+        const picked = pickedTaskPeople();
+        if (picked === null) return true;
+        return task.assigneeIds.some((id) => picked.includes(id));
+    }
+
+    /*
+     * Which lists' tasks the calendar shows: all, less the ones unticked in
+     * the Lists pill. Kept on this device, as the People choice is, and kept
+     * as the lists left out, so a new list shows. The board's own lists:
+     * the tab group the list view has open does not come into it.
+     */
+    const NO_LIST_ID = '__none__';
+    let taskLists = [];   // [{ id, name, initials, icon, groupId, groupName }]
+    let taskListsKey = '';
+
+    function setTaskLists(lists) {
+        const next = (Array.isArray(lists) ? lists : [])
+            .filter((l) => l && l.id && l.name)
+            .map((l) => ({
+                id: String(l.id),
+                name: String(l.name),
+                initials: l.initials ? String(l.initials).slice(0, 2) : '',
+                icon: Array.isArray(l.icon)
+                    ? l.icon.filter((shape) => Array.isArray(shape) && TASK_ICON_TAGS.includes(shape[0]))
+                    : [],
+                groupId: l.groupId ? String(l.groupId) : null,
+                groupName: l.groupName ? String(l.groupName) : null,
+            }));
+        const key = JSON.stringify(next);
+        if (key === taskListsKey) return;
+        taskListsKey = key;
+        taskLists = next;
+        if (container && isInitialized) {
+            renderCalendar();
+            scheduleLayoutRefresh();
+        }
+    }
+
+    function hiddenListsKey() {
+        return STORAGE_PREFIX + 'task-lists-hidden';
+    }
+
+    function readHiddenLists() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(hiddenListsKey()) || '[]');
+            return Array.isArray(saved) ? saved.map(String) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function writeHiddenLists(ids) {
+        try {
+            if (!ids.length) localStorage.removeItem(hiddenListsKey());
+            else localStorage.setItem(hiddenListsKey(), JSON.stringify(ids));
+        } catch (e) {
+            /* private window: the choice lasts this visit */
+        }
+    }
+
+    function taskShownForLists(task) {
+        const hidden = readHiddenLists();
+        return !hidden.length || !hidden.includes(task.listId || NO_LIST_ID);
+    }
+
+    /** Whether a task shows: picked by the People pill and the Lists pill both. */
+    function taskShown(task) {
+        return taskShownForPeople(task) && taskShownForLists(task) && matchesSearch(task.name, task.listName);
     }
 
     function renderRoadmapBands() {
@@ -4154,6 +5052,7 @@ const PlanModule = (function () {
                     (item.category ? ` is-${item.category}` : '') +
                     (item.start < first ? ' continues-before' : '') +
                     (item.end > last ? ' continues-after' : '');
+                paintRoadmapColour(el, item.category);
                 const startY = top.offsetTop;
                 el.style.top = `${startY + 2}px`;
                 el.style.height = `${bottom.offsetTop + bottom.offsetHeight - startY - 4}px`;
@@ -4189,6 +5088,8 @@ const PlanModule = (function () {
     const WEEK_ROADMAP_LANE = 22;
     const WEEK_ROADMAP_GAP = 3;
     let weekRoadmapEntries = [];
+    let weekRoadmapLanes = new Map();   // item id → its line in the strip
+    let weekRoadmapLaneCount = 0;
 
     function weekVisibleKeys() {
         return { from: formatDateKey(weekStartDate), to: formatDateKey(addDays(weekStartDate, 6)) };
@@ -4207,12 +5108,34 @@ const PlanModule = (function () {
             .sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end));
     }
 
+    /**
+     * Each bar takes the first line that is free on all its days, so bars
+     * that do not meet share a line. The entries come sorted by start.
+     */
+    function packWeekRoadmapLanes() {
+        const { from } = weekVisibleKeys();
+        const lineEnds = [];
+        weekRoadmapLanes = new Map();
+        weekRoadmapEntries.forEach(item => {
+            const start = item.start < from ? from : item.start;
+            let lane = lineEnds.findIndex(end => end < start);
+            if (lane === -1) lane = lineEnds.length;
+            lineEnds[lane] = item.end;
+            weekRoadmapLanes.set(item.id, lane);
+        });
+        weekRoadmapLaneCount = lineEnds.length;
+    }
+
+    function weekRoadmapStripHeight() {
+        return `${weekRoadmapLaneCount * (WEEK_ROADMAP_LANE + WEEK_ROADMAP_GAP) + WEEK_ROADMAP_GAP * 2}px`;
+    }
+
     /** The room for the strip, the same in every day and in the hours column. */
     function weekRoadmapSpace() {
         if (!weekRoadmapEntries.length) return null;
         const space = document.createElement('div');
         space.className = 'plan-week-roadmap-space';
-        space.style.height = `${weekRoadmapEntries.length * (WEEK_ROADMAP_LANE + WEEK_ROADMAP_GAP) + WEEK_ROADMAP_GAP * 2}px`;
+        space.style.height = weekRoadmapStripHeight();
         return space;
     }
 
@@ -4236,14 +5159,15 @@ const PlanModule = (function () {
         if (!grid || !head) return;
         const cover = Math.max(0, calendarContainer.scrollTop - grid.offsetTop + head.offsetHeight);
         grid.style.setProperty('--week-head-cover', `${cover}px`);
-        // The hour labels too: one would stand beside the heads, level with
-        // the days' names. Cut in the labels' own place in the grid.
-        const hours = grid.querySelector('.plan-week-time-hours');
-        if (hours) {
-            const from = hours.offsetTop + (hours.offsetParent === grid ? 0 : hours.offsetParent.offsetTop);
+        // The hour labels and the names of the rows too: one would stand
+        // beside the heads, level with the days' names. Cut each in its own
+        // place in the grid.
+        grid.querySelectorAll('.plan-week-time-hours, .plan-week-row-label').forEach(el => {
+            let from = 0;
+            for (let at = el; at && at !== grid; at = at.offsetParent) from += at.offsetTop;
             const cut = Math.max(0, cover - from);
-            hours.style.clipPath = cut ? `inset(${cut}px -40px 0 -40px)` : '';
-        }
+            el.style.clipPath = cut ? `inset(${cut}px -40px 0 -40px)` : '';
+        });
     }
 
     function drawWeekRoadmap() {
@@ -4252,6 +5176,11 @@ const PlanModule = (function () {
         if (!grid) return;
         grid.querySelectorAll('.plan-week-roadmap-layer').forEach(el => el.remove());
         if (!weekRoadmapEntries.length) return;
+        // A bar that was moved can now meet another one, or no longer meet it.
+        weekRoadmapEntries.sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end));
+        packWeekRoadmapLanes();
+        const strip = weekRoadmapStripHeight();
+        grid.querySelectorAll('.plan-week-roadmap-space').forEach(el => { el.style.height = strip; });
         const { from, to } = weekVisibleKeys();
         const columnFor = key => grid.querySelector(`.plan-week-day-column[data-date-key="${key}"]`);
         // The layer moves with the days when they scroll sideways (see the
@@ -4261,7 +5190,8 @@ const PlanModule = (function () {
         layer.className = 'plan-week-roadmap-layer';
         const data = roadmapData();
         const labels = new Map(((data && data.categories) || []).map(c => [c.id, c.label]));
-        weekRoadmapEntries.forEach((item, lane) => {
+        weekRoadmapEntries.forEach(item => {
+            const lane = weekRoadmapLanes.get(item.id) || 0;
             const startKey = item.start < from ? from : item.start;
             const endKey = item.end > to ? to : item.end;
             const first = columnFor(startKey);
@@ -4271,12 +5201,18 @@ const PlanModule = (function () {
             const bar = document.createElement('div');
             bar.className = 'plan-week-roadmap-bar' + (item.category ? ` is-${item.category}` : '') +
                 (item.start < from ? ' continues-before' : '') + (item.end > to ? ' continues-after' : '');
+            paintRoadmapColour(bar, item.category);
             bar.style.left = `${first.offsetLeft}px`;
             bar.style.width = `${last.offsetLeft + last.offsetWidth - first.offsetLeft}px`;
             bar.style.top = `${first.offsetTop + space.offsetTop + WEEK_ROADMAP_GAP + lane * (WEEK_ROADMAP_LANE + WEEK_ROADMAP_GAP)}px`;
             bar.style.height = `${WEEK_ROADMAP_LANE}px`;
             const category = labels.get(item.category);
             bar.title = `${item.title}${category ? ` · ${category}` : ''}\n${item.start} – ${item.end}`;
+            if (item.start >= from) {
+                const dot = document.createElement('span');
+                dot.className = 'plan-week-roadmap-dot';
+                bar.appendChild(dot);
+            }
             const name = document.createElement('span');
             name.className = 'plan-week-roadmap-name';
             name.textContent = `${item.start < from ? '‹ ' : ''}${item.title}`;
@@ -4287,6 +5223,8 @@ const PlanModule = (function () {
                 until.textContent = `${currentLanguage === 'da' ? 'til' : 'until'} ${shortDay(item.end)} ›`;
                 bar.appendChild(until);
             }
+            // Taken anywhere, it moves along the days, the length kept.
+            if (changeRoadmapItem) makeRoadmapBandMovable(bar, item, { start: false, end: false });
             layer.appendChild(bar);
         });
         grid.appendChild(layer);
@@ -4296,13 +5234,21 @@ const PlanModule = (function () {
      * A band can be taken and moved to other days, the length kept, or taken
      * by its top or bottom end to start or end on another day. It follows
      * the pointer day by day, across months too, and is saved when let go.
+     * The week's bars move the same way, along the days of the week.
      */
     function roadmapDayAtPoint(x, y) {
         for (const el of document.elementsFromPoint(x, y)) {
-            const row = el.closest && el.closest('.plan-day-row[data-date-key]');
+            const row = el.closest &&
+                el.closest('.plan-day-row[data-date-key], .plan-week-day-column[data-date-key]');
             if (row && container && container.contains(row)) return row.dataset.dateKey;
         }
         return null;
+    }
+
+    /** The bands again, in the months or in the week, where they are now. */
+    function redrawRoadmap() {
+        if (calendarViewMode === 'week') drawWeekRoadmap();
+        else renderRoadmapBands();
     }
 
     function roadmapDaysBetween(fromKey, toKey) {
@@ -4331,6 +5277,7 @@ const PlanModule = (function () {
         e.preventDefault();
         e.stopPropagation();
         const original = { start: item.start, end: item.end };
+        const bar = e.currentTarget;
         const grabKey = roadmapDayAtPoint(e.clientX, e.clientY) || item.start;
         isDragInProgress = true;
         container.classList.add('is-dragging-roadmap', `roadmap-drag-${mode}`);
@@ -4352,15 +5299,20 @@ const PlanModule = (function () {
             if (start === item.start && end === item.end) return;
             item.start = start;
             item.end = end;
-            renderRoadmapBands();
+            redrawRoadmap();
         };
-        const onUp = () => {
+        const onUp = ev => {
             document.removeEventListener('pointermove', onMove, true);
             document.removeEventListener('pointerup', onUp, true);
             document.removeEventListener('pointercancel', onUp, true);
             isDragInProgress = false;
             if (container) container.classList.remove('is-dragging-roadmap', `roadmap-drag-${mode}`);
-            if (item.start === original.start && item.end === original.end) return;
+            if (item.start === original.start && item.end === original.end) {
+                // A press that did not move is a click: it opens the entry's card.
+                const still = Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < TASK_DRAG_THRESHOLD;
+                if (mode === 'move' && ev.type === 'pointerup' && still) openRoadmapCard(item, bar, pointerX(ev));
+                return;
+            }
             pushMoveHistory({ kind: 'roadmap', id: item.id, start: original.start, end: original.end });
             Promise.resolve()
                 .then(() => changeRoadmapItem(item.id, item.start, item.end))
@@ -4368,12 +5320,227 @@ const PlanModule = (function () {
                     console.warn('[Plan] Could not save the roadmap entry:', err);
                     item.start = original.start;
                     item.end = original.end;
-                    if (container) renderRoadmapBands();
+                    if (container) redrawRoadmap();
                 });
         };
         document.addEventListener('pointermove', onMove, true);
         document.addEventListener('pointerup', onUp, true);
         document.addEventListener('pointercancel', onUp, true);
+    }
+
+    /*
+     * A Roadmap entry's card: its name, its track and its dates, as the
+     * Roadmap tab shows them (components/ProjectPlanningGantt.tsx). Nothing
+     * changes until Done. Escape or a press outside closes it with no change.
+     */
+    let roadmapCardEl = null;
+    // Sent on the window when the calendar opens a card of its own, so the
+    // host closes the card it shows for a task (use-calendar-card.ts).
+    const PLAN_CARD_OPEN_EVENT = 'plan-calendar-card-open';
+    let roadmapCardFor = null;   // the id of the entry it shows
+    let roadmapCardClosed = null; // { id, at }: closed by a press on its own bar
+
+    function closeRoadmapCard() {
+        roadmapCardEl?.remove();
+        roadmapCardEl = null;
+        roadmapCardFor = null;
+        document.removeEventListener('pointerdown', onRoadmapCardOutside, true);
+        document.removeEventListener('keydown', onRoadmapCardKey, true);
+        calendarContainer?.removeEventListener('scroll', closeRoadmapCard);
+    }
+
+    function onRoadmapCardOutside(event) {
+        if (!roadmapCardEl || roadmapCardEl.contains(event.target)) return;
+        const id = roadmapCardFor;
+        closeRoadmapCard();
+        const bar = event.target.closest && event.target.closest('.plan-week-roadmap-bar, .plan-roadmap-band');
+        if (bar) roadmapCardClosed = { id, at: Date.now() };
+        else swallowNextPress();
+    }
+
+    function onRoadmapCardKey(event) {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        closeRoadmapCard();
+    }
+
+    function roadmapDaysText(start, end) {
+        const days = Math.max(1, roadmapDaysBetween(start, end) + 1);
+        if (currentLanguage === 'da') return `${days} ${days === 1 ? 'dag' : 'dage'}`;
+        return `${days} ${days === 1 ? 'day' : 'days'}`;
+    }
+
+    function openRoadmapCard(item, anchorEl, atX) {
+        if (!editRoadmapItem) return;
+        // The press that closed this card must not open it again.
+        if (roadmapCardClosed && roadmapCardClosed.id === item.id && Date.now() - roadmapCardClosed.at < 600) {
+            roadmapCardClosed = null;
+            return;
+        }
+        closeRoadmapCard();
+        closeDeadlineCard();
+        closeDayMenu();
+        // One card at a time: the host puts its task card away.
+        window.dispatchEvent(new CustomEvent(PLAN_CARD_OPEN_EVENT));
+        const da = currentLanguage === 'da';
+        const data = roadmapData();
+        const categories = (data && data.categories) || [];
+        const milestone = item.kind === 'milestone';
+        const draft = { title: item.title, category: item.category, start: item.start, end: item.end };
+
+        const make = (tag, className, text) => {
+            const el = document.createElement(tag);
+            if (className) el.className = className;
+            if (text != null) el.textContent = text;
+            return el;
+        };
+        const card = make('div', 'plan-roadmap-card');
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-label', item.title);
+
+        const title = make('input', 'plan-roadmap-card-title');
+        title.type = 'text';
+        title.value = item.title;
+        title.setAttribute('aria-label', da ? 'Navn' : 'Name');
+        card.appendChild(title);
+
+        card.appendChild(make('div', 'plan-roadmap-card-label', da ? 'Spor' : 'Track'));
+        const tracks = make('div', 'plan-roadmap-card-tracks');
+        const drawTracks = () => {
+            tracks.replaceChildren();
+            categories.forEach(category => {
+                const on = draft.category === category.id;
+                const chip = make('button', `plan-roadmap-card-track is-${category.id}` + (on ? ' is-on' : ''));
+                chip.type = 'button';
+                chip.setAttribute('aria-pressed', String(on));
+                paintRoadmapColour(chip, category.id);
+                chip.appendChild(make('span', 'plan-roadmap-card-dot'));
+                chip.appendChild(make('span', null, category.label));
+                if (on) chip.appendChild(make('span', 'plan-roadmap-card-check', '✓'));
+                chip.addEventListener('click', () => {
+                    draft.category = category.id;
+                    drawTracks();
+                    tracks.querySelector('.is-on')?.focus();
+                });
+                tracks.appendChild(chip);
+            });
+        };
+        drawTracks();
+        card.appendChild(tracks);
+
+        const datesHead = make('div', 'plan-roadmap-card-dates-head');
+        datesHead.appendChild(make('span', 'plan-roadmap-card-label', milestone ? (da ? 'Dato' : 'Date') : (da ? 'Datoer' : 'Dates')));
+        const daysCount = make('span', 'plan-roadmap-card-days');
+        datesHead.appendChild(daysCount);
+        card.appendChild(datesHead);
+        const dates = make('div', 'plan-roadmap-card-dates');
+        const dateBox = (value, label) => {
+            const box = make('input', 'plan-roadmap-card-date');
+            box.type = 'date';
+            box.value = value;
+            box.setAttribute('aria-label', label);
+            return box;
+        };
+        const startBox = dateBox(draft.start, milestone ? (da ? 'Dato' : 'Date') : (da ? 'Start' : 'Start'));
+        const endBox = dateBox(draft.end, da ? 'Slut' : 'End');
+        const showDays = () => { daysCount.textContent = milestone ? '' : roadmapDaysText(draft.start, draft.end); };
+        startBox.addEventListener('change', () => {
+            if (!startBox.value) { startBox.value = draft.start; return; }
+            // The length is kept when the start moves, as a drag keeps it.
+            const shift = roadmapDaysBetween(draft.start, startBox.value);
+            draft.start = startBox.value;
+            draft.end = milestone ? draft.start : formatDateKey(addDays(parseDateKey(draft.end), shift));
+            endBox.value = draft.end;
+            showDays();
+        });
+        endBox.addEventListener('change', () => {
+            if (!endBox.value) { endBox.value = draft.end; return; }
+            draft.end = endBox.value < draft.start ? draft.start : endBox.value;
+            endBox.value = draft.end;
+            showDays();
+        });
+        dates.appendChild(startBox);
+        if (!milestone) {
+            dates.appendChild(make('span', 'plan-roadmap-card-dash', '–'));
+            dates.appendChild(endBox);
+        }
+        showDays();
+        card.appendChild(dates);
+
+        const foot = make('div', 'plan-roadmap-card-foot');
+        if (deleteRoadmapItem) {
+            const remove = make('button', 'plan-roadmap-card-delete', da ? 'Slet' : 'Delete');
+            remove.type = 'button';
+            remove.addEventListener('click', () => {
+                closeRoadmapCard();
+                const list = roadmapData();
+                if (!list) return;
+                const at = list.items.indexOf(item);
+                if (at === -1) return;
+                list.items.splice(at, 1);
+                setRoadmap(list);
+                Promise.resolve()
+                    .then(() => deleteRoadmapItem(item.id))
+                    .catch(err => {
+                        console.warn('[Plan] Could not delete the roadmap entry:', err);
+                        list.items.splice(at, 0, item);
+                        if (container) setRoadmap(list);
+                    });
+            });
+            foot.appendChild(remove);
+        }
+        const done = make('button', 'plan-roadmap-card-done', da ? 'Færdig' : 'Done');
+        done.type = 'button';
+        const save = () => {
+            closeRoadmapCard();
+            draft.title = title.value.trim() || item.title;
+            const before = { title: item.title, category: item.category, start: item.start, end: item.end };
+            if (Object.keys(draft).every(key => draft[key] === before[key])) return;
+            if (draft.start !== before.start || draft.end !== before.end) {
+                pushMoveHistory({ kind: 'roadmap', id: item.id, start: before.start, end: before.end });
+            }
+            Object.assign(item, draft);
+            setRoadmap(roadmapData());
+            Promise.resolve()
+                .then(() => editRoadmapItem(item.id, { ...draft }))
+                .catch(err => {
+                    console.warn('[Plan] Could not save the roadmap entry:', err);
+                    Object.assign(item, before);
+                    if (container) setRoadmap(roadmapData());
+                });
+        };
+        done.addEventListener('click', save);
+        title.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                save();
+            }
+        });
+        foot.appendChild(done);
+        card.appendChild(foot);
+
+        // The calendar's own handlers must not take a press in the card.
+        ['mousedown', 'dblclick', 'click'].forEach(type =>
+            card.addEventListener(type, event => event.stopPropagation()));
+        container.appendChild(card);
+        roadmapCardEl = card;
+        roadmapCardFor = item.id;
+
+        // Under the bar, from where it was pressed; inside the window.
+        const at = rectOf(anchorEl);
+        const rect = rectOf(card);
+        const zoom = zoomInfo().zoom;
+        const winW = window.innerWidth / zoom;
+        const winH = window.innerHeight / zoom;
+        const below = at.bottom + 8 + rect.height <= winH - 8;
+        const left = Number.isFinite(atX) ? atX - 40 : at.left;
+        card.style.left = `${Math.max(8, Math.min(left, winW - rect.width - 8))}px`;
+        card.style.top = `${below ? at.bottom + 8 : Math.max(8, at.top - rect.height - 8)}px`;
+        document.addEventListener('pointerdown', onRoadmapCardOutside, true);
+        document.addEventListener('keydown', onRoadmapCardKey, true);
+        calendarContainer.addEventListener('scroll', closeRoadmapCard);
+        title.focus();
+        title.select();
     }
 
     /**
@@ -4394,18 +5561,606 @@ const PlanModule = (function () {
         renderRoadmapBands();
     }
 
+    /*
+     * The two pills in the toolbar, "Calendars" and "Roadmap". Each shows a
+     * dot in the colour of each of its parts and how many of them are
+     * shown, and opens a list to show or hide each one. One list is open at
+     * a time. It closes on a press outside it or on Escape.
+     *
+     * The keys walk the list by hand: the Mac app's web view gives Tab to
+     * text boxes only and skips buttons (see lib/todo/focus-walk.ts in
+     * To-Do). Up, Down and Tab go round the list.
+     *
+     * A pill drawn again while its list is open (a row was pressed, a sync
+     * came in) opens the list again under the new pill, the caret where it
+     * was.
+     */
+    let toolbarMenu = null; // { key, pill, menu, close, focusAt }
+    /** Which row's colours are out in a toolbar list, as "key:id". One at a time. */
+    let toolbarColourFor = null;
+
+    function closeToolbarMenu(returnFocus) {
+        if (!toolbarMenu) return;
+        const { pill } = toolbarMenu;
+        toolbarMenu.close();
+        toolbarMenu = null;
+        // The next time the list opens, its palettes are put away.
+        toolbarColourFor = null;
+        if (returnFocus && pill.isConnected) pill.focus();
+    }
+
+    function toolbarMenuStops(menu) {
+        return Array.from(menu.querySelectorAll('button:not([disabled])'));
+    }
+
+    /** Make a pill, put it at the end of `parent`, and open its list again if it was open. */
+    function toolbarPill(parent, { key, label, title, dots, avatars, shown, total, fill }) {
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = `plan-toolbar-pill plan-toolbar-pill--${key}`;
+        pill.title = title;
+        pill.setAttribute('aria-haspopup', 'dialog');
+        pill.setAttribute('aria-expanded', 'false');
+        pill.setAttribute('aria-label', `${label}: ${shown} of ${total} shown`);
+
+        const stack = document.createElement('span');
+        stack.className = 'plan-toolbar-pill-dots';
+        if (avatars) {
+            // People: their faces or letters, overlapping, as on a goal.
+            stack.classList.add('plan-toolbar-pill-avatars');
+            avatars.slice(0, 3).forEach(el => stack.appendChild(el));
+        } else {
+            dots.slice(0, 5).forEach(dot => {
+                const el = document.createElement('span');
+                el.className = 'plan-toolbar-pill-dot' + (dot.off ? ' is-off' : '');
+                el.style.setProperty('--dot', dot.colour);
+                stack.appendChild(el);
+            });
+        }
+        const name = document.createElement('span');
+        name.className = 'plan-toolbar-pill-label';
+        name.textContent = label;
+        const count = document.createElement('span');
+        count.className = 'plan-toolbar-pill-count';
+        count.textContent = `${shown}/${total}`;
+        pill.append(stack, name, count);
+
+        // A press here is not a press on the calendar.
+        ['pointerdown', 'mousedown', 'dblclick'].forEach(type =>
+            pill.addEventListener(type, e => e.stopPropagation()));
+        pill.addEventListener('click', e => {
+            e.stopPropagation();
+            if (toolbarMenu && toolbarMenu.key === key) {
+                closeToolbarMenu(false);
+                return;
+            }
+            // From the keys (no pointer: detail is 0), the caret goes into the list.
+            openToolbarMenu(key, pill, fill, e.detail === 0 ? 0 : -1);
+        });
+        pill.addEventListener('keydown', e => {
+            if (e.key !== 'ArrowDown') return;
+            e.preventDefault();
+            if (toolbarMenu && toolbarMenu.key === key) {
+                const first = toolbarMenuStops(toolbarMenu.menu)[0];
+                if (first) first.focus();
+            } else {
+                openToolbarMenu(key, pill, fill, 0);
+            }
+        });
+        parent.appendChild(pill);
+
+        if (toolbarMenu && toolbarMenu.key === key) {
+            const at = toolbarMenu.focusAt();
+            toolbarMenu.close();
+            toolbarMenu = null;
+            openToolbarMenu(key, pill, fill, at);
+        }
+        return pill;
+    }
+
+    function openToolbarMenu(key, pill, fill, focusAt) {
+        closeToolbarMenu(false);
+        const menu = document.createElement('div');
+        menu.className = `plan-toolbar-menu plan-toolbar-menu--${key}`;
+        menu.setAttribute('role', 'dialog');
+        menu.setAttribute('aria-label', pill.querySelector('.plan-toolbar-pill-label').textContent);
+        fill(menu);
+        // On the calendar, not in the toolbar: a narrow toolbar would cut it
+        // off. Under the pill, its right edge with the pill's, kept inside
+        // the calendar. In unzoomed pixels (see rectOf).
+        container.appendChild(menu);
+        const parent = menu.offsetParent || container;
+        const from = rectOf(parent);
+        const at = rectOf(pill);
+        const edges = rectOf(container);
+        const width = rectOf(menu).width;
+        let left = Math.min(at.right - width, edges.right - 8 - width);
+        left = Math.max(left, edges.left + 8);
+        menu.style.left = `${left - from.left + parent.scrollLeft}px`;
+        menu.style.top = `${at.bottom + 6 - from.top + parent.scrollTop}px`;
+
+        ['pointerdown', 'mousedown', 'click', 'dblclick'].forEach(type =>
+            menu.addEventListener(type, e => e.stopPropagation()));
+        menu.addEventListener('keydown', ev => {
+            const forward = ev.key === 'ArrowDown' || (ev.key === 'Tab' && !ev.shiftKey);
+            const back = ev.key === 'ArrowUp' || (ev.key === 'Tab' && ev.shiftKey);
+            if (!forward && !back) return;
+            ev.preventDefault();
+            const stops = toolbarMenuStops(menu);
+            if (!stops.length) return;
+            const here = stops.indexOf(document.activeElement);
+            const next = here === -1
+                ? (forward ? 0 : stops.length - 1)
+                : (here + (forward ? 1 : -1) + stops.length) % stops.length;
+            stops[next].focus();
+        });
+        // A press outside puts the list away and does nothing else (as a
+        // deadline card does): it does not also start a note.
+        const onOutside = ev => {
+            if (menu.contains(ev.target) || pill.contains(ev.target)) return;
+            closeToolbarMenu(false);
+            if (container.contains(ev.target)) swallowNextPress();
+        };
+        const onKey = ev => {
+            if (ev.key !== 'Escape') return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            closeToolbarMenu(true);
+        };
+        document.addEventListener('pointerdown', onOutside, true);
+        document.addEventListener('keydown', onKey, true);
+        pill.setAttribute('aria-expanded', 'true');
+        pill.classList.add('is-open');
+        toolbarMenu = {
+            key,
+            pill,
+            menu,
+            focusAt: () => toolbarMenuStops(menu).indexOf(document.activeElement),
+            close: () => {
+                menu.remove();
+                document.removeEventListener('pointerdown', onOutside, true);
+                document.removeEventListener('keydown', onKey, true);
+                pill.setAttribute('aria-expanded', 'false');
+                pill.classList.remove('is-open');
+            },
+        };
+        if (focusAt >= 0) {
+            const stops = toolbarMenuStops(menu);
+            const target = stops[Math.min(focusAt, stops.length - 1)];
+            if (target) target.focus();
+        }
+    }
+
+    /** The list's heading, and a link beside it when there is one. */
+    function toolbarMenuHead(title, link) {
+        const head = document.createElement('div');
+        head.className = 'plan-toolbar-menu-head';
+        const name = document.createElement('span');
+        name.className = 'plan-toolbar-menu-title';
+        name.textContent = title;
+        head.appendChild(name);
+        if (link) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'plan-toolbar-menu-all';
+            button.textContent = link.label;
+            button.addEventListener('click', link.onClick);
+            head.appendChild(button);
+        }
+        return head;
+    }
+
     /**
-     * The Roadmap chip at the end of the calendar chips: its eye or its name
-     * shows or hides every band, and a category in it shows or hides that one.
+     * One row: its colour, its name, and "Shown" or "Hidden". A press on the
+     * name changes which. A press on the colour brings out the palette under
+     * the row, and a press on a colour there gives it to the row.
+     */
+    function toolbarMenuRow({ colour, off, name, onToggle, colourKey, choices, onColour, redraw }) {
+        const item = document.createElement('div');
+        item.className = 'plan-toolbar-menu-item' + (off ? ' is-off' : '');
+        const swatch = document.createElement('button');
+        swatch.type = 'button';
+        swatch.className = 'plan-toolbar-menu-swatch';
+        swatch.style.setProperty('--dot', colour);
+        swatch.title = 'Change the colour';
+        swatch.setAttribute('aria-label', `Change the colour of ${name}`);
+        swatch.setAttribute('aria-expanded', String(toolbarColourFor === colourKey));
+        swatch.addEventListener('click', e => {
+            e.stopPropagation();
+            toolbarColourFor = toolbarColourFor === colourKey ? null : colourKey;
+            redraw();
+        });
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'plan-toolbar-menu-row';
+        row.setAttribute('aria-pressed', String(!off));
+        const label = document.createElement('span');
+        label.className = 'plan-toolbar-menu-name';
+        label.textContent = name;
+        const state = document.createElement('span');
+        state.className = 'plan-toolbar-menu-state';
+        state.textContent = off ? 'Hidden' : 'Shown';
+        row.append(label, state);
+        row.addEventListener('click', e => {
+            e.stopPropagation();
+            onToggle();
+        });
+        item.append(swatch, row);
+        if (toolbarColourFor !== colourKey) return item;
+
+        const box = document.createElement('div');
+        box.className = 'plan-toolbar-menu-group';
+        const palette = document.createElement('div');
+        palette.className = 'plan-toolbar-menu-colours';
+        choices.forEach(choice => {
+            const dot = document.createElement('button');
+            dot.type = 'button';
+            dot.className = 'plan-toolbar-menu-colour' + (choice === colour ? ' is-on' : '');
+            dot.style.background = choice;
+            dot.setAttribute('aria-label', choice);
+            dot.addEventListener('click', e => {
+                e.stopPropagation();
+                onColour(choice);
+            });
+            palette.appendChild(dot);
+        });
+        box.append(item, palette);
+        return box;
+    }
+
+    /** A link under a line at the foot of the list. */
+    function toolbarMenuFoot(label, onClick) {
+        const foot = document.createElement('div');
+        foot.className = 'plan-toolbar-menu-foot';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'plan-toolbar-menu-link';
+        button.textContent = label;
+        button.addEventListener('click', e => {
+            e.stopPropagation();
+            onClick();
+        });
+        foot.appendChild(button);
+        return foot;
+    }
+
+    /*
+     * The colours a calendar can be given.
+     *
+     * The editorial palette: Sky, Ice, Mint, Buttercup, Blush, Apricot,
+     * Sunset, Lavender. Keep in step with PLAN_CALENDAR_COLOR_PRESETS in
+     * redd-plan/lib/canvasBackground.ts.
+     */
+    const CALENDAR_PALETTE = ['#7da9c8', '#8eb5b0', '#8cb89c', '#d4ba6a', '#d4a5a8', '#d99a6c', '#d4605a', '#a896c0'];
+
+    // The colours of the Roadmap's categories, as plan.css draws the bands.
+    const ROADMAP_COLOURS = { tool: '#0d9488', research: '#3b82f6', grant: '#d97706' };
+
+    /*
+     * A category can be given another colour, from the Roadmap list in the
+     * toolbar. Kept with the calendar's settings, so the team sees the same.
+     * Only the calendar draws with it; the Roadmap tab keeps its own.
+     */
+    function roadmapColoursKey() {
+        return STORAGE_PREFIX + 'roadmap-colours';
+    }
+
+    function readRoadmapColours() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(roadmapColoursKey()) || 'null');
+            return saved && typeof saved === 'object' ? saved : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function roadmapColourOf(id) {
+        return readRoadmapColours()[id] || ROADMAP_COLOURS[id] || '#64748b';
+    }
+
+    function setRoadmapColour(id, colour) {
+        const colours = readRoadmapColours();
+        // The category's own colour is no change: it is not kept.
+        if (!colour || colour === ROADMAP_COLOURS[id]) delete colours[id];
+        else colours[id] = colour;
+        try {
+            localStorage.setItem(roadmapColoursKey(), JSON.stringify(colours));
+        } catch (e) {
+            /* private mode: it lasts until the page closes */
+        }
+        setRoadmap(roadmapData());
+    }
+
+    /** A bar, band or pill drawn in its category's colour, if it was changed. */
+    function paintRoadmapColour(el, category) {
+        const colour = readRoadmapColours()[category];
+        if (!colour) return;
+        el.style.setProperty('--band', colour);
+        el.classList.add('has-own-colour');
+    }
+
+    /** A day's note of the tasks the People pill hides there; it opens the pill. */
+    function createHiddenTasksNote(count) {
+        const da = currentLanguage === 'da';
+        const note = document.createElement('button');
+        note.type = 'button';
+        note.className = 'plan-week-hidden-tasks';
+        note.textContent = da ? `${count} skjult` : `${count} hidden`;
+        note.title = da
+            ? 'Opgaver som Personer eller Lister skjuler her.'
+            : 'Tasks that People or Lists hide here.';
+        ['pointerdown', 'mousedown', 'dblclick'].forEach(type =>
+            note.addEventListener(type, e => e.stopPropagation()));
+        note.addEventListener('click', e => {
+            e.stopPropagation();
+            // The pill that hides something: Lists when it does, else People.
+            const key = readHiddenLists().length ? 'lists' : 'people';
+            const pill = container.querySelector(`.plan-toolbar-pill--${key}`);
+            if (pill && !(toolbarMenu && toolbarMenu.key === key)) pill.click();
+        });
+        return note;
+    }
+
+    /** How many of the tasks in view are each person's: by the week shown, or all in the months. */
+    function taskCountsByPerson() {
+        let inView = calendarTasks;
+        if (calendarViewMode === 'week') {
+            const first = formatDateKey(weekStartDate);
+            const end = new Date(weekStartDate);
+            end.setDate(end.getDate() + 6);
+            const last = formatDateKey(end);
+            inView = calendarTasks.filter(task => task.dateKey >= first && task.dateKey <= last);
+        }
+        const counts = {};
+        inView.forEach(task => task.assigneeIds.forEach(id => { counts[id] = (counts[id] || 0) + 1; }));
+        return counts;
+    }
+
+    /**
+     * The People pill, after the Roadmap pill: whose due tasks show. Just me
+     * and Everyone, then a box per person, with how many tasks in view are
+     * theirs. Only on a board with people.
+     */
+    function renderPeopleToggle() {
+        if (!container) return;
+        const toggles = container.querySelector('.plan-calendar-toggles');
+        if (!toggles) return;
+        toggles.querySelectorAll('.plan-toolbar-pill--people').forEach(el => el.remove());
+        if (!goalPeople.length) {
+            if (toolbarMenu && toolbarMenu.key === 'people') closeToolbarMenu(false);
+            return;
+        }
+        const da = currentLanguage === 'da';
+        const picked = pickedTaskPeople();
+        const ids = goalPeople.map(person => person.id);
+        const isOn = id => picked === null || picked.includes(id);
+        const me = mePersonId && ids.includes(mePersonId) ? mePersonId : null;
+        const justMe = me !== null && picked !== null && picked.length === 1 && picked[0] === me;
+        const change = next => {
+            writeTaskPeople(next !== null && next.length === ids.length ? null : next);
+            renderCalendar();
+            scheduleLayoutRefresh();
+        };
+        const toggle = id => {
+            const now = picked === null ? ids : picked;
+            change(now.includes(id) ? now.filter(other => other !== id) : [...now, id]);
+        };
+        const shown = ids.filter(isOn).length;
+        const label = picked === null
+            ? (da ? 'Alle' : 'Everyone')
+            : justMe
+                ? (da ? 'Kun mig' : 'Just me')
+                : (da ? 'Personer' : 'People');
+        const counts = taskCountsByPerson();
+
+        toolbarPill(toggles, {
+            key: 'people',
+            label,
+            title: da ? 'Vælg hvis opgaver der vises' : 'Choose whose tasks show',
+            avatars: goalPeople.filter(person => isOn(person.id)).map(goalPersonDot),
+            dots: [],
+            shown,
+            total: ids.length,
+            fill: menu => {
+                const shortcuts = document.createElement('div');
+                shortcuts.className = 'plan-people-shortcuts';
+                const shortcut = (words, on, onClick, disabled) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'plan-people-shortcut' + (on ? ' is-on' : '');
+                    button.textContent = words;
+                    button.setAttribute('aria-pressed', String(on));
+                    button.disabled = Boolean(disabled);
+                    button.addEventListener('click', e => {
+                        e.stopPropagation();
+                        onClick();
+                    });
+                    shortcuts.appendChild(button);
+                };
+                shortcut(da ? 'Kun mig' : 'Just me', justMe, () => change([me]), me === null);
+                shortcut(da ? 'Alle' : 'Everyone', picked === null, () => change(null));
+                menu.appendChild(shortcuts);
+
+                goalPeople.forEach(person => {
+                    const row = document.createElement('button');
+                    row.type = 'button';
+                    row.className = 'plan-people-row' + (isOn(person.id) ? ' is-on' : '');
+                    row.setAttribute('role', 'menuitemcheckbox');
+                    row.setAttribute('aria-checked', String(isOn(person.id)));
+                    const box = document.createElement('span');
+                    box.className = 'plan-people-check';
+                    box.setAttribute('aria-hidden', 'true');
+                    const name = document.createElement('span');
+                    name.className = 'plan-people-name';
+                    name.textContent = shortGoalPersonName(person)
+                        + (person.id === me ? (da ? ' (dig)' : ' (you)') : '');
+                    const count = document.createElement('span');
+                    count.className = 'plan-people-count';
+                    count.textContent = String(counts[person.id] || 0);
+                    row.append(box, goalPersonDot(person), name, count);
+                    row.addEventListener('click', e => {
+                        e.stopPropagation();
+                        toggle(person.id);
+                    });
+                    menu.appendChild(row);
+                });
+            },
+        });
+    }
+
+    /** How many of the tasks in view are on each list (NO_LIST_ID: on none). */
+    function taskCountsByList() {
+        let inView = calendarTasks;
+        if (calendarViewMode === 'week') {
+            const first = formatDateKey(weekStartDate);
+            const end = new Date(weekStartDate);
+            end.setDate(end.getDate() + 6);
+            const last = formatDateKey(end);
+            inView = calendarTasks.filter(task => task.dateKey >= first && task.dateKey <= last);
+        }
+        const counts = {};
+        inView.filter(taskShownForPeople).forEach(task => {
+            const id = task.listId || NO_LIST_ID;
+            counts[id] = (counts[id] || 0) + 1;
+        });
+        return counts;
+    }
+
+    /**
+     * The Lists pill, after the People pill: which lists' tasks show. All,
+     * then the lists under their tab groups (a group's name ticks or unticks
+     * all of its lists), and the tasks on no list. Only with lists.
+     */
+    function renderListsToggle() {
+        if (!container) return;
+        const toggles = container.querySelector('.plan-calendar-toggles');
+        if (!toggles) return;
+        toggles.querySelectorAll('.plan-toolbar-pill--lists').forEach(el => el.remove());
+        if (!taskLists.length) {
+            if (toolbarMenu && toolbarMenu.key === 'lists') closeToolbarMenu(false);
+            return;
+        }
+        const da = currentLanguage === 'da';
+        const ids = [...taskLists.map(list => list.id), NO_LIST_ID];
+        const hidden = readHiddenLists().filter(id => ids.includes(id));
+        const isOn = id => !hidden.includes(id);
+        const change = next => {
+            writeHiddenLists(next);
+            renderCalendar();
+            scheduleLayoutRefresh();
+        };
+        const toggle = id => change(isOn(id) ? [...hidden, id] : hidden.filter(other => other !== id));
+        const toggleGroup = groupIds => {
+            const allOn = groupIds.every(isOn);
+            change(allOn
+                ? [...new Set([...hidden, ...groupIds])]
+                : hidden.filter(id => !groupIds.includes(id)));
+        };
+        const shown = taskLists.filter(list => isOn(list.id)).length;
+        const counts = taskCountsByList();
+
+        const row = (mark, words, id, count) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'plan-people-row' + (isOn(id) ? ' is-on' : '');
+            button.setAttribute('role', 'menuitemcheckbox');
+            button.setAttribute('aria-checked', String(isOn(id)));
+            const box = document.createElement('span');
+            box.className = 'plan-people-check';
+            box.setAttribute('aria-hidden', 'true');
+            const name = document.createElement('span');
+            name.className = 'plan-people-name';
+            name.textContent = words;
+            const number = document.createElement('span');
+            number.className = 'plan-people-count';
+            number.textContent = String(count || 0);
+            const markWrap = document.createElement('span');
+            markWrap.className = 'plan-lists-mark';
+            markWrap.appendChild(mark);
+            button.append(box, markWrap, name, number);
+            button.addEventListener('click', e => {
+                e.stopPropagation();
+                toggle(id);
+            });
+            return button;
+        };
+
+        toolbarPill(toggles, {
+            key: 'lists',
+            label: hidden.length ? (da ? 'Lister' : 'Lists') : (da ? 'Alle lister' : 'All lists'),
+            title: da ? 'Vælg hvilke listers opgaver der vises' : 'Choose which lists\' tasks show',
+            avatars: taskLists.filter(list => isOn(list.id)).slice(0, 3).map(createTaskIcon),
+            dots: [],
+            shown,
+            total: taskLists.length,
+            fill: menu => {
+                const shortcuts = document.createElement('div');
+                shortcuts.className = 'plan-people-shortcuts plan-lists-shortcuts';
+                const all = document.createElement('button');
+                all.type = 'button';
+                all.className = 'plan-people-shortcut' + (hidden.length ? '' : ' is-on');
+                all.textContent = da ? 'Alle lister' : 'All lists';
+                all.setAttribute('aria-pressed', String(!hidden.length));
+                all.addEventListener('click', e => {
+                    e.stopPropagation();
+                    change([]);
+                });
+                shortcuts.appendChild(all);
+                menu.appendChild(shortcuts);
+
+                // Under their groups, in the board's order; then the lists in
+                // no group, and last the tasks on no list.
+                let lastGroup;
+                taskLists.forEach(list => {
+                    if (list.groupId !== lastGroup && (list.groupId || lastGroup !== undefined)) {
+                        lastGroup = list.groupId;
+                        const groupIds = taskLists.filter(other => other.groupId === list.groupId).map(other => other.id);
+                        const head = document.createElement('button');
+                        head.type = 'button';
+                        head.className = 'plan-lists-group';
+                        head.textContent = list.groupName || (da ? 'Ingen gruppe' : 'No group');
+                        head.title = da ? 'Vis eller skjul hele gruppen' : 'Show or hide the whole group';
+                        head.addEventListener('click', e => {
+                            e.stopPropagation();
+                            toggleGroup(groupIds);
+                        });
+                        menu.appendChild(head);
+                    }
+                    lastGroup = list.groupId;
+                    menu.appendChild(row(createTaskIcon(list), list.name, list.id, counts[list.id]));
+                });
+                if (counts[NO_LIST_ID] || hidden.includes(NO_LIST_ID)) {
+                    menu.appendChild(row(
+                        createTaskIcon({ icon: [], initials: '' }),
+                        da ? 'Ingen liste' : 'No list',
+                        NO_LIST_ID,
+                        counts[NO_LIST_ID],
+                    ));
+                }
+            },
+        });
+    }
+
+    /**
+     * The Roadmap pill, after the Calendars pill: one row per category, to
+     * show or hide it. With the Roadmap off as a whole (as an older version
+     * could leave it), every category counts as hidden, and showing one
+     * turns the Roadmap on with that one alone.
      */
     function renderRoadmapToggle() {
         if (!container) return;
         const toggles = container.querySelector('.plan-calendar-toggles');
         if (!toggles) return;
-        toggles.querySelectorAll('.plan-roadmap-toggle').forEach(el => el.remove());
+        toggles.querySelectorAll('.plan-toolbar-pill--roadmap').forEach(el => el.remove());
         const data = roadmapData();
-        if (!data) return;
+        const categories = (data && data.categories) || [];
+        if (!data || !categories.length) {
+            if (toolbarMenu && toolbarMenu.key === 'roadmap') closeToolbarMenu(false);
+            return;
+        }
         const view = readRoadmapView();
+        const ids = categories.map(c => c.id);
+        const isOff = id => !view.shown || view.hidden.includes(id);
         const change = next => {
             writeRoadmapView(next);
             renderRoadmapToggle();
@@ -4413,41 +6168,43 @@ const PlanModule = (function () {
             if (calendarViewMode === 'week') renderCalendar();
             renderFreeformElements();
         };
+        const toggle = id => {
+            if (!view.shown) change({ shown: true, hidden: ids.filter(other => other !== id) });
+            else if (view.hidden.includes(id)) change({ ...view, hidden: view.hidden.filter(other => other !== id) });
+            else change({ ...view, hidden: [...view.hidden, id] });
+        };
+        const colourOf = roadmapColourOf;
+        const shown = ids.filter(id => !isOff(id)).length;
+        const allShown = shown === ids.length;
 
-        const chip = document.createElement('div');
-        chip.className = 'plan-calendar-toggle plan-roadmap-toggle' + (view.shown ? '' : ' hidden-cal');
-        const all = document.createElement('button');
-        all.type = 'button';
-        all.className = 'plan-roadmap-all';
-        all.title = view.shown ? 'Hide the Roadmap from the calendar' : 'Show the Roadmap on the calendar';
-        all.innerHTML = `<span class="calendar-toggle-eye">${view.shown ? ROADMAP_EYE_OPEN_SVG : ROADMAP_EYE_SHUT_SVG}</span><span class="calendar-name">Roadmap</span>`;
-        all.addEventListener('click', e => {
-            e.stopPropagation();
-            change({ ...view, shown: !view.shown });
+        toolbarPill(toggles, {
+            key: 'roadmap',
+            label: 'Roadmap',
+            title: 'Show or hide parts of the Roadmap',
+            dots: categories.map(c => ({ colour: colourOf(c.id), off: isOff(c.id) })),
+            shown,
+            total: ids.length,
+            fill: menu => {
+                menu.appendChild(toolbarMenuHead('Roadmap', {
+                    label: allShown ? 'Hide all' : 'Show all',
+                    onClick: e => {
+                        e.stopPropagation();
+                        change({ shown: true, hidden: allShown ? ids : [] });
+                    },
+                }));
+                categories.forEach(category => menu.appendChild(toolbarMenuRow({
+                    colour: colourOf(category.id),
+                    off: isOff(category.id),
+                    name: category.label,
+                    onToggle: () => toggle(category.id),
+                    colourKey: `roadmap:${category.id}`,
+                    // Its own colour first, to go back to.
+                    choices: [ROADMAP_COLOURS[category.id] || '#64748b', ...CALENDAR_PALETTE],
+                    onColour: colour => setRoadmapColour(category.id, colour),
+                    redraw: renderRoadmapToggle,
+                })));
+            },
         });
-        chip.appendChild(all);
-
-        (data.categories || []).forEach(category => {
-            const off = view.hidden.includes(category.id);
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = `plan-roadmap-cat is-${category.id}` + (off ? ' is-off' : '');
-            button.disabled = !view.shown;
-            button.title = off ? `Show ${category.label}` : `Hide ${category.label}`;
-            button.setAttribute('aria-pressed', String(!off));
-            const dot = document.createElement('span');
-            dot.className = 'plan-roadmap-dot';
-            button.append(dot, document.createTextNode(category.label));
-            button.addEventListener('click', e => {
-                e.stopPropagation();
-                const hidden = off
-                    ? view.hidden.filter(id => id !== category.id)
-                    : [...view.hidden, category.id];
-                change({ ...view, hidden });
-            });
-            chip.appendChild(button);
-        });
-        toggles.appendChild(chip);
     }
 
     function createDayMoreButton(dateKey, count, expanded) {
@@ -5310,6 +7067,10 @@ const PlanModule = (function () {
     // Convert screen coordinates to date-relative coordinates
     // screenX/screenY are canvas-relative (from mouse event relative to canvasLayer.getBoundingClientRect())
     // Returns { dateKey, offsetX } where offsetX is relative to the month column's left edge
+    // The day under a point: the row of the month whose column holds the
+    // point, nearest by height. The months stand side by side, so the 23rd of
+    // each is at the same height; by height alone, a line drawn in November
+    // was kept as October's. Outside every column, the nearest row.
     function screenToDateCoords(screenX, screenY) {
         const canvasRect = rectOf(canvasLayer);
         const dayRows = container.querySelectorAll('.plan-day-row');
@@ -5323,16 +7084,18 @@ const PlanModule = (function () {
             const rect = rectOf(row);
             const rowTop = rect.top - canvasRect.top;
             const rowCenterY = rowTop + rect.height / 2;
-            const dist = Math.abs(screenY - rowCenterY);
+            const monthCol = row.closest('.plan-month-column');
+            const colRect = rectOf(monthCol || row);
+            const colLeft = colRect.left - canvasRect.left;
+            const colRight = colLeft + colRect.width;
+            const xDist = screenX < colLeft ? colLeft - screenX : (screenX > colRight ? screenX - colRight : 0);
+            const yDist = Math.abs(screenY - rowCenterY);
+            const dist = Math.sqrt(xDist * xDist + yDist * yDist);
 
             if (dist < closestDistance) {
                 closestDistance = dist;
                 closestRow = row;
-                // Get the month column's left edge (canvas-relative)
-                const monthCol = row.closest('.plan-month-column');
-                if (monthCol) {
-                    columnLeft = rectOf(monthCol).left - canvasRect.left;
-                }
+                columnLeft = colLeft;
             }
         }
 
@@ -5343,6 +7106,42 @@ const PlanModule = (function () {
         }
 
         return { dateKey: null, offsetX: screenX };
+    }
+
+    // A line kept with the day of another month (see screenToDateCoords): its
+    // end is drawn in one month, but its day is that day of a month beside
+    // it, so the week showed it in the wrong week. Each end that is drawn in
+    // another month's column gets the day it is drawn on. Needs the months.
+    function repairLineDays() {
+        let changed = false;
+        freeformLines.forEach((line) => {
+            if (line.source === 'calendar' || line.isCalendarEvent || lineHasTime(line)) return;
+            ['start', 'end'].forEach((end) => {
+                const dateKey = line[`${end}Date`];
+                const offsetX = line[`${end}OffsetX`];
+                if (!dateKey || !Number.isFinite(offsetX)) return;
+                const row = container.querySelector(`.plan-day-row[data-date-key="${dateKey}"]`);
+                const ownCol = row?.closest('.plan-month-column');
+                if (!ownCol || (offsetX >= 0 && offsetX <= rectOf(ownCol).width)) return;
+                const at = dateCoordsToScreen(dateKey, offsetX);
+                if (!at) return;
+                const real = screenToDateCoords(at.x, at.y);
+                const realCol = real.dateKey && container
+                    .querySelector(`.plan-day-row[data-date-key="${real.dateKey}"]`)
+                    ?.closest('.plan-month-column');
+                // Only when the end is inside another month's column, not in
+                // the gap between two.
+                if (!realCol || realCol === ownCol || real.offsetX < 0 || real.offsetX > rectOf(realCol).width) return;
+                line[`${end}Date`] = real.dateKey;
+                line[`${end}OffsetX`] = real.offsetX;
+                changed = true;
+            });
+            if (line.startDate && line.endDate && line.startDate > line.endDate) {
+                [line.startDate, line.endDate] = [line.endDate, line.startDate];
+                [line.startOffsetX, line.endOffsetX] = [line.endOffsetX, line.startOffsetX];
+            }
+        });
+        if (changed) saveData();
     }
 
     // Convert date-relative coordinates back to screen coordinates
@@ -5712,7 +7511,7 @@ const PlanModule = (function () {
                 renderFreeformElements();
                 updatePeriodDisplay();
                 renderWeekGoals();
-                requestAnimationFrame(() => scrollWeekViewToCurrentTime());
+                requestAnimationFrame(() => scrollWeekViewToTop());
                 return;
             }
 
@@ -5729,7 +7528,7 @@ const PlanModule = (function () {
                 renderFreeformElements();
                 updatePeriodDisplay();
                 renderWeekGoals();
-                requestAnimationFrame(() => scrollWeekViewToCurrentTime());
+                requestAnimationFrame(() => scrollWeekViewToTop());
                 return;
             }
 
@@ -5748,7 +7547,7 @@ const PlanModule = (function () {
                 renderFreeformElements();
                 updatePeriodDisplay();
                 renderWeekGoals();
-                requestAnimationFrame(() => scrollWeekViewToCurrentTime());
+                requestAnimationFrame(() => scrollWeekViewToTop());
                 return;
             }
 
@@ -6463,8 +8262,8 @@ const PlanModule = (function () {
     // The week view takes a press as the months view does: a click gives a
     // caret to write a note, a drag draws a line. In the hours a drag goes down
     // the day, and the line goes from its start to its end. In the rows over the
-    // hours a drag goes across the days. With a text box open or a thing
-    // selected, a press only puts that away.
+    // hours a drag goes across the days. With a text box open, a press only
+    // puts the box away.
     function setupWeekPress() {
         calendarContainer.addEventListener('mousedown', (event) => {
             if (calendarViewMode !== 'week' || event.button !== 0 || isWeekGoalDragInProgress) return;
@@ -6476,10 +8275,12 @@ const PlanModule = (function () {
             )) return;
             const col = target.closest('.plan-week-day-column');
             if (!col) return;
-            // A press elsewhere takes the mark and the menu away, and puts an
-            // open text box away (it keeps its words as it loses the caret).
-            // The same click then goes on to write where it was: it took a
-            // second click before, the first one only put the old things away.
+            // A text box is open: the press puts it away (it keeps its words
+            // as it loses the caret), and does not open a new one where it
+            // was. A new box at once read as the caret jumping to the click.
+            if (container.querySelector('.plan-week-inline-input')) return;
+            // A press elsewhere takes the mark and the menu away. The same
+            // click then goes on to write where it was.
             if (selectedElements.length > 0) deselectElement();
             const startDay = col.dataset.dateKey;
             const startTime = findWeekTimeDropTarget(pointerX(event), pointerY(event));
@@ -6891,7 +8692,6 @@ const PlanModule = (function () {
         const calendarMenuList = container.querySelector('.plan-calendar-menu-list');
         const calendarSearch = container.querySelector('.plan-calendar-search');
         const calendarCount = container.querySelector('.plan-calendar-count');
-        const calendarAddedTitle = container.querySelector('.plan-calendar-added-title');
         const calendarAddForm = container.querySelector('.plan-calendar-add-form');
         const calendarNameInput = container.querySelector('.plan-calendar-name-input');
         const calendarUrlInput = container.querySelector('.plan-calendar-url-input');
@@ -6945,14 +8745,6 @@ const PlanModule = (function () {
             });
         }
 
-        /*
-         * The colours a calendar can be given.
-         *
-         * The editorial palette: Sky, Ice, Mint, Buttercup, Blush, Apricot,
-         * Sunset, Lavender. Keep in step with PLAN_CALENDAR_COLOR_PRESETS in
-         * redd-plan/lib/canvasBackground.ts.
-         */
-        const CALENDAR_PALETTE = ['#7da9c8', '#8eb5b0', '#8cb89c', '#d4ba6a', '#d4a5a8', '#d99a6c', '#d4605a', '#a896c0'];
 
         /**
          * Give a calendar a colour, everywhere it shows.
@@ -6998,23 +8790,6 @@ const PlanModule = (function () {
         /** Which calendar's colours are out, by id. One at a time. */
         let openColourFor = null;
 
-        const EYE_OPEN_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
-        const EYE_SHUT_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
-
-        /** The eye that shows or hides one row's things on the board. */
-        function eyeButton(isOn, onPress) {
-            const eye = document.createElement('button');
-            eye.type = 'button';
-            eye.className = 'plan-calendar-item-eye' + (isOn ? '' : ' is-off');
-            eye.innerHTML = isOn ? EYE_OPEN_SVG : EYE_SHUT_SVG;
-            eye.title = isOn ? 'Hide from the calendar' : 'Show on the calendar';
-            eye.addEventListener('click', (e) => {
-                e.stopPropagation();
-                onPress();
-            });
-            return eye;
-        }
-
         /**
          * A row for something the board draws that is not a calendar.
          *
@@ -7031,6 +8806,7 @@ const PlanModule = (function () {
             const swatch = document.createElement('span');
             swatch.className = 'plan-calendar-item-swatch is-still';
             swatch.style.background = source.colour || '#d4605a';
+            item.classList.add('plan-calendar-source');
 
             const info = document.createElement('div');
             info.className = 'plan-calendar-item-info';
@@ -7042,7 +8818,16 @@ const PlanModule = (function () {
             detail.textContent = source.detail || '';
             info.append(name, detail);
 
-            const eye = eyeButton(source.shown !== false, () => {
+            const on = source.shown !== false;
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'plan-calendar-switch' + (on ? ' is-on' : '');
+            toggle.setAttribute('role', 'switch');
+            toggle.setAttribute('aria-checked', String(on));
+            toggle.setAttribute('aria-label', source.name);
+            toggle.title = on ? 'Hide from the calendar' : 'Show on the calendar';
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const next = source.shown === false;
                 source.shown = next;
                 renderCalendarList();
@@ -7055,7 +8840,7 @@ const PlanModule = (function () {
                     });
             });
 
-            top.append(swatch, info, eye);
+            top.append(swatch, info, toggle);
             item.appendChild(top);
             return item;
         }
@@ -7095,7 +8880,7 @@ const PlanModule = (function () {
             const group = document.createElement('div');
             group.className = 'plan-calendar-show-group';
             const options = [
-                { words: 'Marked dh-to-do', showAll: false, title: 'Only events whose description starts with dh-to-do' },
+                { words: 'Marked only', showAll: false, title: 'Only events whose description starts with dh-to-do' },
                 { words: 'All events', showAll: true, title: 'Every event in this calendar' },
             ];
             const buttons = options.map(option => {
@@ -7179,17 +8964,15 @@ const PlanModule = (function () {
         // take it off again.
         function renderCalendarList() {
             if (!calendarList) return;
-            if (calendarAddedTitle) {
-                calendarAddedTitle.classList.toggle(
-                    'hidden',
-                    calendars.length === 0 && boardSources.length === 0,
-                );
-            }
             calendarList.textContent = '';
-            // What the board draws besides calendars goes first: it is
-            // always there, and a calendar comes and goes under it.
-            for (const source of boardSources) {
-                calendarList.appendChild(boardSourceRow(source));
+            // What the board draws besides calendars has a section of its
+            // own, under the calendars: it comes from other tabs.
+            const sources = calendarPopover && calendarPopover.querySelector('.plan-calendar-sources');
+            const sourceList = sources && sources.querySelector('.plan-calendar-source-list');
+            if (sources && sourceList) {
+                sources.classList.toggle('hidden', boardSources.length === 0);
+                sourceList.textContent = '';
+                for (const source of boardSources) sourceList.appendChild(boardSourceRow(source));
             }
             if (calendars.length === 0) {
                 const empty = document.createElement('div');
@@ -7214,8 +8997,20 @@ const PlanModule = (function () {
                 const info = document.createElement('div');
                 info.className = 'plan-calendar-item-info';
                 const name = document.createElement('span');
-                name.className = 'plan-calendar-item-name';
+                name.className = 'plan-calendar-item-name is-renamable';
                 name.textContent = cal.name || 'Unnamed';
+                name.title = 'Click to rename';
+                name.tabIndex = 0;
+                name.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    renameCalendar(name, cal);
+                });
+                name.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !name.isContentEditable) {
+                        e.preventDefault();
+                        renameCalendar(name, cal);
+                    }
+                });
                 const detail = document.createElement('span');
                 detail.className = 'plan-calendar-item-url';
                 if (calendarErrors[cal.id]) detail.classList.add('plan-calendar-item-problem');
@@ -7232,20 +9027,53 @@ const PlanModule = (function () {
                     removeCalendar(cal.id);
                 });
 
-                const eye = eyeButton(cal.visible !== false, () => {
-                    cal.visible = cal.visible === false;
-                    localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
-                    renderFreeformElements();
-                    renderCalendarToggles();
-                    renderCalendarList();
-                });
-
-                top.append(calendarSwatch(cal), info, eye, remove);
+                // Shown or hidden is set from the Calendars list in the toolbar.
+                top.append(calendarSwatch(cal), info, remove);
                 item.appendChild(top);
                 if (openColourFor === cal.id) item.appendChild(calendarColourRow(cal));
                 item.appendChild(calendarShowRow(cal));
                 calendarList.appendChild(item);
             }
+        }
+
+        /**
+         * Rename a calendar where its name is, in the calendars settings.
+         * Enter keeps the new name, Escape puts the old one back.
+         */
+        function renameCalendar(nameEl, cal) {
+            if (nameEl.isContentEditable) return;
+            nameEl.contentEditable = 'true';
+            nameEl.focus();
+            const range = document.createRange();
+            range.selectNodeContents(nameEl);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+
+            const onKey = ke => {
+                if (ke.key === 'Enter') {
+                    ke.preventDefault();
+                    nameEl.blur();
+                } else if (ke.key === 'Escape') {
+                    ke.stopPropagation();
+                    nameEl.textContent = liveCalendar(cal).name || 'Unnamed';
+                    nameEl.blur();
+                }
+            };
+            nameEl.addEventListener('keydown', onKey);
+            nameEl.addEventListener('blur', () => {
+                nameEl.removeEventListener('keydown', onKey);
+                nameEl.contentEditable = 'false';
+                const newName = nameEl.textContent.trim();
+                const target = liveCalendar(cal);
+                if (newName && newName !== target.name) {
+                    target.name = newName;
+                    localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+                    renderCalendarToggles();
+                } else {
+                    nameEl.textContent = target.name || 'Unnamed';
+                }
+            }, { once: true });
         }
 
         /** How many calendars are on the board, out of how many there are. */
@@ -7628,35 +9456,105 @@ const PlanModule = (function () {
             });
         }
 
+        // The search: the magnifier opens a box; what is typed narrows the
+        // calendar as it is typed (see matchesSearch). Escape clears it, and
+        // an empty box goes when it loses the caret.
+        const searchBtn = container.querySelector('.plan-bar-search-btn');
+        const searchInput = container.querySelector('.plan-bar-search-input');
+        if (searchBtn && searchInput) {
+            let searchTimer = null;
+            const redraw = () => {
+                renderCalendar();
+                renderFreeformElements();
+                scheduleLayoutRefresh();
+            };
+            const openSearch = () => {
+                searchBtn.classList.add('hidden');
+                searchInput.classList.remove('hidden');
+                searchInput.focus();
+            };
+            const closeSearch = () => {
+                searchInput.classList.add('hidden');
+                searchBtn.classList.remove('hidden');
+            };
+            ['pointerdown', 'mousedown', 'dblclick', 'click'].forEach(type => {
+                searchInput.addEventListener(type, e => e.stopPropagation());
+            });
+            searchBtn.addEventListener('mousedown', e => e.stopPropagation());
+            searchBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                openSearch();
+            });
+            searchInput.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    barSearch = searchInput.value;
+                    redraw();
+                }, 120);
+            });
+            searchInput.addEventListener('keydown', e => {
+                e.stopPropagation();
+                if (e.key !== 'Escape') return;
+                e.preventDefault();
+                clearTimeout(searchTimer);
+                searchInput.value = '';
+                if (barSearch) {
+                    barSearch = '';
+                    redraw();
+                }
+                closeSearch();
+                searchBtn.focus();
+            });
+            searchInput.addEventListener('blur', () => {
+                if (!searchInput.value.trim()) closeSearch();
+            });
+        }
+
         // Add Calendar button - opens popover
         if (calendarAddBtn && calendarPopover) {
-            // Under the button, measured from its offset parent, not the container
-            // (in the To-Do app that put it a title bar too high). Again on resize.
-            const placeCalendarPopover = () => {
-                if (calendarPopover.classList.contains('hidden')) return;
-                const anchor = calendarPopover.offsetParent || container;
-                const btnRect = rectOf(calendarAddBtn);
-                const anchorRect = rectOf(anchor);
-                calendarPopover.style.top = (btnRect.bottom - anchorRect.top + 5) + 'px';
-                let right = anchorRect.right - btnRect.right;
-                // At least 12px from the left edge, for a narrow window.
-                const width = rectOf(calendarPopover).width;
-                const room = anchorRect.right - anchorRect.left - right - width;
-                if (room < 12) right = Math.max(12, right + room - 12);
-                calendarPopover.style.right = right + 'px';
-            };
-            onPopoverResize = placeCalendarPopover;
-            window.addEventListener('resize', onPopoverResize);
-            calendarAddBtn.addEventListener('click', (e) => {
+            /*
+             * Manage calendars: a drawer at the right of the window, over the
+             * calendar, which is dimmed. The ×, Done, Escape and a press on
+             * the dimmed calendar close it.
+             */
+            const calendarScrim = container.querySelector('.plan-calendar-scrim');
+            const onDrawerKey = (e) => {
+                if (e.key !== 'Escape') return;
+                // The dropdown of calendars to add closes first.
+                if (calendarMenuIsOpen()) return;
                 e.stopPropagation();
-                calendarPopover.classList.toggle('hidden');
-                placeCalendarPopover();
+                closeCalendarDrawer();
+            };
+            const openCalendarDrawer = () => {
+                calendarPopover.classList.remove('hidden');
+                calendarScrim?.classList.remove('hidden');
+                document.addEventListener('keydown', onDrawerKey, true);
                 renderCalendarList();
                 updateCalendarCount();
                 void loadCalendarChoices();
                 updateCalendarStatus();
                 renderCalendarToggles();
+                calendarPopover.querySelector('.plan-calendar-drawer-close')?.focus();
+            };
+            closeCalendarDrawer = () => {
+                calendarPopover.classList.add('hidden');
+                calendarScrim?.classList.add('hidden');
+                document.removeEventListener('keydown', onDrawerKey, true);
+                closeCalendarMenu();
+            };
+            calendarAddBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (calendarPopover.classList.contains('hidden')) openCalendarDrawer();
+                else closeCalendarDrawer();
             });
+            const shut = (e) => {
+                e.stopPropagation();
+                closeCalendarDrawer();
+            };
+            calendarScrim?.addEventListener('click', shut);
+            calendarScrim?.addEventListener('mousedown', (e) => e.stopPropagation());
+            calendarPopover.querySelector('.plan-calendar-drawer-close')?.addEventListener('click', shut);
+            calendarPopover.querySelector('.plan-calendar-drawer-done')?.addEventListener('click', shut);
 
             // Help icon - toggle help content
             const helpIcon = calendarPopover.querySelector('.plan-calendar-help-icon');
@@ -7687,9 +9585,10 @@ const PlanModule = (function () {
                         || (calendarSelect && calendarSelect.contains(e.target));
                     if (!isInsideMenu) closeCalendarMenu();
                 }
-                if (!isInsidePopover && !isAddBtn && !isSyncBtn) {
-                    calendarPopover.classList.add('hidden');
-                    closeCalendarMenu();
+                // A row drawn again under the pointer is no longer in the
+                // drawer: it was a press inside it all the same.
+                if (!isInsidePopover && !isAddBtn && !isSyncBtn && e.target.isConnected) {
+                    closeCalendarDrawer();
                 }
             });
         }
@@ -7726,19 +9625,18 @@ const PlanModule = (function () {
             if (calendarLastSync) {
                 const date = new Date(calendarLastSync);
                 const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const dateStr = date.toLocaleDateString();
-                // Count calendar events from freeformNotes/Lines
+                const when = date.toDateString() === new Date().toDateString()
+                    ? `today at ${timeStr}`
+                    : `${date.toLocaleDateString()} at ${timeStr}`;
                 const totalEvents = freeformNotes.filter(n => n.source === 'calendar').length +
                     freeformLines.filter(l => l.source === 'calendar').length;
-                calendarStatus.textContent = `Last synced: ${dateStr} ${timeStr} • ${calendars.length} cal${calendars.length !== 1 ? 's' : ''} • ${totalEvents} events`;
+                calendarStatus.textContent = `Last synced ${when} · ${totalEvents} event${totalEvents === 1 ? '' : 's'}`;
             } else if (calendars.length > 0) {
                 calendarStatus.textContent = 'Click the sync button to get the events';
             } else {
                 calendarStatus.textContent = 'Add a calendar to see its marked events here';
             }
         }
-
-        let closeCalendarChipMenu = null;
 
         /**
          * The calendar as it is now. A sync reads the list from storage
@@ -7748,324 +9646,69 @@ const PlanModule = (function () {
         function liveCalendar(cal) {
             return calendars.find(c => c.id === cal.id) || cal;
         }
-        let calendarChipMenuFor = null;
-
-        /** A chip's menu: rename the calendar, and which of its events show. */
-        function openCalendarChipMenu(chip, cal, startRename) {
-            const wasOpenHere = closeCalendarChipMenu && calendarChipMenuFor === cal.id;
-            if (closeCalendarChipMenu) closeCalendarChipMenu();
-            // A second press on the same name puts the menu away.
-            if (wasOpenHere) return;
-
-            const menu = document.createElement('div');
-            menu.className = 'plan-calendar-chip-menu';
-            menu.setAttribute('role', 'menu');
-
-            const rename = document.createElement('button');
-            rename.type = 'button';
-            rename.className = 'plan-calendar-chip-menu-item';
-            rename.setAttribute('role', 'menuitem');
-            rename.textContent = 'Rename…';
-            rename.addEventListener('click', e => {
-                e.stopPropagation();
-                closeCalendarChipMenu();
-                startRename();
-            });
-
-            // Which events show, in each view: the week has room for a
-            // whole diary when the months do not.
-            const showRows = [['months', 'Months'], ['week', 'Week']].map(([view, words]) => {
-                const label = document.createElement('div');
-                label.className = 'plan-calendar-chip-menu-label';
-                label.textContent = `Show in ${words}`;
-                return [label, calendarShowChoices(cal, view)];
-            }).flat();
-
-            menu.append(rename, ...showRows);
-            /*
-              On the calendar itself, not in the chip: in a narrow window
-              the chips are a row that scrolls sideways, and a menu inside
-              it was cut off at the row's edge. Placed under the chip by
-              measuring, in unzoomed pixels (see rectOf), and kept inside
-              the calendar.
-            */
-            container.appendChild(menu);
-            const place = () => {
-                const parent = menu.offsetParent || container;
-                const from = rectOf(parent);
-                const at = rectOf(chip);
-                const edges = rectOf(container);
-                const width = rectOf(menu).width;
-                const margin = 8;
-                let left = Math.min(at.left, edges.right - margin - width);
-                left = Math.max(left, edges.left + margin);
-                menu.style.left = `${left - from.left + parent.scrollLeft}px`;
-                menu.style.top = `${at.bottom + 6 - from.top + parent.scrollTop}px`;
-            };
-            place();
-
-            const onOutside = ev => {
-                if (!menu.contains(ev.target)) closeCalendarChipMenu();
-            };
-            const onKey = ev => {
-                if (ev.key === 'Escape') closeCalendarChipMenu();
-            };
-            calendarChipMenuFor = cal.id;
-            closeCalendarChipMenu = () => {
-                menu.remove();
-                calendarChipMenuFor = null;
-                document.removeEventListener('click', onOutside, true);
-                document.removeEventListener('keydown', onKey, true);
-                closeCalendarChipMenu = null;
-            };
-            // After this click, so it does not close the menu it opened.
-            setTimeout(() => {
-                if (!menu.isConnected) return;
-                document.addEventListener('click', onOutside, true);
-                document.addEventListener('keydown', onKey, true);
-            }, 0);
-        }
-
-        // Render calendar visibility toggles in the navbar as chips with eye icons
+        // The Calendars pill in the toolbar, and its list to show or hide each one.
         function renderCalendarToggles() {
             // With no calendar there is nothing to sync, so the sync button goes.
             const syncAllBtn = container.querySelector('.plan-calendar-sync-all-btn');
             if (syncAllBtn) syncAllBtn.classList.toggle('hidden', calendars.length === 0);
+            // With a calendar there is its pill, whose list says "Manage
+            // calendars": the button to add one is only for the first.
+            const addBtn = container.querySelector('.plan-calendar-add-btn');
+            if (addBtn) addBtn.classList.toggle('hidden', calendars.length > 0);
 
             const togglesContainer = container.querySelector('.plan-calendar-toggles');
             if (!togglesContainer) return;
             togglesContainer.innerHTML = '';
 
-            // SVG paths for eye icons
-            const eyeOpenSVG = `<svg class="calendar-toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>`;
-            const eyeClosedSVG = `<svg class="calendar-toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>`;
-
             calendars.forEach(cal => {
-                // Default to visible if not set
                 if (cal.visible === undefined) cal.visible = true;
-
-                const chip = document.createElement('div');
-                chip.className = 'plan-calendar-toggle' + (cal.visible ? '' : ' hidden-cal');
-                chip.dataset.calId = cal.id;
-                chip.title = 'Eye: show or hide • Name: rename, and which events show';
-
-                // Build chip inner HTML
-                const calColor = cal.fontColor || '#4a90e2';
-                const emoji = cal.emoji || '';
-                chip.innerHTML = `
-                    <span class="calendar-toggle-eye">${cal.visible ? eyeOpenSVG : eyeClosedSVG}</span>
-                    ${emoji ? `<span class="calendar-toggle-emoji">${emoji}</span>` : ''}
-                    <span class="calendar-name">${cal.name || 'Calendar'}</span>
-                    <span class="calendar-toggle-color" title="Change calendar color">
-                        <span class="calendar-color-dot" style="background: ${calColor}"></span>
-                    </span>
-                `;
-
-                // Toggle visibility when clicking the eye icon
-                const eyeSpan = chip.querySelector('.calendar-toggle-eye');
-                eyeSpan.addEventListener('click', e => {
-                    e.stopPropagation();
-                    cal.visible = !cal.visible;
-                    localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
-                    renderFreeformElements();
-                    eyeSpan.innerHTML = cal.visible ? eyeOpenSVG : eyeClosedSVG;
-                    chip.classList.toggle('hidden-cal', !cal.visible);
-                });
-
-                // Color palette popover
-                const colorWrapper = chip.querySelector('.calendar-toggle-color');
-                const colorDot = chip.querySelector('.calendar-color-dot');
-                // The same palette the popover offers: see CALENDAR_PALETTE.
-                const PALETTE = CALENDAR_PALETTE;
-
-                function applyColor(newColor) {
-                    colorDot.style.background = newColor;
-                    setCalendarColour(cal, newColor);
-                    // The row in the popover shows the colour too.
-                    renderCalendarList();
-                }
-
-                /** Put this chip's palette away, when it is out. */
-                let closeColors = null;
-
-                colorDot.addEventListener('click', e => {
-                    e.stopPropagation();
-
-                    // A second press on the dot puts the colours away, the
-                    // way the first brought them out. It used to take them
-                    // away and put them straight back, which reads as a
-                    // palette that will not close.
-                    if (closeColors) {
-                        closeColors();
-                        return;
-                    }
-
-                    // Close any other open palette popovers
-                    container.querySelectorAll('.calendar-color-popover').forEach(p => p.remove());
-
-                    const popover = document.createElement('div');
-                    popover.className = 'calendar-color-popover';
-                    const currentColor = cal.fontColor || '#7da9c8';
-                    // Build palette swatches
-                    const swatchesHTML = PALETTE.map(c =>
-                        `<button type="button" class="calendar-color-swatch${c === currentColor ? ' selected' : ''}" data-color="${c}" style="background-color: ${c}" title="${c}"></button>`
-                    ).join('');
-                    popover.innerHTML = `
-                        <div class="calendar-color-swatches">
-                            ${swatchesHTML}
-                            <label class="calendar-color-swatch calendar-color-swatch-custom" title="More colors…">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="19" cy="12" r="2.5"/></svg>
-                                <input type="color" class="calendar-color-custom-input" value="${currentColor}">
-                            </label>
-                        </div>
-                        <div class="calendar-color-hex-row">
-                            <span class="calendar-color-hex-preview" style="background: ${currentColor}"></span>
-                            <input type="text" class="calendar-color-hex-input" value="${currentColor}" maxlength="7" spellcheck="false" placeholder="#000000">
-                        </div>
-                    `;
-
-                    // Position below the dot
-                    colorWrapper.appendChild(popover);
-
-                    /*
-                      And inside the calendar, wherever the dot is.
-
-                      The palette hangs to the left of its dot, and the
-                      chips start at the left of the toolbar — so in a
-                      narrow calendar, a tile of a split window most of
-                      all, it hung off the side with its first swatches
-                      and the start of the hex box out of reach.
-                    */
-                    const edges = rectOf(container);
-                    const box = rectOf(popover);
-                    const margin = 8;
-                    let shift = 0;
-                    if (box.left < edges.left + margin) {
-                        shift = edges.left + margin - box.left;
-                    } else if (box.right > edges.right - margin) {
-                        shift = edges.right - margin - box.right;
-                    }
-                    if (shift) popover.style.transform = `translateX(${shift}px)`;
-
-                    // Swatch click handlers
-                    popover.querySelectorAll('.calendar-color-swatch:not(.calendar-color-swatch-custom)').forEach(swatch => {
-                        swatch.addEventListener('click', ev => {
-                            ev.stopPropagation();
-                            applyColor(swatch.dataset.color);
-                            closeColors();
-                        });
-                    });
-
-                    // Custom color picker
-                    const customInput = popover.querySelector('.calendar-color-custom-input');
-                    const hexInput = popover.querySelector('.calendar-color-hex-input');
-                    const hexPreview = popover.querySelector('.calendar-color-hex-preview');
-
-                    customInput.addEventListener('input', ev => {
-                        const c = ev.target.value;
-                        applyColor(c);
-                        hexInput.value = c;
-                        hexPreview.style.background = c;
-                    });
-
-                    // Hex input: apply on Enter or blur
-                    const applyHex = () => {
-                        let val = hexInput.value.trim();
-                        if (!val.startsWith('#')) val = '#' + val;
-                        if (/^#[0-9a-fA-F]{6}$/.test(val)) {
-                            applyColor(val);
-                            hexPreview.style.background = val;
-                            customInput.value = val;
-                        } else {
-                            // Reset to current
-                            hexInput.value = cal.fontColor || '#7da9c8';
-                        }
-                    };
-                    hexInput.addEventListener('keydown', ev => {
-                        if (ev.key === 'Enter') { ev.preventDefault(); applyHex(); }
-                    });
-                    hexInput.addEventListener('blur', applyHex);
-
-                    // Close on outside click
-                    let closePopover = null;
-                    closeColors = () => {
-                        popover.remove();
-                        if (closePopover) {
-                            document.removeEventListener('click', closePopover, true);
-                        }
-                        closeColors = null;
-                    };
-                    closePopover = ev => {
-                        if (!popover.contains(ev.target) && ev.target !== colorDot) {
-                            closeColors();
-                        }
-                    };
-                    // Use setTimeout so the current click doesn't immediately close it
-                    setTimeout(() => {
-                        if (closeColors) document.addEventListener('click', closePopover, true);
-                    }, 0);
-                });
-
-                /*
-                  The name opens a menu: rename, and which events show.
-                  It used to start a rename on a click, and "show every
-                  event, or only the marked ones" was only in the
-                  calendars settings, far from the week it changes.
-                */
-                const nameSpan = chip.querySelector('.calendar-name');
-                /*
-                  The chip on screen when the rename starts, which need not
-                  be this one: a choice made in the menu syncs the
-                  calendars, and that draws the chips again.
-                */
-                const startRename = () => {
-                    const nameSpan =
-                        togglesContainer.querySelector(
-                            `.plan-calendar-toggle[data-cal-id="${CSS.escape(String(cal.id))}"] .calendar-name`
-                        ) || chip.querySelector('.calendar-name');
-                    nameSpan.contentEditable = 'true';
-                    nameSpan.focus();
-
-                    // Select all text
-                    const range = document.createRange();
-                    range.selectNodeContents(nameSpan);
-                    const sel = window.getSelection();
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-
-                    const finishEdit = () => {
-                        nameSpan.contentEditable = 'false';
-                        const newName = nameSpan.textContent.trim();
-                        const target = liveCalendar(cal);
-                        if (newName && newName !== target.name) {
-                            target.name = newName;
-                            localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
-                        } else {
-                            nameSpan.textContent = target.name || 'Calendar';
-                        }
-                    };
-
-                    nameSpan.addEventListener('blur', finishEdit, { once: true });
-                    nameSpan.addEventListener('keydown', ke => {
-                        if (ke.key === 'Enter') {
-                            ke.preventDefault();
-                            nameSpan.blur();
-                        } else if (ke.key === 'Escape') {
-                            nameSpan.textContent = cal.name || 'Calendar';
-                            nameSpan.blur();
-                        }
-                    });
-                };
-                nameSpan.addEventListener('click', e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (nameSpan.isContentEditable) return;
-                    openCalendarChipMenu(chip, cal, startRename);
-                });
-
-                togglesContainer.appendChild(chip);
             });
+            if (calendars.length) {
+                const shown = calendars.filter(cal => cal.visible !== false).length;
+                toolbarPill(togglesContainer, {
+                    key: 'calendars',
+                    label: 'Calendars',
+                    title: 'Show or hide your calendars',
+                    dots: calendars.map(cal => ({
+                        colour: cal.fontColor || '#4a90e2',
+                        off: cal.visible === false,
+                    })),
+                    shown,
+                    total: calendars.length,
+                    fill: menu => {
+                        menu.appendChild(toolbarMenuHead('Calendars'));
+                        calendars.forEach(cal => menu.appendChild(toolbarMenuRow({
+                            colour: cal.fontColor || '#4a90e2',
+                            off: cal.visible === false,
+                            name: `${cal.emoji ? `${cal.emoji} ` : ''}${cal.name || 'Calendar'}`,
+                            colourKey: `calendars:${cal.id}`,
+                            choices: CALENDAR_PALETTE,
+                            onColour: colour => {
+                                setCalendarColour(liveCalendar(cal), colour);
+                                renderCalendarList();
+                            },
+                            redraw: renderCalendarToggles,
+                            onToggle: () => {
+                                const live = liveCalendar(cal);
+                                live.visible = live.visible === false;
+                                localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+                                renderFreeformElements();
+                                renderCalendarToggles();
+                                renderCalendarList();
+                            },
+                        })));
+                        menu.appendChild(toolbarMenuFoot('Manage calendars →', () => {
+                            closeToolbarMenu(false);
+                            // The settings of each calendar: its colour,
+                            // its name, which events show, and more to add.
+                            if (calendarPopover.classList.contains('hidden')) calendarAddBtn.click();
+                        }));
+                    },
+                });
+            }
             renderRoadmapToggle();
+            renderPeopleToggle();
+            renderListsToggle();
         }
 
         // Formatting buttons (bold, italic, underline)
@@ -8301,7 +9944,7 @@ const PlanModule = (function () {
         scheduleLayoutRefresh();
     }
 
-    return { init, destroy, refresh, setPeople, setTasks, setTaskTime, setLinkableTasks, setMe, setRoadmap };
+    return { init, destroy, refresh, setPeople, setTasks, setTaskTime, setLinkableTasks, setMe, setRoadmap, holdDayTasks, dayTasksClosed, carryTask, setTaskLists };
 })();
 
 // Expose globally so React (or other host code) can call init/destroy.

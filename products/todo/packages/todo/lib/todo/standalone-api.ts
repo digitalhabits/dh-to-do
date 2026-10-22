@@ -10,10 +10,12 @@
  */
 
 import * as basecamp from "./basecamp";
+import * as github from "./github";
 import { describeError } from "./errors";
 import { installSqliteTodoDriver } from "./sqlite-driver";
 import { installTauriMediaStore } from "./tauri-media";
 import { installStandaloneBasecampTransport } from "./standalone-basecamp";
+import { installStandaloneGithubTransport, nativeFetch } from "./standalone-github";
 import { isStandaloneTodo } from "./product-flavor";
 import { savedLangT } from "./saved-prefs";
 import { THIS_DEVICE_MAKER } from "./people-scope";
@@ -25,6 +27,10 @@ function ensureDriver() {
   if (driverReady) return;
   installSqliteTodoDriver();
   installStandaloneBasecampTransport();
+  installStandaloneGithubTransport();
+  // A deleted task closes its issue at once (github-push.ts); every other
+  // change waits for the sync, as Basecamp's does here.
+  store.addTodoRemoteListener("github", github.pushGithubAction);
   installTauriMediaStore();
   driverReady = true;
 }
@@ -113,6 +119,56 @@ async function handleBasecamp(
 }
 
 /**
+ * GitHub, the person's own sign-in. The planner has the same status,
+ * repos and sync routes on its server (signed in as the GitHub App); the
+ * device routes and disconnect are this app's alone.
+ */
+async function handleGithub(
+  pathname: string,
+  upper: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  ensureDriver();
+  const route = `${upper} ${pathname.replace("/api/todo/github", "")}`;
+  switch (route) {
+    case "GET /status": {
+      const conn = await github.getGithubConnection();
+      return {
+        // "configured" is what the list dialog asks: can a list be linked?
+        configured: Boolean(conn),
+        connected: Boolean(conn),
+        login: conn?.login ?? null,
+        canConnect: Boolean(github.TODO_GITHUB_CLIENT_ID),
+        installUrl: github.githubInstallUrl(),
+      };
+    }
+    case "GET /repos":
+      return { repos: await github.githubTransport().repositories() };
+    case "POST /sync":
+      return { result: await github.syncGithubList(String(payload.listId)) };
+    case "POST /device/start":
+      return { ...(await github.startDeviceFlow(nativeFetch, github.TODO_GITHUB_CLIENT_ID)) };
+    case "POST /device/poll": {
+      const poll = await github.pollDeviceFlow(
+        nativeFetch,
+        github.TODO_GITHUB_CLIENT_ID,
+        String(payload.deviceCode ?? "")
+      );
+      if (poll.status !== "done") return poll;
+      const login = await github.fetchGithubLogin(nativeFetch, poll.token);
+      await github.saveGithubConnection({ accessToken: poll.token, login });
+      // The token never leaves this module: the page gets who, not how.
+      return { status: "done", login };
+    }
+    case "POST /disconnect":
+      await github.deleteGithubConnection();
+      return { ok: true };
+    default:
+      throw new Error(`Unsupported GitHub route: ${route}`);
+  }
+}
+
+/**
  * Standalone transport. Throws if invoke is unavailable or the route is not
  * supported locally.
  */
@@ -133,6 +189,9 @@ export async function standaloneTodoApi(
 
   if (pathname.startsWith("/api/todo/basecamp")) {
     return handleBasecamp(invoke, pathname, upper, payload, projectId);
+  }
+  if (pathname.startsWith("/api/todo/github")) {
+    return handleGithub(pathname, upper, payload);
   }
 
   ensureDriver();
@@ -182,9 +241,14 @@ export async function standaloneTodoApi(
 
   // Deleted lists, kept with their tasks (store.deleteTodoList).
   if (pathname === "/api/todo/lists/deleted") {
+    if (upper === "GET" && id) return { tasks: await store.listDeletedTodoListTasks(id) };
     if (upper === "GET") return { lists: await store.listDeletedTodoLists() };
     if (upper === "POST") {
       await store.restoreTodoList(String(payload.id));
+      return { ok: true };
+    }
+    if (upper === "DELETE" && id) {
+      await store.deleteTodoListForever(id);
       return { ok: true };
     }
   }

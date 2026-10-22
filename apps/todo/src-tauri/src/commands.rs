@@ -58,7 +58,10 @@ pub fn init_db(app: &AppHandle) -> Result<TodoDb, String> {
     .app_data_dir()
     .map_err(|e| format!("app_data_dir: {e}"))?;
   let path = TodoDb::default_path(dir);
-  adopt_preview_board(&path);
+  // The demo fills its own board; a test build's board is not for it.
+  if !crate::demo::is_demo(app) {
+    adopt_preview_board(&path);
+  }
   log::info!("Opening To-Do SQLite at {}", path.display());
   TodoDb::open(&path).map_err(|e| e.to_string())
 }
@@ -126,17 +129,38 @@ pub async fn save_backup(
   file_name: String,
   contents: String,
 ) -> Result<Option<String>, String> {
+  save_with_panel(&app, &file_name, Some(("JSON", &["json"])), contents.as_bytes())
+}
+
+/// A note picture, the same way: the download button over a picture.
+#[tauri::command]
+pub async fn save_note_image(
+  app: AppHandle,
+  file_name: String,
+  bytes_base64: String,
+) -> Result<Option<String>, String> {
+  use base64::Engine;
+  let bytes = base64::engine::general_purpose::STANDARD
+    .decode(bytes_base64)
+    .map_err(map_err)?;
+  save_with_panel(&app, &file_name, None, &bytes)
+}
+
+fn save_with_panel(
+  app: &AppHandle,
+  file_name: &str,
+  filter: Option<(&str, &[&str])>,
+  bytes: &[u8],
+) -> Result<Option<String>, String> {
   use tauri_plugin_dialog::DialogExt;
-  let Some(path) = app
-    .dialog()
-    .file()
-    .set_file_name(&file_name)
-    .add_filter("JSON", &["json"])
-    .blocking_save_file()
-  else {
+  let mut panel = app.dialog().file().set_file_name(file_name);
+  if let Some((name, extensions)) = filter {
+    panel = panel.add_filter(name, extensions);
+  }
+  let Some(path) = panel.blocking_save_file() else {
     return Ok(None);
   };
   let path = path.into_path().map_err(map_err)?;
-  std::fs::write(&path, contents).map_err(map_err)?;
+  std::fs::write(&path, bytes).map_err(map_err)?;
   Ok(Some(path.display().to_string()))
 }

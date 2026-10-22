@@ -15,7 +15,7 @@ import { Calendar, ChevronDown, List, ListChecks, User, X } from "lucide-react";
 
 import { DuePopover } from "@/components/todo/DuePopover";
 import { DurationPopover } from "@/components/todo/DurationPopover";
-import { MenuKeys } from "@/components/todo/MenuKeys";
+import { SearchableListMenu } from "@/components/todo/SearchableListMenu";
 import { MenuPortal } from "@/components/todo/MenuPortal";
 import {
   TaskAssignMenu,
@@ -358,13 +358,14 @@ export function composerListChip(c: AddTaskComposerModel) {
         role="menu"
         ariaLabel={t("fieldList")}
       >
-        <MenuKeys
+        <SearchableListMenu
+          lists={lists}
+          t={t}
           onClose={(reason) => {
             setListOpen(false);
             if (reason === "escape") listRef.current?.focus();
           }}
-        >
-        {defaultList ? null : (
+          before={defaultList ? null : (
           <button
             type="button"
             role="menuitemradio"
@@ -382,7 +383,7 @@ export function composerListChip(c: AddTaskComposerModel) {
             <span className="task-list-picker-name">{t("composerNoList")}</span>
           </button>
         )}
-        {lists.map((list) => {
+          renderItem={(list) => {
           const iconId = resolveListIconId(list.emoji);
           const selected = targetList?.id === list.id;
           return (
@@ -412,8 +413,8 @@ export function composerListChip(c: AddTaskComposerModel) {
               <span className="task-list-picker-name">{list.name}</span>
             </button>
           );
-        })}
-        </MenuKeys>
+        }}
+        />
       </MenuPortal>
     </span>
   );

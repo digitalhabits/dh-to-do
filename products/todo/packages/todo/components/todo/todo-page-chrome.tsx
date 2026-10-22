@@ -8,6 +8,10 @@
  * from it. The JSX is TodoPage's own, word for word.
  */
 
+import { SearchInput } from "@/components/todo/search-input";
+import { Plus } from "lucide-react";
+
+import { HoverRow } from "@/components/todo/hover-row";
 import { TodoOfflineStatusPill } from "@/components/todo/TodoOfflineStatusPill";
 import { TodoPersonAvatar } from "@/components/todo/TodoPeopleEditor";
 import { ViewSwitcher } from "@/components/todo/ViewSwitcher";
@@ -20,9 +24,12 @@ import {
 } from "@/components/todo/task-icons";
 import {
   renderAllListTab,
+  renderEverythingGroupTab,
+  renderEverythingTabs,
   renderGroupTab,
   renderListTab,
 } from "@/components/todo/todo-list-chrome";
+import { hasEverythingGroup, isEverythingGroup } from "@/lib/todo/list-scope";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { shortPersonName } from "@/lib/todo/people";
 import {
@@ -121,22 +128,24 @@ export function renderGroupsRow(m: TodoPageModel) {
     groupsEnabled,
     groupsRowRef,
     groupsForRender,
+    groupsSorted,
     openCreateGroupModal,
   } = m;
   return (
     view === "lists" && groupsEnabled && !focusMode ? (
-      <div className="groups-container" style={{ display: "flex" }}>
+      <HoverRow className="groups-container" style={{ display: "flex" }}>
         <div className="groups" ref={groupsRowRef} style={{ display: "flex" }}>
+          {hasEverythingGroup(groupsEnabled, groupsSorted) ? renderEverythingGroupTab(m) : null}
           {groupsForRender.map((group) => renderGroupTab(m, group))}
           <button
             className="add-group-btn"
             title="Add new group"
             onClick={openCreateGroupModal}
           >
-            +
+            <Plus size={16} strokeWidth={2} aria-hidden />
           </button>
         </div>
-      </div>
+      </HoverRow>
     ) : null
   );
 }
@@ -147,11 +156,22 @@ export function renderTabsRow(m: TodoPageModel) {
     focusMode,
     tabsRowRef,
     lists,
+    activeGroup,
     openCreateListModal,
   } = m;
+  // In Everything the row lists the groups, and a list is made in a group.
+  if (isEverythingGroup(activeGroup) && view === "lists" && !focusMode) {
+    return (
+      <HoverRow className="tabs-container">
+        <div className="tabs" ref={tabsRowRef}>
+          {renderEverythingTabs(m)}
+        </div>
+      </HoverRow>
+    );
+  }
   return (
     view === "lists" && !focusMode ? (
-      <div className="tabs-container">
+      <HoverRow className="tabs-container">
         <div className="tabs" ref={tabsRowRef}>
           {lists.length > 1 ? renderAllListTab(m) : null}
           {lists.map((list) => renderListTab(m, list))}
@@ -160,10 +180,10 @@ export function renderTabsRow(m: TodoPageModel) {
             title="Add new tab"
             onClick={openCreateListModal}
           >
-            +
+            <Plus size={16} strokeWidth={2} aria-hidden />
           </button>
         </div>
-      </div>
+      </HoverRow>
     ) : null
   );
 }
@@ -322,7 +342,7 @@ export function renderListSearch(m: TodoPageModel) {
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </button>
-          <input
+          <SearchInput
             ref={searchInputRef}
             type="text"
             className="list-search-input"
@@ -334,7 +354,7 @@ export function renderListSearch(m: TodoPageModel) {
             value={searchQuery}
             tabIndex={searchRevealed ? 0 : -1}
             onFocus={() => setSearchRevealed(true)}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={setSearchQuery}
           />
         </div>
         {m.boardExtension?.renderToolbar({ allTab: m.isAllListsView }) ?? null}

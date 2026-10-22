@@ -20,9 +20,10 @@ import { renderSyncControls } from "@/components/todo/todo-list-chrome";
 import { renderTask } from "@/components/todo/todo-task-card";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
+import { dayOrderWrites } from "@/lib/todo/board-drop";
 import { groupDoneTasks } from "@/lib/todo/done-groups";
 import { doneTasksShown, searchQueryOf } from "@/lib/todo/search-groups";
-import { dueDatePatch } from "@/lib/todo/task-helpers";
+import { columnEnd, dueDatePatch } from "@/lib/todo/task-helpers";
 import { type TodoBoardColumn } from "@/lib/todo/types";
 
 export function renderTaskList(m: TodoPageModel) {
@@ -229,8 +230,11 @@ export function renderDonePile(m: TodoPageModel) {
         (l) => Boolean(l.remindersListId) && remindersConnected
       )
     : Boolean(activeList?.remindersListId && remindersConnected);
+  const syncGithub = isAllListsView
+    ? lists.some((l) => Boolean(l.githubRepo))
+    : Boolean(activeList?.githubRepo);
   const canSync =
-    view === "lists" && (syncBasecamp || syncReminders);
+    view === "lists" && (syncBasecamp || syncReminders || syncGithub);
   // A search reaches the pile when it is open: its matching done tasks
   // show under the open ones. Folded, it stays out of the search's way.
   const doneShown = doneTasksShown(filteredDoneTasks, isSearching ? searchQueryOf(m.searchQuery) : "");
@@ -240,6 +244,7 @@ export function renderDonePile(m: TodoPageModel) {
     ? renderSyncControls(m, {
         basecamp: syncBasecamp,
         reminders: syncReminders,
+        github: syncGithub,
         stopPropagation: true,
       })
     : null;
@@ -302,24 +307,47 @@ export function renderPlanner(m: TodoPageModel) {
     mutateTask,
     openCalendarTask,
     openCalendarNewTask,
+    openCalendarDay,
+    closeCalendarDay,
     addBoardPerson,
+    completeTaskWithFlight,
+    groupsEnabled,
+    assignEnabled,
   } = m;
   return (
     planEnabled && view === "plan" ? (
       <TodoPlannerView
         lang={lang}
-        people={state.people}
+        // With assigning off, the calendar has no people to filter by either.
+        people={assignEnabled ? state.people : []}
         onAddPerson={(name) => addBoardPerson({ name })}
         tasks={state.tasks}
         lists={state.lists}
+        groups={groupsEnabled ? state.groups : []}
         mePersonId={mePersonIds[0] ?? null}
         t={t}
         onEditPeople={() => setPeopleEditorOpen(true)}
         onTaskDueChange={(taskId, dueOn) =>
-          mutateTask(taskId, dueDatePatch(dueOn, state.tasks.find((task) => task.id === taskId)))
+          mutateTask(
+            taskId,
+            dueDatePatch(dueOn, state.tasks.find((task) => task.id === taskId), columnEnd(m.boardColumns.week))
+          )
         }
+        onTaskReorder={(_dateKey, ids) => {
+          // As the list of the day writes a move: the same order everywhere.
+          for (const write of dayOrderWrites(state.tasks, ids, Date.now())) {
+            void mutateTask(write.id, write.patch);
+          }
+        }}
         onTaskOpen={openCalendarTask}
+        onDayTasksOpen={openCalendarDay}
+        onDayTasksClose={closeCalendarDay}
         onTaskCreate={openCalendarNewTask}
+        onTaskComplete={(taskId, completed) => {
+          // The board's own tick: Cmd+Z takes it back. No row to fly from.
+          const task = state.tasks.find((item) => item.id === taskId);
+          if (task) completeTaskWithFlight(task, completed, null, null);
+        }}
       />
     ) : null
   );

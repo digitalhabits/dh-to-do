@@ -35,29 +35,108 @@ export function inPreviewOrder<T extends { id: string }>(
     .filter((item): item is T => Boolean(item));
 }
 
+/**
+ * Everything: a fixed first group, there with two groups or more. It holds
+ * every list, and its tab row lists the groups: All, then a tab per group
+ * that shows that group's tasks. It has no × and does not move.
+ */
+export const TODO_EVERYTHING_GROUP_ID = "__everything__";
+const GROUP_TAB_PREFIX = "group:";
+
+export const EVERYTHING_GROUP: TodoGroup = {
+  id: TODO_EVERYTHING_GROUP_ID,
+  name: "Everything",
+  colour: null,
+  position: -1,
+};
+
+export function isEverythingGroup(group: TodoGroup | null | undefined): boolean {
+  return group?.id === TODO_EVERYTHING_GROUP_ID;
+}
+
+/** Whether Everything is offered: groups on, and two of them or more. */
+export function hasEverythingGroup(groupsEnabled: boolean, groupsSorted: TodoGroup[]): boolean {
+  return groupsEnabled && groupsSorted.length >= 2;
+}
+
+/** The tab in Everything's row that stands for one group. */
+export function groupTabId(groupId: string): string {
+  return GROUP_TAB_PREFIX + groupId;
+}
+
+/** The group a tab of Everything's row stands for, or null for All or a list. */
+export function groupOfTab(listId: string | null): string | null {
+  return listId?.startsWith(GROUP_TAB_PREFIX) ? listId.slice(GROUP_TAB_PREFIX.length) : null;
+}
+
 /** The open group: the one chosen, or the first. None with groups off. */
 export function activeGroupOf(
   groupsEnabled: boolean,
   groupsSorted: TodoGroup[],
   currentGroupId: string | null
 ): TodoGroup | null {
+  if (currentGroupId === TODO_EVERYTHING_GROUP_ID && hasEverythingGroup(groupsEnabled, groupsSorted)) {
+    return EVERYTHING_GROUP;
+  }
   return groupsEnabled
     ? (groupsSorted.find((g) => g.id === currentGroupId) ?? groupsSorted[0] ?? null)
     : null;
 }
 
-/** The lists with a tab: the open group's, in a drag's order during one. */
+/**
+ * The lists the board shows: the open group's, in a drag's order during
+ * one. In Everything, every list, or one group's when its tab is open.
+ */
 export function listsInScope(
   listsSorted: TodoList[],
   groupsEnabled: boolean,
   activeGroup: TodoGroup | null,
-  previewIds: string[] | null
+  previewIds: string[] | null,
+  currentListId: string | null = null
 ): TodoList[] {
+  if (isEverythingGroup(activeGroup)) {
+    const groupId = groupOfTab(currentListId);
+    return groupId ? listsSorted.filter((l) => l.groupId === groupId) : listsSorted;
+  }
   const scoped =
     groupsEnabled && activeGroup
       ? listsSorted.filter((l) => l.groupId === activeGroup.id)
       : listsSorted;
   return inPreviewOrder(scoped, previewIds);
+}
+
+/**
+ * The lists a task can be moved to: every list, not only the open group's.
+ * The open group's lists come first, then each other group's in group
+ * order, then the lists in no group. Each carries the name of its group,
+ * so the menu can head the lists of a group that is not the open one.
+ * Lists in no group get an empty heading: a line, with no name. With
+ * groups off, or in Everything, there are no headings.
+ */
+export function moveTargetLists(
+  listsSorted: TodoList[],
+  groupsSorted: TodoGroup[],
+  groupsEnabled: boolean,
+  activeGroup: TodoGroup | null
+): { list: TodoList; heading: string | null }[] {
+  if (!groupsEnabled || !activeGroup || isEverythingGroup(activeGroup)) {
+    return listsSorted.map((list) => ({ list, heading: null }));
+  }
+  const others = groupsSorted.filter((g) => g.id !== activeGroup.id);
+  const known = new Set(groupsSorted.map((g) => g.id));
+  return [
+    ...listsSorted
+      .filter((l) => l.groupId === activeGroup.id)
+      .map((list) => ({ list, heading: null })),
+    ...others.flatMap((g) =>
+      listsSorted
+        .filter((l) => l.groupId === g.id)
+        .map((list) => ({ list, heading: g.name }))
+    ),
+    ...listsSorted
+      .filter((l) => !l.groupId || !known.has(l.groupId))
+      .map((list) => ({ list, heading: "" })),
+  ];
 }
 
 /**

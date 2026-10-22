@@ -68,16 +68,35 @@ export function doneStamp(
   const locale = lang === "da" ? "da-DK" : undefined;
   const bucket = doneBucket(completedAt, now);
   if (bucket === "doneToday" || bucket === "doneYesterday") {
-    return at.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    return formatter(locale, "time").format(at);
   }
   if (bucket === "doneEarlierThisWeek") {
-    return at.toLocaleDateString(locale, { weekday: "short" });
+    return formatter(locale, "weekday").format(at);
   }
-  return at.toLocaleDateString(locale, {
-    day: "numeric",
-    month: "short",
-    year: at.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
+  return formatter(locale, at.getFullYear() === now.getFullYear() ? "date" : "dateYear").format(at);
+}
+
+/*
+ * One formatter per language and form, kept. toLocaleTimeString builds a
+ * new one on every call, and a done pile asks for one per row on every
+ * redraw of the board: measured, a tenth of a keystroke's work in search.
+ */
+const FORMATS = {
+  time: { hour: "2-digit", minute: "2-digit" },
+  weekday: { weekday: "short" },
+  date: { day: "numeric", month: "short" },
+  dateYear: { day: "numeric", month: "short", year: "numeric" },
+} as const satisfies Record<string, Intl.DateTimeFormatOptions>;
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatter(locale: string | undefined, form: keyof typeof FORMATS): Intl.DateTimeFormat {
+  const key = `${locale ?? ""}|${form}`;
+  let f = formatters.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat(locale, FORMATS[form]);
+    formatters.set(key, f);
+  }
+  return f;
 }
 
 /**

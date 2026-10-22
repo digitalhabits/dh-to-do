@@ -136,6 +136,22 @@ export function useBoardPeople({
     }
   }
 
+  /** The person's GitHub username: how issue assignees find them. */
+  async function setPersonGithubLogin(personId: string, login: string | null) {
+    try {
+      const json = await api("/api/todo/people", "PATCH", { id: personId, githubLogin: login });
+      const saved = json.person as { githubLogin?: string | null };
+      setState((s) => ({
+        ...s,
+        people: s.people.map((person) =>
+          person.id === personId ? { ...person, githubLogin: saved.githubLogin ?? null } : person
+        ),
+      }));
+    } catch (err) {
+      toast.error(describeError(err, t("saveFailed")));
+    }
+  }
+
   async function removeBoardPerson(id: string) {
     const snapshot = state.people;
     setState((s) => ({
@@ -240,6 +256,7 @@ export function useBoardPeople({
     searchPeopleCandidates,
     addBoardPerson,
     setPersonPhoto,
+    setPersonGithubLogin,
     removeBoardPerson,
     toggleTaskAssignee,
     closeAssignMenu,

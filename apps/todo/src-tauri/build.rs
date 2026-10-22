@@ -8,9 +8,11 @@ fn main() {
       tauri_build::AppManifest::new().commands(&[
         "todo_sql_query",
         "todo_sql_batch",
+        "todo_is_demo",
         "todo_media_write",
         "todo_media_read",
         "save_backup",
+        "save_note_image",
         "open_focus_popout",
         "close_focus_popout",
         "set_focus_popout_height",

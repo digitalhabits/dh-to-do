@@ -24,6 +24,8 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 
+import { applyPictureWidths, dressResizeHandles } from "@/components/todo/trix-picture-size";
+
 // Trix's own, for the attachment furniture: previews, captions, the upload
 // progress bar and the little toolbar on a selected picture. The notes box
 // around it is dressed in todo.css.
@@ -34,6 +36,9 @@ import {
   trixToBasecamp,
   type ImageSrcResolver,
 } from "@/lib/todo/basecamp-richtext";
+import { bytesToBase64 } from "@/lib/todo/backup-media";
+import { tauriInvoke } from "@/lib/native-shell";
+import { isStandaloneTodo } from "@/lib/todo/product-flavor";
 
 /**
  * Trix registers `<trix-editor>` on the custom element registry, which
@@ -288,7 +293,13 @@ type TrixEditor = {
   loadHTML: (html: string) => void;
   getSelectedRange?: () => [number, number];
   setSelectedRange: (range: [number, number]) => void;
-  getDocument?: () => { toString: () => string };
+  getDocument?: () => {
+    toString: () => string;
+    getAttachmentById?: (id: number) => unknown;
+    getRangeOfAttachment?: (attachment: unknown) => [number, number];
+  };
+  undo?: () => void;
+  redo?: () => void;
   deleteInDirection: (direction: "forward" | "backward") => void;
   activateAttribute: (name: string, value?: unknown) => void;
   recordUndoEntry?: (description: string) => void;
@@ -477,6 +488,23 @@ export function TrixNotesEditor({
     end of it on every keystroke.
   */
   const lastEmitted = React.useRef<string | null>(null);
+  /*
+    Everything this editor has handed out since it last loaded a value from
+    outside.
+
+    Comparing with the last one alone was not enough. The value comes back
+    through a React render, and the check below runs in an effect, after
+    the screen paints. A fast typist (or a slow machine, as on Windows) puts
+    the next letter in between: the effect then sees the value from one
+    letter ago, takes it for a change from somewhere else, and reloads the
+    document. A reload puts the caret at the start, so the word is split,
+    and the letter typed in between is lost. A value in this set is only an
+    old copy of our own words, never news.
+  */
+  const ownValues = React.useRef<Set<string>>(new Set());
+  /** The newest value, for the editor that loads after the first render. */
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
   const cleanupRef = React.useRef<(() => void) | null>(null);
   /** Pictures Basecamp has not answered for yet. A save waits on these. */
   const pending = React.useRef(0);
@@ -530,7 +558,10 @@ export function TrixNotesEditor({
       : [image];
     const items = all.map((el) => ({
       src: el.src,
-      name: readAttachmentFilename(el.closest("figure")),
+      // Its caption, as under the picture; the file name when it has none.
+      name:
+        readAttachmentCaption(el.closest("figure")) ||
+        readAttachmentFilename(el.closest("figure")),
     }));
     const index = Math.max(
       0,
@@ -622,9 +653,10 @@ export function TrixNotesEditor({
       );
 
       el.addEventListener("trix-initialize", () => {
-        const initial = basecampToTrix(value, resolveRef.current);
+        const initial = basecampToTrix(valueRef.current, resolveRef.current);
         el.editor?.loadHTML(initial);
         lastEmitted.current = trixToBasecamp(el.value);
+        ownValues.current = new Set([valueRef.current, lastEmitted.current]);
         if (autoFocus) {
           el.focus();
           /*
@@ -642,6 +674,9 @@ export function TrixNotesEditor({
       const emitNow = () => {
         const html = trixToBasecamp(el.value);
         lastEmitted.current = html;
+        // Kept small: only the last few can still be on their way back.
+        if (ownValues.current.size > 50) ownValues.current.clear();
+        ownValues.current.add(html);
         onChangeRef.current(html);
       };
       el.addEventListener("trix-change", emitNow);
@@ -736,25 +771,75 @@ export function TrixNotesEditor({
             const figure = group.closest("figure");
             const image = figure?.querySelector("img");
             if (!image) return;
+            // On the picture's corner: the figure is as wide as the line.
+            const toolbar = group.closest<HTMLElement>(".attachment__toolbar");
+            if (toolbar) toolbar.style.right = `${figure!.clientWidth - image.offsetWidth + 8}px`;
             group.prepend(
               imageActionButton("fullscreen", "View full size", () => {
                 openLightboxRef.current?.(image);
               }),
               imageActionButton("download", "Download", () => {
-                const link = document.createElement("a");
-                link.href = image.src;
-                link.download = readAttachmentFilename(figure) || "image";
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
+                downloadNoteImage(image.src, readAttachmentFilename(figure) || "image").catch(
+                  (error) => console.warn("[todo] could not save the picture", error)
+                );
               })
             );
           }
         );
       };
-      const toolbarWatch = new MutationObserver(dressToolbars);
+      // Undo and redo go to Trix directly: not every web view sends it the
+      // browser's own undo, so ⌘Z did not bring back a deleted picture.
+      el.addEventListener("keydown", (event) => {
+        if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+        if ((event.target as Element).closest?.(".attachment__caption")) return;
+        const key = event.key.toLowerCase();
+        const redo = (key === "z" && event.shiftKey) || (key === "y" && event.ctrlKey);
+        if (key !== "z" && !redo) return;
+        event.preventDefault();
+        if (redo) el.editor?.redo?.();
+        else el.editor?.undo?.();
+      });
+
+      /*
+        A press on a pill button must not move the caret, or Trix takes the
+        pill away before the click lands. A press on a picture chooses it
+        (or lets it go, if it was chosen): without this, the first click on
+        a note without focus put the caret before the picture instead.
+      */
+      el.addEventListener(
+        "mousedown",
+        (event) => {
+          const target = event.target as Element;
+          if (target.closest?.(".attachment__toolbar button")) return event.preventDefault();
+          if (target.closest?.(".dh-resize-handle")) return;
+          if (event.button !== 0 || target.closest?.(".attachment__toolbar, .attachment__caption")) return;
+          const figure = target.closest?.("figure.attachment") as HTMLElement | null;
+          if (!figure) return;
+          event.preventDefault();
+          const wasChosen = figure.hasAttribute("data-trix-mutable") && document.activeElement === el;
+          el.focus({ preventScroll: true });
+          const choose = () => {
+            const doc = el.editor?.getDocument?.();
+            const attachment = doc?.getAttachmentById?.(Number(figure.dataset.trixId));
+            const range = attachment ? doc?.getRangeOfAttachment?.(attachment) : undefined;
+            if (range) el.editor?.setSelectedRange(wasChosen ? [range[1], range[1]] : range);
+          };
+          choose();
+          requestAnimationFrame(choose);
+        },
+        true
+      );
+
+      // Each redraw: the pictures at the widths they were given, and the
+      // chosen one with its corners (trix-picture-size.ts).
+      const dressPictures = () => {
+        dressToolbars();
+        applyPictureWidths(el);
+        dressResizeHandles(el);
+      };
+      const toolbarWatch = new MutationObserver(dressPictures);
       toolbarWatch.observe(el, { childList: true, subtree: true });
-      dressToolbars();
+      dressPictures();
 
       cleanupRef.current = () => {
         el.removeEventListener("scroll", follow);
@@ -787,8 +872,26 @@ export function TrixNotesEditor({
     const el = editorRef.current;
     if (!el?.editor) return;
     if (value === lastEmitted.current) return;
+    // An old copy of our own words, late from React. See ownValues.
+    if (ownValues.current.has(value)) return;
+    if (value === trixToBasecamp(el.value)) return;
+    /*
+      Really new. The caret stays where it was, as near as the new words
+      allow, so a change from outside does not throw it to the start.
+    */
+    const focused = el.contains(document.activeElement) || document.activeElement === el;
+    const range = focused ? el.editor.getSelectedRange?.() : undefined;
     el.editor.loadHTML(basecampToTrix(value, resolveRef.current));
     lastEmitted.current = value;
+    ownValues.current = new Set([value, trixToBasecamp(el.value)]);
+    if (range) {
+      const text = el.editor.getDocument?.().toString() ?? "";
+      const last = Math.max(0, text.length - 1);
+      el.editor.setSelectedRange([
+        Math.min(range[0], last),
+        Math.min(range[1], last),
+      ]);
+    }
   }, [value]);
 
   /*
@@ -1108,16 +1211,50 @@ async function imageToPng(image: HTMLImageElement): Promise<Blob> {
   });
 }
 
+/**
+ * Save a note's picture. The desktop app's web view has no downloads, so
+ * there Rust shows a save panel; the web saves a copy made on the page.
+ */
+async function downloadNoteImage(src: string, filename: string): Promise<void> {
+  const blob = await (await fetch(src)).blob();
+  const name = withImageExtension(filename, blob.type);
+  // The planner can run in a desktop shell too, without this command.
+  const invoke = isStandaloneTodo() ? tauriInvoke() : null;
+  if (invoke) {
+    const bytesBase64 = bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
+    await invoke("save_note_image", { fileName: name, bytesBase64 });
+    return;
+  }
+  const link = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(blob),
+    download: name,
+  });
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+}
+
+/** "image" becomes "image.png", so the file opens in the right program. */
+function withImageExtension(filename: string, type: string): string {
+  if (/\.[a-z0-9]{2,5}$/i.test(filename) || !type.startsWith("image/")) return filename;
+  const ext = type.slice(6).replace("jpeg", "jpg").replace("svg+xml", "svg");
+  return `${filename}.${ext}`;
+}
+
 /** The name Basecamp gave the file, for the download to save it under. */
 function readAttachmentFilename(figure: Element | null): string {
-  if (!figure) return "";
-  const raw = figure.getAttribute("data-trix-attachment");
-  if (!raw) return "";
+  return String(readFigureJson(figure, "data-trix-attachment").filename ?? "");
+}
+
+/** The caption a picture was given in the note, or "" when it has none. */
+function readAttachmentCaption(figure: Element | null): string {
+  return String(readFigureJson(figure, "data-trix-attributes").caption ?? "").trim();
+}
+
+function readFigureJson(figure: Element | null, attribute: string): Record<string, unknown> {
   try {
-    const data = JSON.parse(raw) as { filename?: string };
-    return data.filename ?? "";
+    return JSON.parse(figure?.getAttribute(attribute) ?? "{}") ?? {};
   } catch {
-    return "";
+    return {};
   }
 }
 

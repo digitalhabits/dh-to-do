@@ -39,6 +39,7 @@ export function AddTaskComposer(props: AddTaskComposerProps) {
     assignEnabled,
     textRef,
     wrapperRef,
+    onTextFocus,
     draft,
     patch,
     hasText,
@@ -76,6 +77,7 @@ export function AddTaskComposer(props: AddTaskComposerProps) {
           placeholder={placeholder}
           maxLength={100}
           value={draft.text}
+          onFocus={onTextFocus}
           onChange={(e) => patch({ text: e.target.value })}
           onKeyDown={(e) => {
             // Cmd+Enter is the row's own key (see the row's onKeyDown). Taken

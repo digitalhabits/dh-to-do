@@ -245,6 +245,24 @@ export async function walkDrag(page) {
   check("a task added after a drop is drawn", await until(() => text().includes("Oil the gate")), text().slice(0, 300));
   await settle();
 
+  // A task added under Today is due today, and the next one too.
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  for (const words of ["Water the roses", "Sweep the path"]) {
+    const todayBox = column("today").querySelector("input.task-composer-input");
+    todayBox.focus();
+    typeInto(todayBox, words);
+    press(todayBox, "Enter");
+    if (words === "Water the roses") {
+      // Tab from the title goes on to the row's chips, not out of the row.
+      press(todayBox, "Tab");
+      check("Tab from the title goes to the row's first chip", document.activeElement?.classList.contains("composer-chip"), document.activeElement?.className);
+      todayBox.focus();
+    }
+    check(`"${words}", added under Today, is due today`, await until(() => row(words)?.due_on === todayKey), JSON.stringify(row(words)));
+    await settle();
+  }
+
   // Carried over no column, a card keeps its own.
   aim = null;
   await drag(cardOf("Stack the logs"), { x: 10, y: 110 }, { x: 10, y: 140 });

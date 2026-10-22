@@ -51,11 +51,21 @@ export type AddTaskComposerProps = {
   uploadImageForList?: (listId: string | null) => UploadImage;
   /** Where a Basecamp picture in the note is read from. */
   resolveImageSrc?: ImageSrcResolver;
-  /** What the box starts with: the Calendar gives the due day of the day that was clicked. */
-  initialDraft?: Partial<TaskDraft>;
+  /**
+   * What the box starts with, and starts again with after each add: the
+   * Calendar gives the due day of the day that was clicked, and the
+   * board's Today column gives today. A function is asked each time, so a
+   * board left open overnight does not give yesterday.
+   */
+  initialDraft?: Partial<TaskDraft> | (() => Partial<TaskDraft>);
   /** Put the caret in the box when it shows. */
   autoFocus?: boolean;
 };
+
+/** A new draft: empty, with what the box is given to start with. */
+function makeDraft(given: AddTaskComposerProps["initialDraft"]): TaskDraft {
+  return { ...EMPTY_TASK_DRAFT, ...(typeof given === "function" ? given() : given) };
+}
 
 /**
  * The add-task row's state: the draft, which chip or section is open,
@@ -117,10 +127,14 @@ export function useAddTaskComposer({
     row and nothing else — held on the page it redrew every card on the
     board, which is what made typing a title feel slow.
   */
-  const [draft, onDraftChange] = React.useState<TaskDraft>(() => ({
-    ...EMPTY_TASK_DRAFT,
-    ...initialDraft,
-  }));
+  /** The draft as the box last started it. Not changed since: see `open`. */
+  const [startDraft, setStartDraft] = React.useState<TaskDraft>(() => makeDraft(initialDraft));
+  const [draft, onDraftChange] = React.useState<TaskDraft>(startDraft);
+  const startAgain = React.useCallback(() => {
+    const fresh = makeDraft(initialDraft);
+    setStartDraft(fresh);
+    onDraftChange(fresh);
+  }, [initialDraft]);
   React.useEffect(() => {
     if (autoFocus) textRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,7 +161,11 @@ export function useAddTaskComposer({
     subtasksOpen ||
     durationOpen ||
     dueOpen ||
-    draftHasExtras(draft);
+    /* What the box starts with does not open a row that waits on the
+       board (the Today column's due date): it opens once it is used. A
+       box that opens with the caret in it, beside a Calendar day, shows
+       it at once. */
+    (draftHasExtras(draft) && (autoFocus || draft !== startDraft));
 
   const assignees = people.filter((person) =>
     draft.assigneeIds.includes(person.id)
@@ -164,7 +182,7 @@ export function useAddTaskComposer({
    * stray click must not lose it.
    */
   const dismiss = React.useCallback(() => {
-    onDraftChange(EMPTY_TASK_DRAFT);
+    startAgain();
     setPendingSubtask("");
     setNotesOpen(false);
     setNotesWait(false);
@@ -174,7 +192,12 @@ export function useAddTaskComposer({
     setAssignOpen(false);
     setListOpen(false);
     setSubtaskAssignKey(null);
-  }, []);
+  }, [startAgain]);
+
+  /** A box not used since it started is started again as it is entered: its day may be past. */
+  const onTextFocus = () => {
+    if (draft === startDraft) startAgain();
+  };
 
   /* A click anywhere else, with nothing typed, puts the row away. The
      pickers live in portals outside the row; a click in one is not
@@ -277,7 +300,7 @@ export function useAddTaskComposer({
     setAssignOpen(false);
     setListOpen(false);
     setSubtaskAssignKey(null);
-    onDraftChange(EMPTY_TASK_DRAFT);
+    startAgain();
     onSubmit(final);
     textRef.current?.focus();
   }
@@ -338,6 +361,7 @@ export function useAddTaskComposer({
     draft.subtasks.length + (pendingSubtask.trim() ? 1 : 0);
 
   return {
+    onTextFocus,
     inputId,
     placeholder,
     addLabel,

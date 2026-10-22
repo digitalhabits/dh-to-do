@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Digital Habits To-Do (Demo)",
+  "identifier": "com.redd.do.demo",
+  "app": {
+    "windows": [
+      {
+        "title": "Digital Habits: To-Do (Demo)",
+        "decorations": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "dragDropEnabled": false,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 380,
+        "minHeight": 400,
+        "resizable": true,
+        "fullscreen": false,
+        "backgroundColor": "#faf8f5",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15 dh-todo-native/0.1",
+        "create": false
+      }
+    ]
+  }
+}

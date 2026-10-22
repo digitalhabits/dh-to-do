@@ -25,9 +25,9 @@ import {
   writeFocusSession,
   type FocusSessionRecord,
 } from "@/lib/todo/focus-session";
-import { buildFocusSwitcher } from "@/lib/todo/focus-switcher";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
 import { focusBarNaturalWidth } from "@/lib/todo/focus-panel-width";
+import { TaskSwitchPicker } from "@/components/todo/TaskSwitchPicker";
 import {
   FOCUS_TIMER_ALWAYS_KEY,
   FOCUS_TIMER_PREF_MESSAGE,
@@ -150,18 +150,6 @@ export function TodoFocusPanel({
   const [nameLines, setNameLines] = React.useState<number | null>(null);
   const [notesDraft, setNotesDraft] = React.useState("");
   const [switchOpen, setSwitchOpen] = React.useState(false);
-  const [switchQuery, setSwitchQuery] = React.useState("");
-  /** The list the switcher is browsing; null until it opens. */
-  const [switchListId, setSwitchListId] = React.useState<string | null>(null);
-  /**
-   * The board's own settings, read from the storage the board keeps them
-   * in when the switcher opens: with the board on, a list's tasks are shown
-   * under its columns; with Someday on, that column is one of them.
-   */
-  const [switchBoard, setSwitchBoard] = React.useState({
-    kanban: true,
-    someday: false,
-  });
   const [resetToast, setResetToast] = React.useState<number | null>(null);
   const [closed, setClosed] = React.useState(false);
   /** Tasks up in the other panel, kept out of this one's switcher. */
@@ -345,7 +333,6 @@ export function TodoFocusPanel({
       setFullscreen(false);
       setNotesOpen(false);
       setSwitchOpen(false);
-      setSwitchQuery("");
       setResetToast(null);
       setClosed(false);
       beginSession(payload.taskId, payload.elapsedMs || 0);
@@ -435,6 +422,12 @@ export function TodoFocusPanel({
     };
   }, [persistTime, closed, taskId, sessionKey]);
 
+  /** Whether the window has closed, for the channel's handler, which is made once per task. */
+  const closedRef = React.useRef(closed);
+  React.useEffect(() => {
+    closedRef.current = closed;
+  }, [closed]);
+
   // Cross-window channel: announce focus, obey exit requests from the tab.
   React.useEffect(() => {
     const channel = new BroadcastChannel(FOCUS_CHANNEL);
@@ -453,6 +446,10 @@ export function TodoFocusPanel({
         if (changed && changedId === taskId) {
           setTitleHint(changed.text);
           setDurationHint(changed.expectedDurationMinutes ?? null);
+          // Ticked on the board: the window has no task left to focus on,
+          // so it saves its time and goes. Not when it is going already,
+          // as after its own tick, which the board echoes back.
+          if (changed.completed && !closedRef.current) void exitFocus();
         }
         setState((prev) => {
           if (!prev || !changed) return prev;
@@ -675,7 +672,6 @@ export function TodoFocusPanel({
       setDurationHint(next.expectedDurationMinutes);
       setSessionStart(Date.now());
       setSwitchOpen(false);
-      setSwitchQuery("");
       channelRef.current?.postMessage({ type: "focus-started", taskId: next.id });
     });
   }
@@ -868,25 +864,6 @@ export function TodoFocusPanel({
   /* No timer, no button to reset it. The time spent is counted all the same. */
   const showTimer = focusTimerShown(timerAlways, displayDuration);
 
-  // The switcher: see buildFocusSwitcher (lib/todo/focus-switcher.ts).
-  const {
-    switchLists,
-    currentSwitchListId,
-    switchGroups,
-    browsingTasks,
-    browsingColumns,
-    columnLabel,
-  } = buildFocusSwitcher({
-    tasks: state?.tasks ?? [],
-    lists: state?.lists ?? [],
-    taskId,
-    focusedElsewhere,
-    focusedListId: task?.listId ?? null,
-    switchListId,
-    switchQuery,
-    switchBoard,
-    t,
-  });
 
   return (
     <div
@@ -964,8 +941,9 @@ export function TodoFocusPanel({
                 title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 onClick={() => void toggleFullscreen()}
               >
+                {/* Out when it would enlarge, in when it would shrink back. */}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                  <path d={fullscreen ? "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" : "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"} />
                 </svg>
               </button>
               {showTimer ? (
@@ -1000,27 +978,7 @@ export function TodoFocusPanel({
                 <button
                   className="switch-focus-task-btn"
                   title="Switch task"
-                  onClick={() =>
-                    setSwitchOpen((v) => {
-                      if (!v) {
-                        setSwitchListId(null);
-                        try {
-                          setSwitchBoard({
-                            kanban:
-                              localStorage.getItem("redd-plan-todo-kanban") !==
-                              "0",
-                            someday:
-                              localStorage.getItem(
-                                "redd-plan-todo-someday-enabled"
-                              ) === "1",
-                          });
-                        } catch {
-                          /* no storage: the plain list */
-                        }
-                      }
-                      return !v;
-                    })
-                  }
+                  onClick={() => setSwitchOpen((v) => !v)}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="8" y1="6" x2="21" y2="6" />
@@ -1052,122 +1010,17 @@ export function TodoFocusPanel({
 
           {switchOpen ? (
             <div className="focus-task-switch-menu" ref={switchMenuRef}>
-              <div className="focus-task-switch-search">
-                <svg className="focus-task-switch-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  autoFocus
-                  type="text"
-                  className="focus-task-switch-search-input"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder={t("switchTaskSearchPlaceholder")}
-                  value={switchQuery}
-                  onChange={(e) => setSwitchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") setSwitchOpen(false);
-                  }}
-                />
-                <span className="focus-task-switch-esc" aria-hidden="true">
-                  Esc
-                </span>
-              </div>
-              {/* Tabs are for browsing one list at a time; they go while a
-                  search crosses every list. */}
-              {!switchGroups && switchLists.length > 1 ? (
-                <div className="focus-task-switch-tabs" role="tablist">
-                  {switchLists.map((entry) => (
-                    <button
-                      key={entry.list.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={entry.list.id === currentSwitchListId}
-                      title={entry.list.name}
-                      className={`focus-task-switch-tab${
-                        entry.list.id === currentSwitchListId ? " active" : ""
-                      }`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setSwitchListId(entry.list.id);
-                      }}
-                    >
-                      <span className="focus-task-switch-tab-name">
-                        {entry.list.name}
-                      </span>
-                      <span className="focus-task-switch-tab-count">
-                        {entry.tasks.length}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              <div className="focus-task-switch-list">
-                {switchGroups ? (
-                  switchGroups.length === 0 ? (
-                    <div className="focus-task-switch-empty">
-                      {t("switchTaskNoMatches")}
-                    </div>
-                  ) : (
-                    switchGroups.map((group) => (
-                      <React.Fragment key={group.list.id}>
-                        {switchLists.length > 1 ? (
-                          <div className="focus-task-switch-group-label">
-                            {group.list.name}
-                          </div>
-                        ) : null}
-                        {group.tasks.map((candidate) => (
-                          <button
-                            key={candidate.id}
-                            type="button"
-                            className="focus-task-switch-item"
-                            onClick={() => switchToTask(candidate)}
-                          >
-                            {candidate.text}
-                          </button>
-                        ))}
-                      </React.Fragment>
-                    ))
-                  )
-                ) : browsingTasks.length === 0 ? (
-                  <div className="focus-task-switch-empty">
-                    {t("switchTaskEmptyList")}
-                  </div>
-                ) : browsingColumns ? (
-                  browsingColumns.map((group) => (
-                    <React.Fragment key={group.column}>
-                      <div className="focus-task-switch-group-label">
-                        {columnLabel(group.column)}
-                      </div>
-                      {group.tasks.map((candidate) => (
-                        <button
-                          key={candidate.id}
-                          type="button"
-                          className="focus-task-switch-item"
-                          onClick={() => switchToTask(candidate)}
-                        >
-                          {candidate.text}
-                        </button>
-                      ))}
-                    </React.Fragment>
-                  ))
-                ) : (
-                  browsingTasks.map((candidate) => (
-                    <button
-                      key={candidate.id}
-                      type="button"
-                      className="focus-task-switch-item"
-                      onClick={() => switchToTask(candidate)}
-                    >
-                      {candidate.text}
-                    </button>
-                  ))
-                )}
-              </div>
+              <TaskSwitchPicker
+                tasks={state?.tasks ?? []}
+                lists={state?.lists ?? []}
+                taskId={taskId}
+                focusedElsewhere={focusedElsewhere}
+                preferredListId={task?.listId ?? null}
+                placeholder={t("switchTaskSearchPlaceholder")}
+                t={t}
+                onPick={switchToTask}
+                onEscape={() => setSwitchOpen(false)}
+              />
             </div>
           ) : null}
 

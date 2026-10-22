@@ -110,6 +110,7 @@ export async function walkShell(page) {
   const bell = await add(studio.id, "Polish the bell");
   await add(studio.id, "Oil the easel");
   await add(studio.id, "Sand the frame");
+  await add(studio.id, "Fold the dust sheet");
   const parcel = await add(errands.id, "Post the parcel");
   await call("/api/todo/tasks", "PATCH", { id: parcel.id, remindersId: "rem-parcel" });
   // A step: Reminders has no steps, so it is never sent there.
@@ -168,6 +169,20 @@ export async function walkShell(page) {
   await call("/api/todo/tasks", "PATCH", { id: tune.id, text: "Tune the old piano" });
   window1.postMessage({ type: "task-updated", taskId: tune.id });
   check("a window's change is read again", await until(() => Boolean(cardOf("Tune the old piano"))));
+
+  // Ticked on the board, the way the reader does it: the focus window of
+  // the task hears that it is done, and closes (TodoFocusPanel). The tick
+  // with the flight to Done said nothing to the windows (2026-10-13).
+  click(cardOf("Fold the dust sheet").querySelector('input[type="checkbox"]'));
+  check(
+    "a task ticked on the board tells its focus window it is done",
+    await until(() =>
+      channels.posts.some(
+        (p) => p.data.type === "board-task-changed" && p.data.task?.text === "Fold the dust sheet" && p.data.task?.completed
+      )
+    ),
+    JSON.stringify(channels.posts.map((p) => p.data.type))
+  );
 
   // The window saves its time itself, then says the task is done.
   await call("/api/todo/tasks", "PATCH", { id: tune.id, timeSpentSeconds: 600 });
@@ -319,6 +334,33 @@ export async function walkShell(page) {
   );
   check("the new task's card takes the box's place", await until(() => $(".calendar-task-popover")?.textContent.includes("Frame the print")));
   press(window, "Escape");
+
+  // An existing task, found as the focus window's switcher finds it.
+  plan.options.onTaskCreate({ dateKey: "2026-10-03", startMinutes: null, anchor });
+  const existingTab = await until(() => Boolean($(".calendar-task-mode-btn:not(.active)")));
+  check("the add box offers an existing task", existingTab);
+  if (existingTab) click($(".calendar-task-mode-btn:not(.active)"));
+  const search = await until(() => Boolean($(".calendar-task-pick input.focus-task-switch-search-input")));
+  check("which has the switcher's search", search);
+  if (search) typeInto($(".calendar-task-pick input.focus-task-switch-search-input"), "sand");
+  const hit = () => [...document.querySelectorAll(".calendar-task-pick .focus-task-switch-item")].find((b) => b.textContent === "Sand the frame");
+  check("the search finds the task", await until(() => Boolean(hit())), $(".calendar-task-pick")?.textContent);
+  if (hit()) click(hit());
+  check(
+    "the task picked is due on that day, on the Calendar",
+    await until(() => row("Sand the frame")?.due_on === "2026-10-03" && row("Sand the frame")?.show_on_calendar === 1),
+    JSON.stringify(row("Sand the frame"))
+  );
+  check("and its card takes the box's place", await until(() => $(".calendar-task-popover")?.textContent.includes("Sand the frame")));
+  press(window, "Escape");
+
+  // A focus window's tick is seen in the lists: the board goes back to them.
+  window1.postMessage({ type: "task-complete", taskId: row("Oil the easel").id });
+  check(
+    "a window's tick on the Calendar takes the board to the lists",
+    await until(() => $('.view-btn[data-view-id="lists"]')?.classList.contains("active"))
+  );
+  check("and completes the task there", await until(() => row("Oil the easel")?.completed === 1));
   click($('.view-btn[data-view-id="lists"]'));
   check("leaving the Calendar stops its script", await until(() => plan.calls.includes("destroy")));
 

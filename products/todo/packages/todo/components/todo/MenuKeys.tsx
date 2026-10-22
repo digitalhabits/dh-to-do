@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { walkTabStops } from "@/lib/todo/focus-walk";
+import { markWalked, walkTabStops } from "@/lib/todo/focus-walk";
 
 /**
  * The keyboard for a menu of items.
@@ -21,6 +21,7 @@ export function MenuKeys({
   onClose,
   className,
   closeOnBlur = true,
+  focusOnOpen = true,
   children,
 }: {
   /**
@@ -37,6 +38,11 @@ export function MenuKeys({
    * menu that redraws in place does not close under its own caret.
    */
   closeOnBlur?: boolean;
+  /**
+   * Put the caret on the checked item when the menu opens. Off for a menu
+   * whose first stop is its own search box, which takes the caret itself.
+   */
+  focusOnOpen?: boolean;
   children: React.ReactNode;
 }) {
   const ref = React.useRef<HTMLDivElement | null>(null);
@@ -62,13 +68,19 @@ export function MenuKeys({
   }
 
   React.useEffect(() => {
+    if (!focusOnOpen) return;
     const frame = requestAnimationFrame(() => {
       const all = items();
       const current =
         all.find((el) => el.getAttribute("aria-checked") === "true") ?? all[0];
-      current?.focus();
+      if (!current) return;
+      current.focus();
+      // Shown as the caret: WebKit gives no :focus-visible to a focus
+      // that a script moved, so the arrows looked as if they did nothing.
+      markWalked(current);
     });
     return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -79,7 +91,10 @@ export function MenuKeys({
     const at = all.indexOf(document.activeElement as HTMLElement);
     const go = (index: number) => {
       e.preventDefault();
-      all[(index + all.length) % all.length]?.focus();
+      const next = all[(index + all.length) % all.length];
+      if (!next) return;
+      next.focus();
+      markWalked(next);
     };
     switch (e.key) {
       case "ArrowDown":

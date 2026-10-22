@@ -32,8 +32,11 @@ type TauriWindow = {
 };
 type PingWindow = {
   __TAURI__?: { window?: { getCurrentWindow?: () => TauriWindow } };
-  /** Set in a store build; Settings shows the switch only then. */
-  __TODO_USAGE_PING__?: Store;
+  /**
+   * Set in a store build, and in dev so the page looks as the store's
+   * does ("dev"). Settings shows the switch only when it is set.
+   */
+  __TODO_USAGE_PING__?: Store | "dev";
 };
 
 let store: Store | null = null;
@@ -127,6 +130,15 @@ export function startUsagePing(build: string | undefined): void {
   win?.onFocusChanged(({ payload: focused }) => { if (focused) void maybeSendUsagePing(); }).catch(() => {});
   window.addEventListener(EULA_ACCEPTED_EVENT, () => void maybeSendUsagePing());
   window.setInterval(() => { if (triedDay === utcToday()) void maybeSendUsagePing(); }, PING_RETRY_MS);
+}
+
+/**
+ * In dev: show the switch in Settings, as a store build does, but send
+ * nothing. A dev server is never counted.
+ */
+export function showUsagePingSwitchInDev(): void {
+  const w = window as unknown as PingWindow;
+  w.__TODO_USAGE_PING__ ??= "dev";
 }
 
 /** For the suite: forget what this page has started and sent. */

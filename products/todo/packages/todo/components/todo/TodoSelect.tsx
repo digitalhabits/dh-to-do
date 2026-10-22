@@ -4,19 +4,10 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import { clampToMenuArea, menuArea } from "@/lib/todo/menu-area";
+import { copyShellTheme } from "@/lib/todo/portal-theme";
 
 export type TodoSelectOption = { value: string; label: string };
 
-const THEME_VARS = [
-  "--modal-bg",
-  "--border-color-light",
-  "--border-color-medium",
-  "--text-primary",
-  "--text-muted",
-  "--text-tertiary",
-  "--accent-color",
-  "--accent-primary",
-] as const;
 
 /** Custom select matching the settings language-picker / settings-select look. */
 export function TodoSelect({
@@ -72,17 +63,7 @@ export function TodoSelect({
     const dropdown = dropdownRef.current;
     if (!trigger || !dropdown) return;
 
-    const shell = rootRef.current?.closest(".todo-shell");
-    if (shell) {
-      const cs = getComputedStyle(shell);
-      for (const name of THEME_VARS) {
-        const v = cs.getPropertyValue(name);
-        if (v) dropdown.style.setProperty(name, v);
-      }
-      const theme = shell.getAttribute("data-theme");
-      if (theme) dropdown.dataset.theme = theme;
-      else delete dropdown.dataset.theme;
-    }
+    copyShellTheme(rootRef.current, dropdown);
 
     const gap = 6;
     const padding = 8;

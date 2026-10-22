@@ -12,6 +12,15 @@ export const FOCUS_CHANNEL = "redd-plan-todo-focus";
 export const BOARD_TASK_CHANGED_MESSAGE = "board-task-changed";
 
 /**
+ * A board saved something: a new task, a deleted one, a step, a list. The
+ * other boards read the board again. Each tile of the Planner runs its own
+ * board, so without this a task made in the Calendar tile did not show in
+ * the To-Do tile beside it. `from` is the board that wrote, which skips its
+ * own message.
+ */
+export const BOARD_WROTE_MESSAGE = "board-wrote";
+
+/**
  * The board asks the focus window of `taskId` to show `task` in its place,
  * as the window's own switcher does: the time so far is kept, and the clock
  * starts again on the new task. Skip in the Today session sends it, so a
@@ -60,6 +69,11 @@ export type TodoList = {
   basecampProjectId: string | null;
   basecampListId: string | null;
   remindersListId: string | null;
+  /**
+   * The GitHub repository the list is linked to, as "owner/name", or null.
+   * Optional: a board read before migration 099 has no such column.
+   */
+  githubRepo?: string | null;
 };
 
 /** Person on the shared board roster (assignable to tasks). */
@@ -75,6 +89,8 @@ export type TodoPerson = {
   email: string | null;
   /** The same human in Basecamp, when known. Any sourceKind may have one. */
   basecampPersonId: string | null;
+  /** Their GitHub login, lower-cased. Matches issue assignees to people. */
+  githubLogin?: string | null;
   position: number;
 };
 
@@ -133,6 +149,17 @@ export type TodoTask = {
   position: number;
   basecampId: string | null;
   remindersId: string | null;
+  /**
+   * The task may go to GitHub as an issue. Off by default: on a public
+   * repository the title, the note and the subtasks are published. An
+   * issue that came from GitHub is on.
+   */
+  githubPublic?: boolean;
+  /** The issue the task is linked to: its repository and its number. */
+  githubRepo?: string | null;
+  githubNumber?: number | null;
+  /** What the number names: null an issue, "review" a pull request to review. */
+  githubKind?: string | null;
   /**
    * The task this one is a step of, or null for a task of the board.
    *
@@ -236,11 +263,12 @@ export type TodoTaskPatch = Partial<
     | "timeSpentSeconds"
     | "position"
     | "remindersId"
+    | "githubPublic"
   >
 >;
 
 export type TodoPersonPatch = Partial<
-  Pick<TodoPerson, "name" | "colour" | "photoUrl" | "position">
+  Pick<TodoPerson, "name" | "colour" | "photoUrl" | "position" | "githubLogin">
 >;
 
 export type TodoListPatch = Partial<
@@ -254,5 +282,6 @@ export type TodoListPatch = Partial<
     | "basecampProjectId"
     | "basecampListId"
     | "remindersListId"
+    | "githubRepo"
   >
 >;

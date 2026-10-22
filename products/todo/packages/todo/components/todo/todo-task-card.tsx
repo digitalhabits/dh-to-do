@@ -21,6 +21,7 @@ import {
 import { DuePopover } from "@/components/todo/DuePopover";
 import { DurationPopover } from "@/components/todo/DurationPopover";
 import { MenuKeys } from "@/components/todo/MenuKeys";
+import { SearchableListMenu } from "@/components/todo/SearchableListMenu";
 import { MenuPortal } from "@/components/todo/MenuPortal";
 import { TaskAssignMenu, TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
 import {
@@ -35,6 +36,7 @@ import {
   TrashIcon,
 } from "@/components/todo/task-icons";
 import { renderNotesEditor } from "@/components/todo/todo-task-overlay";
+import { TaskGithubItem, TaskGithubLink } from "@/components/todo/task-github-item";
 import { isInteractiveDragTarget } from "@/components/todo/use-pointer-drag";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { DoneStamp } from "@/components/todo/DoneStamp";
@@ -49,7 +51,7 @@ import {
 } from "@/lib/todo/task-draft";
 import {
   animTargetKey,
-  dueDatePatch,
+  columnEnd, dueDatePatch,
   isUnlistedTask,
   listOriginLetters,
   timeSpentLabel,
@@ -226,7 +228,7 @@ function cardDueChip(
           // takes the task off it, and a first day puts it on when the
           // box was ticked before the day was picked.
           void mutateTask(task.id, {
-            ...dueDatePatch(dueOn, task),
+            ...dueDatePatch(dueOn, task, columnEnd(m.boardColumns.week)),
             showOnCalendar: dueOn ? dueCalendarWanted : false,
           });
         }}
@@ -431,7 +433,7 @@ function cardOriginPicker(
     setListPickerAnchorEl,
     setOpenAssignTaskId,
     listOfTask,
-    lists,
+    moveTargets,
     mutateTask,
   } = m;
   const taskList = listOfTask(task);
@@ -463,7 +465,7 @@ function cardOriginPicker(
         }
         aria-haspopup="menu"
         aria-expanded={listPickerOpen}
-        disabled={lists.length === 0}
+        disabled={moveTargets.lists.length === 0}
         onClick={(e) => {
           e.stopPropagation();
           setOpenMenuTaskId(null);
@@ -483,6 +485,9 @@ function cardOriginPicker(
           listOriginLetters(taskList)
         )}
       </button>
+      {/* Built only while open: every card has one, and a closed menu's
+          contents were drawn again on every redraw of the board. */}
+      {listPickerOpen ? (
       <MenuPortal
         open={listPickerOpen}
         anchorEl={listPickerOpen ? listPickerAnchorEl : null}
@@ -490,15 +495,17 @@ function cardOriginPicker(
         role="menu"
         ariaLabel="Move to list"
       >
-        <MenuKeys
+        <SearchableListMenu
+          lists={moveTargets.lists}
+          headingOf={moveTargets.headingOf}
+          t={m.t}
           onClose={(reason) => {
             const anchor = listPickerAnchorEl;
             setOpenListPickerTaskId(null);
             setListPickerAnchorEl(null);
             if (reason === "escape") anchor?.focus();
           }}
-        >
-        {lists.map((l) => {
+          renderItem={(l) => {
           const iconId = resolveListIconId(l.emoji);
           const selected = !unlisted && l.id === task.listId;
           return (
@@ -530,9 +537,10 @@ function cardOriginPicker(
               <span className="task-list-picker-name">{l.name}</span>
             </button>
           );
-        })}
-        </MenuKeys>
+        }}
+        />
       </MenuPortal>
+      ) : null}
     </div>
   ) : null;
 }
@@ -563,6 +571,7 @@ function cardMenu(
     setOpenAssignTaskId,
     t,
     lists,
+    moveTargets,
     runEdges,
     foldPillActions,
     mutateTask,
@@ -596,6 +605,8 @@ function cardMenu(
           >
             <MenuDotsIcon />
           </button>
+          {/* Built only while open, as the list picker is. */}
+          {menuOpen ? (
           <MenuPortal
             open={menuOpen}
             anchorEl={menuOpen ? menuAnchorEl : null}
@@ -620,14 +631,24 @@ function cardMenu(
               }}
             >
             {menuShowsMoveTargets ? (
-              lists
+              moveTargets.lists
                 .filter((l) => l.id !== task.listId)
-                .map((l) => {
-                  // Each list under its own icon, as the tabs draw them.
+                .map((l, i, shown) => {
+                  // Each list under its own icon, as the tabs draw them,
+                  // and another group's lists under that group's name.
                   const iconId = resolveListIconId(l.emoji);
+                  const heading = moveTargets.headingOf(l);
+                  const startsGroup =
+                    heading !== null &&
+                    (i === 0 || moveTargets.headingOf(shown[i - 1]) !== heading);
                   return (
+                    <React.Fragment key={l.id}>
+                    {startsGroup ? (
+                      <div className="list-menu-heading" role="presentation">
+                        {heading}
+                      </div>
+                    ) : null}
                     <button
-                      key={l.id}
                       role="menuitem"
                       className="task-menu-item"
                       onClick={() => {
@@ -649,6 +670,7 @@ function cardMenu(
                       </span>
                       {l.name}
                     </button>
+                    </React.Fragment>
                   );
                 })
             ) : (
@@ -681,8 +703,8 @@ function cardMenu(
                     {t("moveToBottom")}
                   </button>
                 ) : null}
-                {lists.length > 1 ||
-                (unlisted && lists.length > 0) ? (
+                {moveTargets.lists.length > 1 ||
+                (unlisted && moveTargets.lists.length > 0) ? (
                   <button
                     role="menuitem"
                     className="task-menu-item move-task-item"
@@ -756,6 +778,13 @@ function cardMenu(
                     {t("addToFavourites")}
                   </button>
                 ) : null}
+                <TaskGithubItem
+                  task={task}
+                  list={lists.find((l) => l.id === task.listId)}
+                  t={t}
+                  mutateTask={mutateTask}
+                  closeMenu={() => setOpenMenuTaskId(null)}
+                />
                 <button
                   role="menuitem"
                   className="task-menu-item delete-task-item"
@@ -771,6 +800,7 @@ function cardMenu(
             )}
             </MenuKeys>
           </MenuPortal>
+          ) : null}
         </div>
   );
 }
@@ -999,6 +1029,7 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
         {cardSubtaskChip(m, task)}
         <span className="task-meta-spacer" />
         <div className="task-chip-actions">
+          <TaskGithubLink task={task} t={m.t} />
           {cardOriginPicker(m, task, { unlisted, showListOrigin: isAllListsView, listPickerOpen })}
         </div>
       </div>

@@ -1,9 +1,18 @@
 "use client";
 
+import { ImagePlus } from "lucide-react";
 import * as React from "react";
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
 
 import { clampToMenuArea, menuArea } from "@/lib/todo/menu-area";
+import { copyShellTheme } from "@/lib/todo/portal-theme";
 
+import { squareImageFile } from "@/lib/todo/avatar-image";
+import { describeError } from "@/lib/todo/errors";
+import { LIST_LOGOS } from "@/lib/todo/list-logos";
+import { isStandaloneTodo } from "@/lib/todo/product-flavor";
+import { uploadLocalNoteImage } from "@/lib/todo/note-uploads";
 import {
   getAllListIconIds,
   isListIconPresetId,
@@ -39,6 +48,9 @@ export function ListAppearancePicker({
   onColourChange,
   emojiLabel = "Icon",
   colourLabel = "Colour",
+  logosLabel = "Our tools",
+  uploadLabel = "Upload picture",
+  uploadFailedLabel = "The picture could not be added",
 }: {
   /** Stored appearance value (Lucide id or legacy emoji); kept as `emoji` for API compat. */
   emoji: string;
@@ -47,8 +59,13 @@ export function ListAppearancePicker({
   onColourChange: (colour: string) => void;
   emojiLabel?: string;
   colourLabel?: string;
+  /** The row of the Digital Habits tools' logos in the icon picker. */
+  logosLabel?: string;
+  uploadLabel?: string;
+  uploadFailedLabel?: string;
 }) {
   const selectedIcon = resolveListIconId(emoji);
+  const showLogos = !isStandaloneTodo();
   const customIconSelected = Boolean(
     selectedIcon && !isListIconPresetId(selectedIcon)
   );
@@ -63,6 +80,8 @@ export function ListAppearancePicker({
   const customIconRef = React.useRef<HTMLButtonElement>(null);
   const popoverRef = React.useRef<HTMLDivElement>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
+  const uploadRef = React.useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = React.useState(false);
 
   const filteredIcons = React.useMemo(() => {
     const all = getAllListIconIds();
@@ -96,9 +115,8 @@ export function ListAppearancePicker({
     if (!pickerOpen || !popoverRef.current || !customIconRef.current) return;
     const popover = popoverRef.current;
     const swatch = customIconRef.current;
-    if (popover.parentElement !== document.body) {
-      document.body.appendChild(popover);
-    }
+    // On document.body, out of the dialog and out of the theme: carry it.
+    copyShellTheme(swatch, popover);
     const gap = 8;
     const padding = 8;
     const rect = swatch.getBoundingClientRect();
@@ -122,13 +140,6 @@ export function ListAppearancePicker({
     searchRef.current?.focus();
   }, [pickerOpen, filteredIcons.length]);
 
-  React.useEffect(() => {
-    return () => {
-      const popover = popoverRef.current;
-      if (popover?.parentElement === document.body) popover.remove();
-    };
-  }, []);
-
   function togglePreset(id: ListIconId) {
     onEmojiChange(selectedIcon === id ? "" : id);
   }
@@ -137,6 +148,25 @@ export function ListAppearancePicker({
     onEmojiChange(id);
     setPickerOpen(false);
     setIconQuery("");
+  }
+
+  /**
+   * A picture of the reader's own, as the list's icon: cut square, made
+   * small (a list icon is drawn at 14 to 18 pixels), and kept where note
+   * pictures are kept, by its media id.
+   */
+  async function uploadIcon(file: File) {
+    setUploading(true);
+    try {
+      const small = await squareImageFile(file, 128, "image/png");
+      const stored = await uploadLocalNoteImage(small, () => {});
+      if (!stored.mediaId) throw new Error("no media id");
+      pickCustomIcon(`img:${stored.mediaId}`);
+    } catch (err) {
+      toast.error(describeError(err, uploadFailedLabel));
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -176,13 +206,57 @@ export function ListAppearancePicker({
                 <span className="custom-icon">+</span>
               )}
             </button>
-            {pickerOpen ? (
+            {pickerOpen && typeof document !== "undefined" ? createPortal(
               <div
                 ref={popoverRef}
                 className="icon-picker-popover todo-icon-picker-popover"
                 role="dialog"
                 aria-label="Choose Lucide icon"
               >
+                {/* Our tools' logos are for the Planner (web and app) only. A
+                    list that already has one still shows it everywhere. */}
+                {showLogos ? (
+                  <div className="icon-picker-section-label">{logosLabel}</div>
+                ) : null}
+                <div className="icon-picker-grid icon-picker-logos">
+                  {(showLogos ? LIST_LOGOS : []).map((logo) => {
+                    const id = `logo:${logo.id}` as const;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`icon-picker-item${selectedIcon === id ? " selected" : ""}`}
+                        title={logo.label}
+                        aria-label={logo.label}
+                        onClick={() => pickCustomIcon(id)}
+                      >
+                        <ListIcon id={id} size={20} />
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="icon-picker-item icon-picker-upload"
+                    title={uploadLabel}
+                    aria-label={uploadLabel}
+                    disabled={uploading}
+                    onClick={() => uploadRef.current?.click()}
+                  >
+                    <ImagePlus size={18} aria-hidden="true" />
+                  </button>
+                  <input
+                    ref={uploadRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      // The same file twice in a row must still count.
+                      e.target.value = "";
+                      if (file) void uploadIcon(file);
+                    }}
+                  />
+                </div>
                 <input
                   autoCorrect="off"
                   autoCapitalize="off"
@@ -213,7 +287,13 @@ export function ListAppearancePicker({
                     <div className="icon-picker-empty">No icons match</div>
                   ) : null}
                 </div>
-              </div>
+              </div>,
+              /*
+                A portal, not the node moved by hand: React then still hears
+                its clicks. Moved by hand to the body, outside the desktop
+                app's root (#root), no choice in it ever reached React.
+              */
+              document.body
             ) : null}
           </div>
         </div>

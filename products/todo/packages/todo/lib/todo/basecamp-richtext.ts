@@ -47,6 +47,8 @@ const BC_ATTACHMENT = "bc-attachment";
  * theirs.
  */
 const DH_BLOB = "data-dh-blob";
+/** Ours: the width a picture was given in the note, in CSS pixels. */
+const DH_WIDTH = "data-dh-width";
 
 function parseBody(html: string): HTMLElement {
   const doc = new DOMParser().parseFromString(
@@ -89,6 +91,8 @@ type AttachmentData = {
    * for `/undefined`. Set false when there is nothing to draw from.
    */
   previewable?: boolean;
+  /** Ours: see DH_WIDTH. Null when the picture was given its own size back. */
+  displayWidth?: number | null;
   /** Ours. See DH_BLOB below. */
   blobId?: string | null;
   /**
@@ -108,6 +112,11 @@ type AttachmentData = {
    * measured, in a Trix of its own — which is how it survives the editor.
    */
   basecampSrc?: string;
+  /**
+   * Ours: the web address of a picture from elsewhere, such as a GitHub
+   * issue's, drawn from there and written back as the `<img>` it was.
+   */
+  remoteSrc?: string;
 };
 
 function usableSrc(value: string | null | undefined): string | null {
@@ -183,6 +192,8 @@ export function basecampToTrix(
     if (width !== null) data.width = width;
     if (height !== null) data.height = height;
     if (presentation) data.presentation = presentation;
+    const displayWidth = numberOrNull(el.getAttribute(DH_WIDTH));
+    if (displayWidth) data.displayWidth = displayWidth;
 
     /*
       The address Trix will draw from.
@@ -245,6 +256,27 @@ export function basecampToTrix(
     if (el.closest("figure[data-trix-attachment]")) return;
     const original = el.getAttribute("src");
     const blobId = basecampBlobId(original);
+    if (!blobId && original && /^https:\/\//i.test(original)) {
+      /*
+        Any other picture on the web, such as one from a GitHub issue
+        (github-markdown.ts). Trix would take it as an attachment with a
+        url and no sgid, which the save drops. Kept by its address, it is
+        drawn from there and written back the way it came.
+      */
+      const data: AttachmentData = {
+        contentType: "image",
+        url: original,
+        remoteSrc: original,
+        width: numberOrNull(el.getAttribute("width")) ?? undefined,
+        height: numberOrNull(el.getAttribute("height")) ?? undefined,
+        filename: el.getAttribute("alt") || undefined,
+      };
+      const figure = el.ownerDocument.createElement("figure");
+      figure.setAttribute("data-trix-attachment", JSON.stringify(data));
+      figure.setAttribute("data-trix-content-type", "image");
+      el.replaceWith(figure);
+      return;
+    }
     if (!blobId || !original) return;
 
     const data: AttachmentData = {
@@ -304,6 +336,16 @@ export function trixToBasecamp(html: string | null | undefined): string {
         el.replaceWith(img);
         return;
       }
+      // A picture on the web (from a GitHub issue): back as it came.
+      if (data?.remoteSrc) {
+        const img = el.ownerDocument.createElement("img");
+        img.setAttribute("src", data.remoteSrc);
+        if (data.filename) img.setAttribute("alt", data.filename);
+        if (data.width) img.setAttribute("width", String(data.width));
+        if (data.height) img.setAttribute("height", String(data.height));
+        el.replaceWith(img);
+        return;
+      }
       el.remove();
       return;
     }
@@ -312,6 +354,7 @@ export function trixToBasecamp(html: string | null | undefined): string {
     if (data.mediaId) tag.setAttribute(NOTE_MEDIA_ATTR, data.mediaId);
     if (data.caption) tag.setAttribute("caption", data.caption);
     if (data.blobId) tag.setAttribute(DH_BLOB, data.blobId);
+    if (data.displayWidth) tag.setAttribute(DH_WIDTH, String(Math.round(data.displayWidth)));
     /*
       What the picture is, kept with it.
 

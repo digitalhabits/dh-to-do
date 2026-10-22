@@ -1,7 +1,11 @@
 "use client";
 
-import type { DeletedTodoList } from "@/lib/todo/store";
+import type { DeletedListTask, DeletedTodoList } from "@/lib/todo/store";
 import * as React from "react";
+
+import { DeletedListsRow } from "@/components/todo/settings-deleted-lists";
+import { InfoIcon, SettingsInfoLabel } from "@/components/todo/settings-info-label";
+import { SettingsGithubRow } from "@/components/todo/settings-github-row";
 import { Activity, Columns4, FolderTree, Map as MapIcon, SquareKanban, Timer, User } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,50 +40,6 @@ type BasecampStatus = {
 };
 
 export type TodoTheme = "system" | "light" | "dark";
-
-function InfoIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4" />
-      <path d="M12 8h.01" />
-    </svg>
-  );
-}
-
-/** A row's name with an info button; the info opens under it as the row's hint. */
-function SettingsInfoLabel({
-  label,
-  open,
-  onToggle,
-  t,
-  children,
-}: {
-  label: string;
-  open: boolean;
-  onToggle: () => void;
-  t: (key: string) => string;
-  /** What the hint shows when the info is open. */
-  children: React.ReactNode;
-}) {
-  return (
-    <>
-      <div className="settings-row-label-line">
-        <span className="settings-row-label">{label}</span>
-        <button
-          type="button"
-          className="info-toggle-btn settings-info-btn"
-          aria-label={t("moreInfo")}
-          aria-expanded={open}
-          onClick={onToggle}
-        >
-          <InfoIcon />
-        </button>
-      </div>
-      {open ? <div className="settings-row-hint">{children}</div> : null}
-    </>
-  );
-}
 
 function SettingsToggle({
   icon,
@@ -164,7 +124,9 @@ export function TodoSettingsModal({
   planEnabled,
   onPlanEnabledChange,
   loadDeletedLists,
+  loadDeletedListTasks,
   onRestoreList,
+  onDeleteListForever,
 }: {
   t: (key: string) => string;
   lang: TodoLang;
@@ -192,7 +154,11 @@ export function TodoSettingsModal({
   onPlanEnabledChange: (enabled: boolean) => void;
   /** Deleted lists, kept with their tasks; and bringing one back. */
   loadDeletedLists?: () => Promise<DeletedTodoList[]>;
+  /** The tasks of one deleted list, to look over before it comes back. */
+  loadDeletedListTasks?: (id: string) => Promise<DeletedListTask[]>;
   onRestoreList?: (id: string) => Promise<void>;
+  /** A deleted list gone for good, with its tasks. */
+  onDeleteListForever?: (id: string) => Promise<void>;
 }) {
   const [langOpen, setLangOpen] = React.useState(false);
   const [remindersInfoOpen, setRemindersInfoOpen] = React.useState(false);
@@ -205,6 +171,12 @@ export function TodoSettingsModal({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   // Standalone app only: the planner's To-Do tab sends no usage ping.
   const [usagePingEnabled, setUsagePingEnabled] = React.useState(readUsagePingEnabled);
+  // Only where the count can run: a Mac or Windows store build, where
+  // apps/todo/src/usage-ping.ts sets the flag. Dev sets it too, to look
+  // the same, and sends nothing.
+  const showUsageSwitch =
+    isStandaloneTodo() &&
+    Boolean((window as unknown as { __TODO_USAGE_PING__?: string }).__TODO_USAGE_PING__);
   const otherLang: TodoLang = lang === "da" ? "en" : "da";
 
   React.useEffect(() => {
@@ -526,19 +498,14 @@ export function TodoSettingsModal({
                       />
                     </div>
                   </div>
-                  {/* Only where the count can run: a Mac or Windows store
-                      build, where apps/todo/src/usage-ping.ts sets the flag. */}
-                  {isStandaloneTodo() &&
-                  (window as unknown as { __TODO_USAGE_PING__?: string }).__TODO_USAGE_PING__ ? (
-                    <SettingsToggle
-                      icon={<Activity size={16} strokeWidth={2} />}
-                      label={t("sendUsageCount")}
-                      info={t("sendUsageCountInfo")}
-                      checked={usagePingEnabled}
-                      onChange={(enabled) => {
-                        setUsagePingEnabled(enabled);
-                        writeUsagePingEnabled(enabled);
-                      }}
+                  {loadDeletedLists && loadDeletedListTasks && onRestoreList && onDeleteListForever ? (
+                    <DeletedListsRow
+                      t={t}
+                      lang={lang}
+                      load={loadDeletedLists}
+                      loadTasks={loadDeletedListTasks}
+                      restore={onRestoreList}
+                      deleteForever={onDeleteListForever}
                     />
                   ) : null}
                 </div>
@@ -720,12 +687,31 @@ export function TodoSettingsModal({
                       </div>
                     </div>
                   )}
+                  {/* A person's own sign-in in the desktop app; the team's
+                      GitHub App in the planner. */}
+                  <SettingsGithubRow t={t} />
                 </div>
               </div>
             </section>
 
-            {loadDeletedLists && onRestoreList ? (
-              <DeletedListsSection t={t} load={loadDeletedLists} restore={onRestoreList} />
+            {showUsageSwitch ? (
+              <section className="settings-section">
+                <h4 className="settings-section-heading">{t("settingsAdmin")}</h4>
+                <div className="settings-panel">
+                  <div className="settings-panel-rows">
+                    <SettingsToggle
+                      icon={<Activity size={16} strokeWidth={2} />}
+                      label={t("sendUsageCount")}
+                      info={t("sendUsageCountInfo")}
+                      checked={usagePingEnabled}
+                      onChange={(enabled) => {
+                        setUsagePingEnabled(enabled);
+                        writeUsagePingEnabled(enabled);
+                      }}
+                    />
+                  </div>
+                </div>
+              </section>
             ) : null}
           </div>
         </div>
@@ -737,74 +723,5 @@ export function TodoSettingsModal({
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * Lists that were deleted, with what they still hold, and a way back for
- * each: a deleted list keeps its tasks (store.deleteTodoList).
- */
-function DeletedListsSection({
-  t,
-  load,
-  restore,
-}: {
-  t: (key: string) => string;
-  load: () => Promise<DeletedTodoList[]>;
-  restore: (id: string) => Promise<void>;
-}) {
-  const [lists, setLists] = React.useState<DeletedTodoList[] | null>(null);
-  const [busyId, setBusyId] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    load().then(setLists).catch(() => setLists([]));
-  }, [load]);
-  return (
-    <section className="settings-section">
-      <h4 className="settings-section-heading">{t("deletedLists")}</h4>
-      <div className="settings-group">
-        <div className="settings-row">
-          <div className="settings-row-copy">
-            <span className="settings-row-hint">{t("deletedListsHint")}</span>
-          </div>
-        </div>
-        {lists === null ? null : lists.length === 0 ? (
-          <div className="settings-row">
-            <span className="settings-row-hint">{t("deletedListsNone")}</span>
-          </div>
-        ) : (
-          lists.map((list) => (
-            <div className="settings-row" key={list.id}>
-              <div className="settings-row-copy">
-                <span className="settings-row-label">{list.name}</span>
-                <span className="settings-row-hint">
-                  {new Date(list.deletedAt).toLocaleDateString()} ·{" "}
-                  {t("deletedListsCounts")
-                    .replace("{open}", String(list.openCount))
-                    .replace("{done}", String(list.doneCount))}
-                </span>
-              </div>
-              <div className="settings-row-control">
-                <button
-                  type="button"
-                  className="settings-blocklists-io-btn"
-                  disabled={busyId !== null}
-                  onClick={async () => {
-                    setBusyId(list.id);
-                    try {
-                      await restore(list.id);
-                      setLists((current) => (current ?? []).filter((l) => l.id !== list.id));
-                    } finally {
-                      setBusyId(null);
-                    }
-                  }}
-                >
-                  {t("restoreList")}
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </section>
   );
 }

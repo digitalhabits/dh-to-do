@@ -44,9 +44,11 @@
     },
     "allow-todo-sql-query",
     "allow-todo-sql-batch",
+    "allow-todo-is-demo",
     "allow-todo-media-write",
     "allow-todo-media-read",
     "allow-save-backup",
+    "allow-save-note-image",
     {
       "identifier": "http:default",
       "allow": [

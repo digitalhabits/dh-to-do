@@ -252,7 +252,13 @@ export async function walkTasks(page) {
   if (stepNotes) click(stepNotes);
 
   // Durations in the card: the task's, a step's, and a new step's.
-  const cardDuration = $(".task-overlay-duration");
+  // The duration is a chip under the title: a click on it opens its box.
+  const durationChip = [...document.querySelectorAll("button.task-overlay-chip")].find((b) =>
+    /duration/i.test(b.getAttribute("aria-label") ?? "")
+  );
+  if (durationChip) click(durationChip);
+  await until(() => Boolean($(".task-overlay-chip-input")));
+  const cardDuration = $(".task-overlay-chip-input");
   check("the card has a duration box", Boolean(cardDuration));
   if (cardDuration) {
     typeInto(cardDuration, "1.5");
@@ -338,6 +344,38 @@ export async function walkTasks(page) {
     "a task added with a duration keeps it",
     await until(() => row("Fold the tarp")?.expected_duration_minutes === 30),
     brief("Fold the tarp")
+  );
+
+  // The durations from the keyboard: they open on 15m, marked so WebKit
+  // shows the caret, and the arrows walk the grid and the field.
+  durRow = $("input.task-composer-input");
+  durRow.focus();
+  typeInto(durRow, "Sweep the porch");
+  await until(() => Boolean($('.task-composer .composer-chip[aria-label="Add duration"]')));
+  click($('.task-composer .composer-chip[aria-label="Add duration"]'));
+  const presets = () => $$(".duration-popover-preset");
+  check(
+    "the durations open with the caret on 15m, marked",
+    await until(() => document.activeElement === presets()[0] && presets()[0].hasAttribute("data-focus-walked"))
+  );
+  press(presets()[0], "ArrowRight");
+  check("Right walks to 30m", document.activeElement === presets()[1]);
+  press(presets()[1], "ArrowDown");
+  check("Down walks a row, to 2h", document.activeElement === presets()[3]);
+  press(presets()[3], "ArrowDown");
+  check("Down from the last row goes to the field", document.activeElement === $(".duration-popover-input"));
+  press($(".duration-popover-input"), "ArrowUp");
+  check("Up from the field comes back to the grid", document.activeElement === presets()[2]);
+  click(presets()[2]);
+  check(
+    "the preset under the caret is the one set",
+    await until(() => $('.task-composer .composer-chip[aria-label="Add duration"]')?.textContent === "1h")
+  );
+  press($("input.task-composer-input"), "Enter");
+  check(
+    "and the task is added with it",
+    await until(() => row("Sweep the porch")?.expected_duration_minutes === 60),
+    brief("Sweep the porch")
   );
 
   // Cmd+Enter adds the task once, from the title and from an empty step.

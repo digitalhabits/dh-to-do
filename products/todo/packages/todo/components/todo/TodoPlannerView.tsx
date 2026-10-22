@@ -25,10 +25,13 @@ import { TodoPlanStorageContext } from "@/lib/todo/plan-storage";
 import { isStandaloneTodo } from "@/lib/todo/product-flavor";
 import type { TodoLang } from "@/lib/todo/i18n";
 import {
+  calendarTaskSources,
+  loadCalendarListIcons,
   loadCalendarTaskIcons,
+  toCalendarLists,
   toCalendarTasks,
   type CalendarTask,
-  type CalendarTaskSource,
+  type CalendarTaskList,
 } from "@/lib/todo/calendar-tasks";
 import { TaskAssignMenu } from "@/components/todo/TodoPeopleEditor";
 import { colourForPerson, initialsOf, shortPersonName } from "@/lib/todo/people";
@@ -37,7 +40,7 @@ import type {
   CalendarSource,
   PickableAccount,
 } from "@/lib/plan/calendar-board";
-import type { TodoList, TodoPerson, TodoTask } from "@/lib/todo/types";
+import type { TodoGroup, TodoList, TodoPerson, TodoTask } from "@/lib/todo/types";
 
 const ASSET_BASE = "/redd-do-calendar";
 /**
@@ -86,8 +89,21 @@ declare global {
            * due date. Left out, a task stays in its own day.
            */
           onTaskDueChange?: (taskId: string, dateKey: string) => Promise<void> | void;
+          /**
+           * A task was dragged to a place among its day's tasks in the week
+           * view: the ids of the day, in the new order. Left out, a task
+           * keeps its place.
+           */
+          onTaskReorder?: (dateKey: string, taskIds: string[]) => Promise<void> | void;
           /** A Roadmap band was moved or made longer; ISO dates. */
           onRoadmapItemChange?: (id: string, start: string, end: string) => Promise<void> | void;
+          /** A Roadmap entry's card was saved: its name, track and ISO dates. */
+          onRoadmapItemEdit?: (
+            id: string,
+            changes: { title: string; category: string; start: string; end: string },
+          ) => Promise<void> | void;
+          /** A Roadmap entry was deleted from its card. */
+          onRoadmapItemDelete?: (id: string) => Promise<void> | void;
           /**
            * A task was double-clicked: open it for editing, beside the place
            * given (in the window's own pixels). Left out, nothing opens.
@@ -96,6 +112,17 @@ declare global {
             taskId: string,
             anchor: { left: number; top: number; right: number; bottom: number },
           ) => void;
+          /**
+           * The pointer rests on a task in the week: show the day's tasks as
+           * task cards. Left out, the script draws a list of its own.
+           */
+          /** The lists the Lists pill offers (setTaskLists later). */
+          taskLists?: CalendarTaskList[];
+          onDayTasksOpen?: (request: CalendarDayRequest) => void;
+          /** That list of a day goes. */
+          onDayTasksClose?: () => void;
+          /** A task was ticked done, or not done, in the list of its day. */
+          onTaskComplete?: (taskId: string, completed: boolean) => Promise<void> | void;
           /**
            * A day was double-clicked: make a task for that day. `startMinutes`
            * is the time, when the click was in the hours of the week view.
@@ -144,8 +171,16 @@ declare global {
       ) => void;
       /** Tasks to draw on their due day: the ones ticked "Show on the Calendar". */
       setTasks: (tasks: CalendarTask[]) => void;
+      /** The lists the Lists pill offers, under their tab groups. */
+      setTaskLists?: (lists: CalendarTaskList[]) => void;
       /** Give a task its hours in the week view, in minutes from midnight. */
       setTaskTime: (taskId: string, startMinutes: number, endMinutes: number) => void;
+      /** The pointer is on the host's list of a day (true), or has left it. */
+      holdDayTasks?: (held: boolean) => void;
+      /** The host put its list of a day away itself. */
+      dayTasksClosed?: () => void;
+      /** A task taken out of the host's list of a day: the Calendar drags it on. */
+      carryTask?: (taskId: string, clientX: number, clientY: number) => boolean;
       /** Every task of the board, for a week goal to be linked to. */
       /** New Roadmap entries, drawn at once (the Planner's Calendar tab). */
       setRoadmap?: (data: {
@@ -272,6 +307,15 @@ export type CalendarTaskRequest = {
   anchor: CalendarTaskAnchor;
 };
 
+/** The pointer rests on a task in the week: the tasks of its day. */
+export type CalendarDayRequest = {
+  dateKey: string;
+  /** "Due Monday 19", in the reader's language. */
+  title: string;
+  taskIds: string[];
+  anchor: CalendarTaskAnchor;
+};
+
 /** A person as the calendar script needs one: who a week goal can be for. */
 export type PlannerPerson = {
   id: string;
@@ -313,9 +357,14 @@ export function TodoPlannerView({
   onAddPerson,
   tasks,
   lists,
+  groups = [],
   onTaskDueChange,
+  onTaskReorder,
   onTaskOpen,
+  onDayTasksOpen,
+  onDayTasksClose,
   onTaskCreate,
+  onTaskComplete,
   mePersonId,
   t,
   onEditPeople,
@@ -332,12 +381,21 @@ export function TodoPlannerView({
   tasks: TodoTask[];
   /** The board's lists: a task on the Calendar shows the mark of its list. */
   lists: TodoList[];
+  /** The board's tab groups, when it has them on: the Lists pill shows the lists under them. */
+  groups?: TodoGroup[];
   /** A task was dragged to another day in the week view. */
   onTaskDueChange: (taskId: string, dueOn: string) => Promise<void> | void;
+  /** A task was dragged to another place among its day's tasks in the week view. */
+  onTaskReorder: (dateKey: string, taskIds: string[]) => void;
   /** A task was double-clicked on the Calendar: show its card beside it. */
   onTaskOpen: (taskId: string, anchor: CalendarTaskAnchor) => void;
+  /** The pointer rests on a task in the week: show its day's tasks. */
+  onDayTasksOpen: (request: CalendarDayRequest) => void;
+  onDayTasksClose: () => void;
   /** A day was double-clicked on the Calendar: show the add-task box beside it. */
   onTaskCreate: (request: CalendarTaskRequest) => void;
+  /** A task was ticked in the list of its day, which shows over a task in the week. */
+  onTaskComplete: (taskId: string, completed: boolean) => void;
   /** The person who is the reader, when the board knows. A new goal is theirs. */
   mePersonId: string | null;
 }) {
@@ -355,34 +413,27 @@ export function TodoPlannerView({
   onAddPersonRef.current = onAddPerson;
   const onTaskDueChangeRef = React.useRef(onTaskDueChange);
   onTaskDueChangeRef.current = onTaskDueChange;
+  const onTaskReorderRef = React.useRef(onTaskReorder);
+  onTaskReorderRef.current = onTaskReorder;
   const onTaskOpenRef = React.useRef(onTaskOpen);
   onTaskOpenRef.current = onTaskOpen;
+  const onDayTasksOpenRef = React.useRef(onDayTasksOpen);
+  onDayTasksOpenRef.current = onDayTasksOpen;
+  const onDayTasksCloseRef = React.useRef(onDayTasksClose);
+  onDayTasksCloseRef.current = onDayTasksClose;
   const onTaskCreateRef = React.useRef(onTaskCreate);
   onTaskCreateRef.current = onTaskCreate;
+  const onTaskCompleteRef = React.useRef(onTaskComplete);
+  onTaskCompleteRef.current = onTaskComplete;
 
   React.useEffect(() => {
     window.PlanModule?.setPeople(plannerPeople);
   }, [plannerPeople]);
 
-  // A task is on the Calendar when it has a due day, the reader ticked
-  // "Show on the Calendar", and it is still to do.
+  // A task with a due day that is still to do is in the week on that day.
+  // The months show it only when the reader ticked "Show on the Calendar".
   // Each one carries the mark of its list, as the board shows that list.
-  const taskSources = React.useMemo(() => {
-    const listsById = new Map(lists.map((l) => [l.id, l]));
-    return tasks
-      .filter((t) => t.showOnCalendar && t.dueOn && !t.completed)
-      .map((t): CalendarTaskSource => {
-        const list = t.listId ? listsById.get(t.listId) : undefined;
-        return {
-          id: t.id,
-          dateKey: t.dueOn as string,
-          name: t.text,
-          minutes: t.expectedDurationMinutes,
-          listName: list?.name ?? null,
-          listIcon: list?.emoji ?? null,
-        };
-      });
-  }, [tasks, lists]);
+  const taskSources = React.useMemo(() => calendarTaskSources(tasks, lists), [tasks, lists]);
   // Every task, for a goal to be linked to, and to count how many of a goal's
   // tasks are done. Steps of a task are not offered.
   const linkable = React.useMemo(() => {
@@ -423,6 +474,22 @@ export function TodoPlannerView({
     };
   }, [taskSources]);
 
+  // The lists for the Lists pill, as the board has them: every list, not
+  // only the tab group the list view has open.
+  const calendarListsRef = React.useRef<CalendarTaskList[]>([]);
+  calendarListsRef.current = toCalendarLists(lists, groups);
+  React.useEffect(() => {
+    let live = true;
+    void loadCalendarListIcons(lists).then(() => {
+      if (!live) return;
+      calendarListsRef.current = toCalendarLists(lists, groups);
+      window.PlanModule?.setTaskLists?.(calendarListsRef.current);
+    });
+    return () => {
+      live = false;
+    };
+  }, [lists, groups]);
+
   // The host's own keeping of some of the calendar's data: see plan-storage.
   const planStorage = React.useContext(TodoPlanStorageContext);
 
@@ -449,13 +516,20 @@ export function TodoPlannerView({
           language: lang,
           people: peopleRef.current,
           tasks: tasksRef.current,
+          taskLists: calendarListsRef.current,
           linkableTasks: linkableRef.current,
           mePersonId: meRef.current,
           onTaskDueChange: (taskId: string, dateKey: string) =>
             onTaskDueChangeRef.current(taskId, dateKey),
+          onTaskReorder: (dateKey: string, taskIds: string[]) =>
+            onTaskReorderRef.current(dateKey, taskIds),
           onTaskOpen: (taskId: string, anchor: CalendarTaskAnchor) =>
             onTaskOpenRef.current(taskId, anchor),
+          onDayTasksOpen: (request: CalendarDayRequest) => onDayTasksOpenRef.current(request),
+          onDayTasksClose: () => onDayTasksCloseRef.current(),
           onTaskCreate: (request: CalendarTaskRequest) => onTaskCreateRef.current(request),
+          onTaskComplete: (taskId: string, completed: boolean) =>
+            onTaskCompleteRef.current(taskId, completed),
           onAddPerson: async (name: string) => {
             const person = await onAddPersonRef.current(name);
             return person ? toPlannerPeople([person])[0] : null;

@@ -1,6 +1,6 @@
 [package]
 name = "digital-habits-todo"
-version = "3.1.6"
+version = "3.2.0"
 description = "Digital Habits: To-Do — standalone Mac, Windows and Linux app (SQLite via Tauri)"
 authors = ["Digital Habits"]
 license = ""

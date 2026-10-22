@@ -358,6 +358,7 @@ pub fn open_focus_popout(
       return Ok(());
     }
 
+    let store = crate::demo::data_store(&app);
     let panel = PanelBuilder::<_, FocusModePanel>::new(&app, &label)
       .url(url)
       .level(PanelLevel::Floating)
@@ -372,12 +373,18 @@ pub fn open_focus_popout(
       // shows as a box. The page draws the note's shadow (todo.css).
       .has_shadow(false)
       .with_window(move |w| {
-        w.title(title)
+        let w = w
+          .title(title)
           .decorations(false)
           .resizable(true)
           .inner_size(FOCUS_POPOUT_WIDTH, FOCUS_POPOUT_HEIGHT)
           .min_inner_size(FOCUS_POPOUT_MIN_WIDTH, FOCUS_POPOUT_MIN_HEIGHT)
-          .max_inner_size(FOCUS_POPOUT_MAX_WIDTH, FOCUS_POPOUT_MAX_HEIGHT)
+          .max_inner_size(FOCUS_POPOUT_MAX_WIDTH, FOCUS_POPOUT_MAX_HEIGHT);
+        // The demo's windows share one store, apart from the real app's.
+        match store {
+          Some(id) => w.data_store_identifier(id),
+          None => w,
+        }
       })
       .build()
       .map_err(|e| e.to_string())?;
@@ -564,7 +571,11 @@ pub fn enter_fullscreen_focus(
     let _ = existing.show();
     let _ = existing.set_focus();
   } else {
-    let fullscreen_window = WebviewWindowBuilder::new(&app, &fullscreen_label, url)
+    let mut fullscreen_builder = WebviewWindowBuilder::new(&app, &fullscreen_label, url);
+    if let Some(id) = crate::demo::data_store(&app) {
+      fullscreen_builder = fullscreen_builder.data_store_identifier(id);
+    }
+    let fullscreen_window = fullscreen_builder
       .title(title)
       .zoom_hotkeys_enabled(false)
       .always_on_top(true)

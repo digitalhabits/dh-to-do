@@ -12,18 +12,30 @@ import { boardColumnPatch, type TodoList, type TodoTask, type TodoTaskPatch } fr
 
 /**
  * What setting a due date writes: the date, and a move to Today when the
- * date is today or already past. A later date waits its turn — the board
- * read puts it in Today on the day (see promoteDueTasks in the store). A
- * task in Today given a later date leaves Today for Soon(-ish), the week
- * column, until then. `current` is the task as it is; without it, a later
- * date moves nothing.
+ * date is today or already past.
+ *
+ * A task in Today given a later date leaves Today for Soon(-ish), the week
+ * column, and so leaves a running Today session too (Ulrik, 2026-10-21):
+ * it is not for today any more. It goes to the end of Soon (`soonEnd`, one
+ * past the column's last position), not to the top, where its old Today
+ * position put it. The board read brings it back to Today on the day (see
+ * promoteDueTasks in the store). Any other task keeps its column and place.
  */
+/** One past the last position in a column: its end (for dueDatePatch's `soonEnd`). */
+export function columnEnd(column: Pick<TodoTask, "position">[]): number | undefined {
+  if (!column.length) return undefined;
+  return Math.max(...column.map((task) => task.position ?? 0)) + 1;
+}
+
 export function dueDatePatch(
   dueOn: string | null,
-  current?: Pick<TodoTask, "isToday">
+  current?: Pick<TodoTask, "isToday">,
+  soonEnd?: number
 ): TodoTaskPatch {
   if (dueOn && dueOn <= todayDueOn()) return { dueOn, ...boardColumnPatch("today") };
-  if (dueOn && current?.isToday) return { dueOn, ...boardColumnPatch("week") };
+  if (dueOn && current?.isToday) {
+    return { dueOn, ...boardColumnPatch("week"), ...(soonEnd != null ? { position: soonEnd } : null) };
+  }
   return { dueOn };
 }
 

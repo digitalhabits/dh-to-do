@@ -1,6 +1,6 @@
 {
   "name": "digital-habits-todo",
-  "version": "3.1.6",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
   "description": "Digital Habits: To-Do — standalone desktop app (SQLite via Tauri).",
@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node tests/run.mjs",
     "app:dev": "tauri dev",
+    "app:dev:demo": "tauri dev --config src-tauri/tauri.demo.conf.json",
     "app:build": "tauri build",
     "app:build:mas": "node scripts/build-mas-package.cjs",
     "app:build:win-store": "powershell -ExecutionPolicy Bypass -File ./scripts/build-win-store.ps1",

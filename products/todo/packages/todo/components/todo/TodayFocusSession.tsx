@@ -3,8 +3,10 @@
 import * as React from "react";
 import { Pause, Play } from "lucide-react";
 
-import { NotesIcon } from "@/components/todo/task-icons";
+import { FocusIcon, NotesIcon } from "@/components/todo/task-icons";
+import { TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
+import { beginNativeWindowDragOnMove } from "@/lib/todo/native-bridge";
 import { focusTimerShown, formatFocusTime } from "@/lib/todo/focus-time";
 import {
   flyGhostTo,
@@ -15,7 +17,7 @@ import {
   waitForElement,
 } from "@/lib/todo/task-celebration";
 import type { makeT } from "@/lib/todo/i18n";
-import type { TodoTask } from "@/lib/todo/types";
+import type { TodoPerson, TodoTask } from "@/lib/todo/types";
 
 /** How often the running task's time is written back, as in the focus panel. */
 const PERSIST_INTERVAL_MS = 30000;
@@ -43,6 +45,16 @@ export type TodaySessionHandlers = {
   onEditText: (task: TodoTask, text: string) => void;
   /** Tick a subtask of the task in hand, or take the tick back. */
   onToggleSubtask: (subtask: TodoTask) => void;
+  /**
+   * A subtask in a focus window of its own, as from the open card. Only
+   * where there are windows to open: the desktop app.
+   */
+  subtaskFocus?: {
+    isActive: (subtask: TodoTask) => boolean;
+    toggle: (subtask: TodoTask) => void;
+  };
+  /** Who a subtask is for, from its assignee ids, as the open card shows them. */
+  peopleOf?: (ids: string[]) => TodoPerson[];
   onExit: () => void;
 };
 
@@ -427,6 +439,18 @@ export function TodayFocusSession({
         if (walkArrowStops(event, overlayRef.current, { wrap: true })) return;
         walkTabStops(event, overlayRef.current, { wrap: true });
       }}
+      /*
+        The session covers the title bar too, so in the Mac app the window
+        is dragged by the empty space around the card instead. A press that
+        does not move still clicks (Esc in the corner).
+      */
+      onPointerDown={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest(".today-session-card, button, input, textarea, a, [contenteditable]")) {
+          return;
+        }
+        beginNativeWindowDragOnMove(event);
+      }}
     >
       {/* In the corner of the whole window, and shown whenever the pointer is
           anywhere on it — see todo-shell.css. */}
@@ -548,6 +572,8 @@ export function TodayFocusSession({
                 showDone={showDoneSubtasks}
                 onShowDone={setShowDoneSubtasks}
                 onToggle={(subtask) => handlersRef.current.onToggleSubtask(subtask)}
+                focus={handlersRef.current.subtaskFocus}
+                peopleOf={handlersRef.current.peopleOf}
               />
               {handlersRef.current.renderNotes(running)}
             </>
@@ -731,12 +757,16 @@ function SessionSubtasks({
   showDone,
   onShowDone,
   onToggle,
+  focus,
+  peopleOf,
 }: {
   subtasks: TodoTask[];
   t: ReturnType<typeof makeT>;
   showDone: boolean;
   onShowDone: (show: boolean) => void;
   onToggle: (subtask: TodoTask) => void;
+  focus?: TodaySessionHandlers["subtaskFocus"];
+  peopleOf?: TodaySessionHandlers["peopleOf"];
 }) {
   if (subtasks.length === 0) return null;
   const done = subtasks.filter((st) => st.completed);
@@ -769,6 +799,26 @@ function SessionSubtasks({
             ) : null}
           </button>
           <span className="task-subtask-text">{subtask.text}</span>
+          {/* Who it is for, always there: on the first line, as the check is. */}
+          {peopleOf && subtask.assigneeIds.length ? (
+            <span className="today-session-subtask-people">
+              <TaskAssigneeStack people={peopleOf(subtask.assigneeIds)} size={20} />
+            </span>
+          ) : null}
+          {/* Shown on hover, as on the open card's subtasks. */}
+          {focus && !subtask.completed ? (
+            <span className="task-subtask-actions">
+              <button
+                type="button"
+                className={`task-subtask-action task-subtask-focus${focus.isActive(subtask) ? " is-focusing" : ""}`}
+                title={focus.isActive(subtask) ? "Exit focus mode" : "Focus on this task"}
+                aria-label={focus.isActive(subtask) ? "Exit focus mode" : "Focus on this task"}
+                onClick={() => focus.toggle(subtask)}
+              >
+                <FocusIcon />
+              </button>
+            </span>
+          ) : null}
         </div>
       ))}
       {done.length > 0 ? (

@@ -41,6 +41,24 @@ export function slotBetween(
 export type TaskWrite = { id: string; patch: TodoTaskPatch };
 
 /**
+ * The writes that put these tasks in the order of `ids`: the list of a day
+ * and the day's row on the Calendar, where a task is moved among the day's
+ * tasks only. An id with no task is left out.
+ */
+export function dayOrderWrites(
+  tasks: readonly { id: string; position: number }[],
+  ids: readonly string[],
+  now: number
+): TaskWrite[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const rows = ids
+    .map((id) => byId.get(id))
+    .filter((t): t is { id: string; position: number } => Boolean(t))
+    .map((t) => ({ id: t.id, position: t.position }));
+  return planManualOrder(rows, now);
+}
+
+/**
  * The fewest position writes that make `order` the order of the positions.
  *
  * For a column that was sorted by something else (due date, name…) and is

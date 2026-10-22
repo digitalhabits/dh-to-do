@@ -85,7 +85,20 @@ function step(
     (options.wrap ? (by > 0 ? stops[0] : stops[stops.length - 1]) : null);
   if (!next || next === active) return false;
   next.focus();
+  markWalked(next);
   return true;
+}
+
+/**
+ * Mark the control the walk moved to, so it shows the focus ring (see
+ * [data-focus-walked] in todo.css). WebKit decides for itself whether a
+ * control focused by a script matches :focus-visible, and in the Mac app
+ * it did not: Tab moved along the add row with nothing to show where the
+ * caret was. The mark goes when the control loses the caret.
+ */
+export function markWalked(el: HTMLElement) {
+  el.setAttribute("data-focus-walked", "");
+  el.addEventListener("blur", () => el.removeAttribute("data-focus-walked"), { once: true });
 }
 
 /**

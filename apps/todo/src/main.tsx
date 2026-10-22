@@ -7,7 +7,8 @@ import { TodoPage } from "@/components/todo/TodoPage";
 import { todoHostApi } from "@/lib/todo/standalone-api";
 import { TODO_APP_VERSION } from "@/lib/todo/version";
 
-import { startUsagePing } from "./usage-ping";
+import { isDemoApp, seedDemoBoard } from "./demo/seed";
+import { showUsagePingSwitchInDev, startUsagePing } from "./usage-ping";
 import { WelcomeScreen } from "./WelcomeScreen";
 
 import "react-quill-new/dist/quill.snow.css";
@@ -56,11 +57,22 @@ if (isFocusWindow) {
   // Windows draws the panel's rounded corners and shadow (focus.rs), so
   // standalone.css drops the bar's own.
   if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("platform-windows");
-} else {
+}
+
+/**
+ * The demo app (`pnpm app:dev:demo`) fills its own board before the page
+ * reads it, and counts nothing and shows no welcome: it is for videos.
+ */
+const demo = !isFocusWindow && (await isDemoApp());
+if (demo) await seedDemoBoard();
+
+if (!isFocusWindow && !demo) {
   // Anonymous daily usage count. The main window sends it; the focus
   // windows are the same install and would only count it twice. Only a
   // store build sets VITE_TODO_STORE, and a dev server is never counted.
   startUsagePing(import.meta.env.PROD ? import.meta.env.VITE_TODO_STORE : undefined);
+  // Dev shows the switch, so the page looks as users see it; it sends nothing.
+  if (import.meta.env.DEV) showUsagePingSwitchInDev();
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -70,7 +82,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <TodoPage initialState={null} appVersion={TODO_APP_VERSION} />
-        <WelcomeScreen alwaysShow={import.meta.env.DEV} />
+        {demo ? null : <WelcomeScreen alwaysShow={import.meta.env.DEV} />}
         <Toaster position="bottom-center" richColors closeButton />
       </>
     )}

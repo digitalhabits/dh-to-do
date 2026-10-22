@@ -7,6 +7,7 @@ import type { ConfirmModalState } from "@/components/todo/use-task-actions";
 import type { TodoApi } from "@/components/todo/use-write-tracking";
 import { describeError } from "@/lib/todo/errors";
 import { newClientId } from "@/lib/todo/optimistic-task";
+import { TODO_EVERYTHING_GROUP_ID } from "@/lib/todo/list-scope";
 import { CURRENT_GROUP_KEY, GROUPS_KEY, persistPref } from "@/lib/todo/saved-prefs";
 import {
   TODO_ALL_LIST_ID,
@@ -111,7 +112,10 @@ export function useGroupsAndLists({
   function switchToGroup(groupId: string) {
     setCurrentGroupId(groupId);
     persistPref(CURRENT_GROUP_KEY, groupId);
-    const groupLists = state.lists.filter((l) => l.groupId === groupId);
+    // Everything opens on its All tab: every list's tasks.
+    const groupLists = groupId === TODO_EVERYTHING_GROUP_ID
+      ? state.lists
+      : state.lists.filter((l) => l.groupId === groupId);
     if (groupLists.length === 1) {
       setCurrentListId(groupLists[0].id);
       persistPref(TODO_CURRENT_LIST_KEY, groupLists[0].id);
