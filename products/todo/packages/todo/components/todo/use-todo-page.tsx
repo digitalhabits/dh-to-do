@@ -571,7 +571,7 @@ export function useTodoPage({
   const standalone = React.useMemo(() => isStandaloneTodo(), []);
 
   const { shellRef, shellWidth, shellHeight, shellWidthClasses } =
-    useShellSize({ setBoardStacked });
+    useShellSize({ setBoardStacked, detailsOpen: notesExpanded });
 
 
   const t = React.useMemo(() => makeT(lang), [lang]);
@@ -585,7 +585,7 @@ export function useTodoPage({
     mutationSeqRef,
     boardLoadedRef,
     refreshRef,
-    editingTaskId,
+    editingTaskId: notesExpanded ? openNotesTaskId : editingTaskId,
     editingDurationTaskId,
     t,
   });
@@ -1125,39 +1125,13 @@ export function useTodoPage({
   }
 
 
-  /*
-    Escape takes the note back to the row rather than closing it.
-
-    The draft is the same either way, so nothing typed is lost by leaving —
-    and a reader who hit Escape meant "not full screen any more", not
-    "throw this away".
-  */
-  /**
-   * Between the small note and the full-window one, in either direction.
-   *
-   * Switching swaps one editor for the other, and the new one loads the
-   * draft — so the leaving editor's document has to be carried into the
-   * draft first, or whatever only it held is gone. That is how a picture
-   * that had finished uploading vanished on collapse: the tick carried the
-   * live document, and the collapse button did not.
-   *
-   * And not at all while a picture is still on its way up: the upload
-   * belongs to the editor that is about to be torn down, and there is
-   * nowhere for its sgid to land once that editor is gone.
-   */
+  // The shared editor saves on leaving or switching tasks and guards uploads.
   const { toggleNotes, saveNotes, openTaskOverlay } = useNotesCard({
     notesCard,
     mutateTask,
     t,
   });
 
-  /**
-   * One task's notes, over the whole window.
-   *
-   * The box under a row is a few lines tall, which is right for a few lines
-   * and cramped for a paragraph. This is the same editor on the same draft,
-   * so expanding saves nothing and collapsing loses nothing.
-   */
   /**
    * The card of a task, over the Calendar, beside the task there.
    *
@@ -1362,6 +1336,7 @@ export function useTodoPage({
     setZoom,
     standalone,
     shellRef,
+    shellWidth,
     shellWidthClasses,
     t,
     effectiveDark,

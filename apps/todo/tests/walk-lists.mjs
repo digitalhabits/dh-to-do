@@ -1,3 +1,4 @@
+import { openTaskDetails, editTaskTitle, openTaskMenu, closeTaskDetails } from "./page-walk.mjs";
 /**
  * The lists and the people on the board: My tasks and Everyone, the person
  * pills, the search (Cmd+F), and the dialogs that make, rename and delete a
@@ -213,13 +214,12 @@ export async function walkLists(page) {
   click($$(".list-search-tab").find((c) => c.textContent.includes("Garage")));
   check("the picked list's chip comes first", await until(() => chips()[0] === "Garage"), chips().join());
   check("and its hits show", await until(() => shown("Pump the tyres") && !shown("Wipe the hob")));
-  // On Favourites a task's words are not edited: they open its list.
-  click(cardOf("Pump the tyres").querySelector(".task-text"));
-  check(
-    "on Favourites, a task's words open its list",
-    await until(() => $('.view-btn[data-view-id="lists"]')?.classList.contains("active") && tabNamed("Garage")?.classList.contains("active"))
-  );
-  check("and are not edited", !$("textarea.task-edit-input"));
+  await openTaskDetails("Pump the tyres");
+  check("Favourites opens the same task details", Boolean($(".task-details-panel")));
+  await closeTaskDetails();
+  click($('.view-btn[data-view-id="lists"]'));
+  await until(() => Boolean(tabNamed("Garage")));
+  click(tabNamed("Garage"));
   press(window, "Escape");
   await until(() => !$(".list-search-inner.open"));
   click($('.view-btn[data-view-id="lists"]'));
@@ -460,17 +460,20 @@ export async function walkLists(page) {
   const tyres = () => cardOf("Pump the tyres");
   await until(() => Boolean(tyres()));
   const tyresRow = () => board.query("SELECT * FROM todo_tasks WHERE text = ?", ["Pump the tyres"])[0];
-  click(tyres().querySelector(".fav-btn"));
+  await openTaskDetails("Pump the tyres");
+  click($(".task-details-actions button[aria-pressed]"));
   check("the heart makes a task a favourite", await until(() => tyresRow()?.is_favourite === 1));
-  click(tyres().querySelector(".task-chip-due"));
+  click($(".task-overlay-due"));
   check("the due chip opens its popover", await until(() => Boolean($(".due-popover"))));
   press(window, "Escape");
   await until(() => !$(".due-popover"));
-  click(tyres().querySelector(".task-list-origin"));
+  click($(".task-overlay-list-chip"));
   const toKitchen = () => $$(".task-list-picker .task-list-picker-item").find((el) => el.textContent.includes("Kitchen"));
   check("the list chip opens the list picker", await until(() => Boolean(toKitchen())));
   click(toKitchen());
   check("a list picked there moves the task", await until(() => tyresRow()?.list_id === kitchen.id));
+
+  await closeTaskDetails();
 
   // A long list, and a task added to it: the note offers Board View.
   for (let i = 1; i <= 9; i += 1) {

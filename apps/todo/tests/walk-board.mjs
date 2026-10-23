@@ -1,3 +1,4 @@
+import { openTaskDetails, closeTaskDetails, typeInto } from "./page-walk.mjs";
 /**
  * Board View: the columns, each column's order, carrying a card to another
  * column, to another place in its column and to another list's tab,
@@ -254,7 +255,7 @@ export async function walkBoard(page) {
   check("Start opens the Today session", await until(() => Boolean($(".today-session"))));
   // The task in hand carries the board card's controls, in the board's places.
   const now = $(".today-session-now");
-  check("the task in hand has the board's corner pill", Boolean(now?.querySelector(":scope > .task-utility-pill .task-expand-btn")));
+  check("the task in hand has the board's corner pill", Boolean(now?.querySelector(":scope > .task-utility-pill .task-details-open-btn")));
   check("and its row of chips under Skip and the clock", Boolean(now?.querySelector(":scope > .today-session-now-actions ~ .task-meta-row .task-meta-chips")));
   check(
     "a task waiting has the same pill and chips",
@@ -309,7 +310,8 @@ export async function walkBoard(page) {
       .map((row) => row.person_id)
       .sort()
       .join();
-  const chip = () => cardOf("Paint the gate")?.querySelector(".task-chip-assign");
+  await openTaskDetails("Paint the gate");
+  const chip = () => $('.task-details-panel [aria-label="Assigned to"]');
   const menuItem = (name) => $$(".assign-menu-portal .assign-menu-item").find((el) => el.textContent.includes(name));
   click(chip());
   check("the chip opens the people menu", await until(() => Boolean(menuItem("Abe"))));
@@ -318,7 +320,7 @@ export async function walkBoard(page) {
   check("and the menu stays up for another", Boolean($(".assign-menu-portal")));
   $(".assign-menu-portal").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   check("Escape puts the menu away", await until(() => !$(".assign-menu-portal")));
-  check("and gives the caret back to the chip", document.activeElement?.classList.contains("task-chip-assign"));
+  check("and gives the caret back to the chip", document.activeElement === chip());
   click(chip());
   await until(() => Boolean(menuItem("Zoe")));
   click(menuItem("Zoe"));
@@ -336,11 +338,12 @@ export async function walkBoard(page) {
   click($(".people-editor-done"));
   check("Done puts it away", await until(() => !$(".people-editor")));
 
-  // The length chip of a card opens the length popover.
-  click(cardOf("Paint the gate").querySelector(".task-chip-duration"));
-  check("the length chip opens its popover", await until(() => Boolean($(".duration-popover"))));
-  press(window, "Escape");
-  await until(() => !$(".duration-popover"));
+  click($('.task-details-panel [aria-label="Duration"]'));
+  check("duration can be edited in details", await until(() => Boolean($(".task-overlay-chip-input"))));
+  typeInto($(".task-overlay-chip-input"), "35");
+  $(".task-overlay-chip-input").blur();
+  check("duration is saved", await until(() => row("Paint the gate")?.expected_duration_minutes === 35));
+  await closeTaskDetails();
   view.unmount();
   undoLayout();
 

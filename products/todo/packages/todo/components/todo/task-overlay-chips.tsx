@@ -24,6 +24,7 @@ import { minutesFromTyped } from "@/lib/todo/duration-input";
 import { ListIcon, resolveListIconId } from "@/lib/todo/list-icons";
 import { daysUntilDue, formatDueOn } from "@/lib/todo/task-draft";
 import { columnEnd, dueDatePatch, listOriginLetters } from "@/lib/todo/task-helpers";
+import { formatDurationShort } from "@/lib/todo/duration";
 import { type TodoPerson, type TodoTask } from "@/lib/todo/types";
 
 const noSubscribe = () => () => {};
@@ -49,15 +50,6 @@ function CompletedLine({ completedAt, lang, t }: { completedAt: string; lang: To
   return <p className="task-overlay-done-when">{inBrowser ? completedLine(completedAt, lang, t) : null}</p>;
 }
 
-const CollapseIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 14 10 14 10 20" />
-    <polyline points="20 10 14 10 14 4" />
-    <line x1="14" y1="10" x2="21" y2="3" />
-    <line x1="3" y1="21" x2="10" y2="14" />
-  </svg>
-);
-
 /** The head of the card: the tick, the words, and the way out. */
 export function TaskOverlayHead({
   m,
@@ -68,18 +60,7 @@ export function TaskOverlayHead({
   task: TodoTask;
   title: React.ReactNode;
 }) {
-  const { t, lang, toggleTaskCompleted, saveNotes } = m;
-  const close = (
-    <button
-      type="button"
-      className="notes-collapse-btn"
-      title={t("collapseTask")}
-      aria-label={t("collapseTask")}
-      onClick={() => saveNotes(task.id)}
-    >
-      <CollapseIcon />
-    </button>
-  );
+  const { t, lang, toggleTaskCompleted } = m;
   if (!task.completed) {
     return (
       <div className="notes-overlay-head">
@@ -93,7 +74,6 @@ export function TaskOverlayHead({
           />
         </span>
         {title}
-        {close}
       </div>
     );
   }
@@ -117,7 +97,6 @@ export function TaskOverlayHead({
       >
         {t("markNotDone")}
       </button>
-      {close}
     </div>
   );
 }
@@ -161,7 +140,10 @@ function AssignChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
           setOverlayAssignAnchor(null);
           setPeopleEditorOpen(true);
         }}
-        onClose={() => setOverlayAssignAnchor(null)}
+        onClose={() => {
+          overlayAssignAnchor?.focus();
+          setOverlayAssignAnchor(null);
+        }}
       />
     </span>
   );
@@ -215,7 +197,7 @@ function DurationChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
 function DoneDueChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
   const { t, lang, mutateTask } = m;
   const [anchor, setAnchor] = React.useState<HTMLButtonElement | null>(null);
-  if (!task.dueOn) return null;
+  if (!task.dueOn) return <span>—</span>;
   const days = daysUntilDue(task.dueOn);
   const when = formatDueOn(task.dueOn, lang, t);
   // "Due yesterday", not "Due Yesterday"; a date keeps its capital.
@@ -315,8 +297,8 @@ export function TaskOverlayChips({ m, task }: { m: TodoPageModel; task: TodoTask
   const done = task.completed;
   return (
     <div className="task-overlay-chips">
-      {m.assignEnabled ? <AssignChip m={m} task={task} /> : null}
-      {done ? (
+      {m.assignEnabled ? <div className="task-details-field"><span className="task-details-field-label">{m.t("fieldAssignedTo")}</span><AssignChip m={m} task={task} /></div> : null}
+      <div className="task-details-field"><span className="task-details-field-label">{m.t("fieldDue")}</span>{done ? (
         <DoneDueChip m={m} task={task} />
       ) : (
         <TaskOverlayDue
@@ -327,9 +309,30 @@ export function TaskOverlayChips({ m, task }: { m: TodoPageModel; task: TodoTask
           lang={m.lang}
           t={m.t}
         />
-      )}
-      {done && task.expectedDurationMinutes == null ? null : <DurationChip m={m} task={task} />}
-      <ListChip m={m} task={task} />
+      )}</div>
+      {done && task.expectedDurationMinutes == null ? null : <div className="task-details-field"><span className="task-details-field-label">{m.t("fieldDuration")}</span><DurationChip m={m} task={task} /></div>}
+      {done ? <div className="task-details-field">
+        <span className="task-details-field-label">{m.t("taskTimeSpent")}</span>
+        {m.editingDurationTaskId === task.id ? <input
+          autoFocus
+          className="task-duration-input"
+          aria-label={m.t("taskTimeSpent")}
+          value={m.editingDuration}
+          onChange={(event) => m.setEditingDuration(event.target.value)}
+          onBlur={() => m.commitEditDuration(task)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              m.setEditingDurationTaskId(null);
+            }
+          }}
+        /> : <button type="button" className="task-overlay-chip" onClick={() => {
+          m.setEditingDurationTaskId(task.id);
+          m.setEditingDuration(task.timeSpentSeconds ? formatDurationShort(Math.round(task.timeSpentSeconds / 60), m.t("minutes"), m.t("hoursShort")) : "");
+        }}>{task.timeSpentSeconds ? formatDurationShort(Math.round(task.timeSpentSeconds / 60), m.t("minutes"), m.t("hoursShort")) : m.t("addTimeSpent")}</button>}
+      </div> : null}
+      <div className="task-details-field"><span className="task-details-field-label">{m.t("fieldList")}</span><ListChip m={m} task={task} /></div>
     </div>
   );
 }

@@ -89,7 +89,7 @@ export async function walkDrag(page) {
   check("letting go puts it down", await until(() => !carried("Hang the bell")));
 
   // A press on a button in a card is the button's.
-  const button = card().querySelector("button");
+  const button = card().querySelector(".task-checkbox");
   check("a card has a button", Boolean(button));
   pointer(button, "pointerdown", { clientX: 150, clientY: 150 });
   pointer(window, "pointermove", { clientX: 150, clientY: 250 });

@@ -559,7 +559,8 @@ function cardMenu(
     unlisted: boolean;
     hasDuration: boolean;
     openDurationPopover: (anchor: HTMLElement) => void;
-  }
+  },
+  labelled = false
 ) {
   const {
     setOpenMenuTaskId,
@@ -604,6 +605,7 @@ function cardMenu(
             }}
           >
             <MenuDotsIcon />
+            {labelled ? <span>{t("taskMore")}</span> : null}
           </button>
           {/* Built only while open, as the list picker is. */}
           {menuOpen ? (
@@ -735,7 +737,7 @@ function cardMenu(
                 ) : null}
                 {/* A done row shows only this menu on hover: the time,
                     the note and the heart it has not got are here. */}
-                {task.completed && !hasDuration ? (
+                {!labelled && task.completed && !hasDuration ? (
                   <button
                     role="menuitem"
                     className="task-menu-item"
@@ -750,7 +752,7 @@ function cardMenu(
                     {t("addTimeSpent")}
                   </button>
                 ) : null}
-                {(foldPillActions || task.completed) && !task.notesHtml ? (
+                {!labelled && (foldPillActions || task.completed) && !task.notesHtml ? (
                   <button
                     role="menuitem"
                     className="task-menu-item"
@@ -764,7 +766,7 @@ function cardMenu(
                     {t("fieldNotes")}
                   </button>
                 ) : null}
-                {task.completed && !task.isFavourite && !kanbanEnabled ? (
+                {!labelled && task.completed && !task.isFavourite && !kanbanEnabled ? (
                   <button
                     role="menuitem"
                     className="task-menu-item"
@@ -790,6 +792,10 @@ function cardMenu(
                   className="task-menu-item delete-task-item"
                   onClick={() => {
                     setOpenMenuTaskId(null);
+                    if (labelled) {
+                      m.setOpenNotesTaskId(null);
+                      m.setNotesExpanded(false);
+                    }
                     void removeTask(task.id);
                   }}
                 >
@@ -805,7 +811,7 @@ function cardMenu(
   );
 }
 
-/** The chip of the task's steps. */
+/** The chip of the task's subtasks. */
 function cardSubtaskChip(
   m: TodoPageModel,
   task: TodoTask
@@ -835,8 +841,7 @@ function cardSubtaskChip(
       {subtasksDone}/{mySubtasks.length}
     </button>
   ) : task.completed ? null : (
-    // No steps yet: a ghost, in the add row's slot for them. It opens
-    // the expanded card, where the first step is written.
+    // No subtasks yet: open details to add the first one.
     <button
       type="button"
       className="task-chip is-icon task-chip-subtasks is-ghost"
@@ -907,7 +912,7 @@ function cardFavouriteButton(
 function cardFocusButton(
   m: TodoPageModel,
   task: TodoTask,
-  { isFocused }: { isFocused: boolean }
+  { isFocused, row = false }: { isFocused: boolean; row?: boolean }
 ) {
   const {
     nativeShell,
@@ -916,7 +921,10 @@ function cardFocusButton(
   return (
     nativeShell && !task.completed ? (
       <button
-        className={`focus-btn ${isFocused ? "active-focus" : "is-ghost"}`}
+        type="button"
+        className={`focus-btn${row ? " task-row-focus" : ""} ${isFocused ? "active-focus" : "is-ghost"}`}
+        aria-pressed={isFocused}
+        aria-label={m.t(isFocused ? "taskStopFocus" : "taskFocus")}
         title={isFocused ? "Exit focus mode" : "Focus on this task"}
         onClick={(e) => {
           e.stopPropagation();
@@ -929,13 +937,7 @@ function cardFocusButton(
   );
 }
 
-/**
- * An open task's controls, as the board card draws them: the corner pill
- * (menu, expand, favourite, focus) and the row under the words (person,
- * date, duration, notes, subtasks, and the list on the right). The Today
- * session draws the same two on the task in hand, so a task has the same
- * controls in the same places wherever it is.
- */
+/** Lists show existing information; the Today session retains its quick controls. */
 export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" | "session" = "board") {
   const {
     sessionIds,
@@ -988,24 +990,42 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
     setDurationPopoverTaskId(task.id);
   };
   const expandBtn = (
-    <button
-      type="button"
-      className="task-expand-btn is-inline is-ghost"
-      title={t("expandTask")}
-      aria-label={t("expandTask")}
-      onClick={(e) => {
-        e.stopPropagation();
-        openTaskOverlay(task);
-      }}
-    >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <polyline points="15 3 21 3 21 9" />
-        <polyline points="9 21 3 21 3 15" />
-        <line x1="21" y1="3" x2="14" y2="10" />
-        <line x1="3" y1="21" x2="10" y2="14" />
-      </svg>
+    <button type="button" className="task-details-open-btn" onClick={() => openTaskOverlay(task)}>
+      {t("taskDetails")}
     </button>
   );
+  if (where === "board") {
+    const subtaskCount = m.subtasksByTask.get(task.id)?.length ?? 0;
+    const hasMeta = task.dueOn || hasDuration || task.notesHtml || subtaskCount ||
+      (m.assignEnabled && assignees.length) || task.isFavourite ||
+      isAllListsView || task.githubNumber;
+    return {
+      utilityPill: null,
+      anyOpen: false,
+      metaRow: hasMeta ? (
+        <div className="task-meta-row task-summary-row">
+          {task.dueOn ? task.completed ? (
+            <span className="task-summary-value">{t("fieldDue")}: {formatDueOnShort(task.dueOn, m.lang, t)}</span>
+          ) : cardDueChip(m, task, { duePopoverOpen }) : null}
+          {task.completed ? cardDurationMeta(m, task, {
+            hasDuration,
+            editingDur: m.editingDurationTaskId === task.id && !m.notesExpanded,
+          }).metaAlways : hasDuration ? (
+            <span className="task-summary-value">
+              <ClockIcon size={13} />
+              {formatDurationShort(task.expectedDurationMinutes!, t("minutes"), t("hoursShort"))}
+            </span>
+          ) : null}
+          {task.notesHtml ? <span className="task-summary-value"><NotesIcon />{t("fieldNotes")}</span> : null}
+          {subtaskCount ? cardSubtaskChip(m, task) : null}
+          {m.assignEnabled && assignees.length ? <span className="task-summary-value">{assignees.map(p => shortPersonName(p.name)).join(", ")}</span> : null}
+          {task.isFavourite ? <span className="task-summary-value"><HeartIcon size={13} filled />{t("taskFavourite")}</span> : null}
+          {isAllListsView ? <span className="task-summary-value">{m.listOfTask(task)?.name}</span> : null}
+          <TaskGithubLink task={task} t={t} />
+        </div>
+      ) : null,
+    };
+  }
   const heartAtRest = task.isFavourite && view !== "favourites";
   const pillShowsState = isFocused || heartAtRest;
   const utilityPill = (
@@ -1042,92 +1062,17 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
 
 export function renderTask(m: TodoPageModel, task: TodoTask) {
   const {
-    view,
-    justAddedTaskId,
-    editingTaskId,
-    setEditingTaskId,
-    editingTextRef,
-    editingDurationTaskId,
-    durationPopoverTaskId,
-    setDurationPopoverTaskId,
-    setDurationPopoverAnchor,
-    duePopoverTaskId,
-    openMenuTaskId,
-    setOpenMenuTaskId,
-    openListPickerTaskId,
-    openAssignTaskId,
-    setOpenAssignTaskId,
-    animHiddenTargets,
-    draggingTaskId,
-    setDraggingTaskId,
-    taskDropListId,
-    taskDragRef,
-    lang,
-    isAllListsView,
-    navigateToList,
-    isSearching,
-    showBoard,
-    foldPillActions,
-    toggleTaskCompleted,
-    editInputRef,
-    resizeEditTextarea,
-    startEditTask,
-    caretAfterEditRef,
-    commitEditTask,
-    toggleNotes,
+    justAddedTaskId, animHiddenTargets, draggingTaskId, setDraggingTaskId,
+    taskDropListId, taskDragRef, lang, isAllListsView, isSearching,
+    showBoard, toggleTaskCompleted,
   } = m;
-  const editing = editingTaskId === task.id;
-  const menuOpen = openMenuTaskId === task.id;
-  const assignOpen = openAssignTaskId === task.id;
-  const unlisted = isUnlistedTask(task);
   const showListOrigin = isAllListsView;
-  const listPickerOpen = openListPickerTaskId === task.id;
-  const editingDur = editingDurationTaskId === task.id;
-  const hasDuration = task.completed
-    ? task.timeSpentSeconds > 0
-    : task.expectedDurationMinutes != null;
-
-
-
-  const { metaAlways, metaHover } = cardDurationMeta(m, task, { editingDur, hasDuration });
-
-
-  /*
-    Favourite and focus, drawn the way notesBtn already is.
-
-    A button that carries state goes in `.always-actions` and one that
-    does not goes in `.hover-actions`, so the row is the same width
-    whether the pointer is on it or not. The two used to sit together in
-    `.always-actions` under a `hover-only` class that only hid them —
-    which still took the width the moment the pointer arrived, and
-    re-wrapped the task under it.
-  */
-  const duePopoverOpen = duePopoverTaskId === task.id;
-  /* The clock opens the same popover the add row uses, on the chip. */
-  const durationPopoverOpen = durationPopoverTaskId === task.id;
-  const openDurationPopover = (anchor: HTMLElement) => {
-    if (view === "favourites") {
-      if (task.listId) navigateToList(task.listId);
-      return;
-    }
-    setOpenMenuTaskId(null);
-    setOpenAssignTaskId(null);
-    setDurationPopoverAnchor(anchor);
-    setDurationPopoverTaskId(task.id);
-  };
-  const favBtn = cardFavouriteButton(m, task);
-  const notesBtn = (
-    <button
-      className={`notes-btn ${task.notesHtml ? "has-notes" : ""}`}
-      title="Add/Edit Notes"
-      onClick={(e) => {
-        e.stopPropagation();
-        toggleNotes(task);
-      }}
-    >
-      <NotesIcon />
-    </button>
-  );
+  const unlisted = isUnlistedTask(task);
+  const listPickerOpen = m.openListPickerTaskId === task.id;
+  const menuOpen = m.openMenuTaskId === task.id;
+  const assignOpen = m.openAssignTaskId === task.id;
+  const durationPopoverTaskId = m.durationPopoverTaskId;
+  const duePopoverTaskId = m.duePopoverTaskId;
 
   const hideForAnim = animHiddenTargets.has(
     animTargetKey(task.id, task.completed)
@@ -1155,55 +1100,18 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     />
   );
   const originPicker = cardOriginPicker(m, task, { unlisted, showListOrigin, listPickerOpen });
-  const menuWrap = cardMenu(m, task, { menuOpen, unlisted, hasDuration, openDurationPopover });
-  /*
-    The open row's utilities, in a pill of their own in the card's
-    top-right corner: the menu, expand, favourite and focus. They used to
-    share the chip row with the properties, and on a narrow card the two
-    fought for one line and the last of them fell off it. Out of the
-    flow, over the words on hover, they cost the row nothing. A button
-    carrying state — a favourite, a running focus — keeps the pill on
-    screen at rest, so the state shows.
-  */
-  /*
-    On the Favourites view every task is a favourite, so a heart on each
-    card says nothing: it is what the view is. There the pill waits for the
-    pointer, as on a task with no state. A running focus still keeps it on
-    screen, because that is news on any view.
-  */
-  const heartAtRest = task.isFavourite && view !== "favourites";
-  /* A done row keeps its hover pill: the time it took, its note, its
-     menu. An open row lays its marks out as chips instead — below. */
-  const actionsCluster = (
-    <div className="task-actions">
-      <div className="hover-actions">
-        {menuWrap}
-        {/* Folded into the menu on a slim tile — but a duration being
-            typed stays where it is typed. */}
-        {/* Folded into the menu on a slim tile, and always on a done
-            row — but a duration being typed stays where it is typed. */}
-        {(foldPillActions || task.completed) && !editingDur ? null : metaHover}
-        {!task.notesHtml && !foldPillActions && !task.completed ? notesBtn : null}
-        {!heartAtRest && (!task.completed || task.isFavourite) ? favBtn : null}
-      </div>
-      <div className="always-actions">
-        {heartAtRest ? favBtn : null}
-        {metaAlways}
-        {task.notesHtml ? notesBtn : null}
-      </div>
-    </div>
-  );
-  const chrome = task.completed ? null : taskCardChrome(m, task);
+
+  const chrome = taskCardChrome(m, task);
 
   return (
     <div
       key={task.id}
-      className={`task-item ${task.completed ? "completed-task" : ""} ${
+      className={`task-item${m.notesExpanded && m.openNotesTaskId === task.id ? " is-selected" : ""} ${task.completed ? "completed-task" : ""} ${
         showBoard && !task.completed && task.isBacklog ? "backlog-task" : ""
       } ${draggingTaskId === task.id ? "dragging" : ""}${
         draggingTaskId === task.id && taskDropListId ? " drag-over-tab" : ""
       }${
-        menuOpen || assignOpen || durationPopoverOpen || duePopoverOpen
+        menuOpen || assignOpen || durationPopoverTaskId === task.id || duePopoverTaskId === task.id
           ? " has-open-menu"
           : ""
       }${showListOrigin ? " task-item-all" : ""}${
@@ -1279,83 +1187,65 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         ) : (
           checkboxEl
         )}
-        {editing ? (
-          <textarea
-            ref={editInputRef}
-            autoFocus
-            className="task-edit-input"
-            defaultValue={editingTextRef.current}
-            rows={1}
-            onChange={(e) => {
-              editingTextRef.current = e.target.value;
-              resizeEditTextarea(e.currentTarget);
-            }}
-            onBlur={commitEditTask}
-            onKeyDown={(e) => {
-              /*
-                Plain Enter saves; Shift+Enter inserts a newline. Either
-                way the caret goes back to the title it came from, so
-                the walk over the card carries on from there.
-              */
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                caretAfterEditRef.current = { taskId: task.id, step: 0 };
-                commitEditTask();
-              }
-              if (e.key === "Escape") {
-                caretAfterEditRef.current = { taskId: task.id, step: 0 };
-                setEditingTaskId(null);
-              }
-              /*
-                Tab saves and walks on. The card's own walk is held back
-                here: it would move the caret onto a control that the
-                editor closing is about to redraw, and the caret was
-                lost in the swap.
-              */
-              if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                e.preventDefault();
-                e.stopPropagation();
-                caretAfterEditRef.current = {
-                  taskId: task.id,
-                  step: e.shiftKey ? -1 : 1,
-                };
-                commitEditTask();
-              }
-            }}
-          />
-        ) : (
           <span
             className={`task-text ${task.completed ? "completed" : ""}`}
-            /*
-              The title is a stop of its own, so the keyboard alone can
-              open a task for editing: Enter or Space does what a click
-              does. A finished task's title is not edited, and stays
-              out of the walk.
-            */
-            role={task.completed ? undefined : "button"}
-            tabIndex={task.completed ? undefined : 0}
-            onClick={() => (task.completed ? undefined : startEditTask(task))}
+            /* One entry point for details, on open and completed tasks. */
+            role="button"
+            tabIndex={0}
+            aria-expanded={m.notesExpanded && m.openNotesTaskId === task.id}
+            onClick={(event) => { event.currentTarget.focus(); m.openTaskOverlay(task); }}
             onKeyDown={(e) => {
-              if (task.completed) return;
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault();
-              startEditTask(task);
+              m.openTaskOverlay(task);
             }}
           >
             {task.text}
           </span>
-        )}
         {/* When it was finished, as the mail list stamps a message:
             the hour today and yesterday, the day before that. */}
         {task.completed && task.completedAt ? (
           <DoneStamp completedAt={task.completedAt} lang={lang} />
         ) : null}
-        {task.completed ? actionsCluster : null}
+        {cardFocusButton(m, task, { isFocused: m.activeFocusTaskIds.has(task.id), row: true })}
       </div>
       {/* The corner pill and the row under the words: see taskCardChrome. */}
       {chrome ? chrome.utilityPill : null}
       {chrome ? chrome.metaRow : null}
       {renderNotesEditor(m, task)}
+    </div>
+  );
+}
+
+export function TaskDetailsActions({ m, task }: { m: TodoPageModel; task: TodoTask }) {
+  const isFocused = m.activeFocusTaskIds.has(task.id);
+  return (
+    <div className="task-details-actions">
+      {m.nativeShell && !task.completed ? (
+        <button
+          type="button"
+          className={`task-details-focus${isFocused ? " active-focus" : ""}`}
+          onClick={() => m.toggleTaskFocusPopout(task)}
+        >
+          <FocusIcon />{m.t(isFocused ? "taskStopFocus" : "taskFocus")}
+        </button>
+      ) : null}
+      {!m.kanbanEnabled ? (
+        <button
+          type="button"
+          className="task-details-favourite"
+          aria-pressed={task.isFavourite}
+          onClick={() => m.toggleFavourite(task)}
+        >
+          <HeartIcon size={16} filled={task.isFavourite} />{m.t("taskFavourite")}
+        </button>
+      ) : null}
+      {cardMenu({ ...m, foldPillActions: false }, task, {
+        menuOpen: m.openMenuTaskId === task.id,
+        unlisted: isUnlistedTask(task),
+        hasDuration: task.completed ? task.timeSpentSeconds > 0 : task.expectedDurationMinutes != null,
+        openDurationPopover: () => {},
+      }, true)}
     </div>
   );
 }

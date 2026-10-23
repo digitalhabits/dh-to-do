@@ -10,8 +10,9 @@
 
 import * as React from "react";
 
-import { Plus, User } from "lucide-react";
+import { ArrowLeft, Plus, User } from "lucide-react";
 
+import { TaskDetailsActions } from "@/components/todo/todo-task-card";
 import { TaskAssignMenu, TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
 import { TaskOverlayChips, TaskOverlayHead } from "@/components/todo/task-overlay-chips";
 import { TrixNotesEditor } from "@/components/todo/TrixNotesEditor";
@@ -45,23 +46,9 @@ export function renderNotesEditor(m: TodoPageModel, task: TodoTask) {
     saveNotes,
   } = m;
   if (openNotesTaskId !== task.id) return null;
-  /*
-    One editor at a time.
+  // Details own the only live editor; the list stays compact.
+  if (notesExpanded) return null;
 
-    With the full-window note open, this one kept running underneath it:
-    two live documents over one draft, and one slot for the save to read
-    from. Which copy a save saw depended on which editor mounted last —
-    the kind of difference between the expanded and the small note that
-    has no business existing. The overlay covers this box anyway; when it
-    closes, this editor comes back and loads the draft the overlay wrote.
-  */
-  if (notesExpanded) {
-    return (
-      <div className="notes-container open" style={{ display: "block" }}>
-        <div className="notes-editor-wrapper active" />
-      </div>
-    );
-  }
   return (
     <div className="notes-container open" style={{ display: "block" }}>
       <div className="notes-editor-wrapper active">
@@ -413,18 +400,20 @@ export function renderNotesOverlay(m: TodoPageModel) {
   );
   return (
     <div
-      className="modal-overlay notes-overlay"
-      onClick={(event) => {
-        // Only the ground behind the card. A click inside it is the task.
-        if (event.target === event.currentTarget) saveNotes(task.id);
-      }}
+      className="notes-overlay task-details-panel"
     >
       <div
+        key={task.id}
         className={`notes-overlay-card task-overlay-card${task.completed ? " is-done" : ""}`}
-        role="dialog"
-        aria-modal="true"
+        role="region"
         aria-label={task.text}
       >
+        <div className="task-details-navigation">
+          <button type="button" className="task-details-back" onClick={() => saveNotes(task.id)}>
+            <ArrowLeft size={16} aria-hidden />{t("backToTasks")}
+          </button>
+          <span>{t("taskDetails")}</span>
+        </div>
         <TaskOverlayHead
           m={m}
           task={task}
@@ -445,8 +434,10 @@ export function renderNotesOverlay(m: TodoPageModel) {
         {/* The task's own facts and steps, on the card's white. The notes
             follow on the page's cream, as a band of their own. */}
         <div className="task-overlay-top">
+          <TaskDetailsActions m={m} task={task} />
           <TaskOverlayChips m={m} task={task} />
           <div className="task-overlay-subtasks" aria-label={t("subtasks")}>
+              <h3 className="task-details-subtasks-heading">{t("subtasks")}</h3>
               <div className="task-subtask-list" ref={subtaskListRef}>
                 {/* One flat list, the add row keyed in it like a row. It
                     moves down as steps are added, and React keeps it:
@@ -665,6 +656,7 @@ export function renderNotesOverlay(m: TodoPageModel) {
                           onClick={() => toggleTaskFocusPopout(subtask)}
                         >
                           <FocusIcon />
+                          <span>{t(activeFocusTaskIds.has(subtask.id) ? "taskStopFocus" : "taskFocus")}</span>
                         </button>
                       ) : nativeShell ? (
                         /* A done step has no focus button. Its place is

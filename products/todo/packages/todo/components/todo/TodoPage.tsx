@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import "./task-details.css";
 
 import { renderCalendarCard } from "@/components/todo/todo-calendar-popover";
 import {
@@ -34,6 +35,8 @@ export type { TodoPageSnapshot } from "@/components/todo/use-board-reads";
 
 export function TodoPage(props: TodoPageProps) {
   const m = useTodoPage(props);
+  const detailsOpen = Boolean(m.notesExpanded && m.state.tasks.some((task) => task.id === m.openNotesTaskId));
+  const detailsReplaceList = detailsOpen && (m.shellWidth == null || m.shellWidth <= 1000 || Boolean(m.sessionIds));
   /* Tasks added in the embedded add row show at once, before the page
      around it has heard of them. */
   const [embedAdded, setEmbedAdded] = React.useState<string[]>([]);
@@ -72,7 +75,7 @@ export function TodoPage(props: TodoPageProps) {
   return (
     <div
       ref={shellRef}
-      className={`todo-shell ${
+      className={`todo-shell${detailsOpen ? " task-details-open" : ""}${detailsReplaceList ? " task-details-replace" : ""} ${
         draggingTaskId || draggingListId || draggingGroupId ? "is-reordering" : ""
       }${boardAccordion || boardPills || m.embedTaskIds ? " todo-tile-compact" : ""}${
         boardPills ? " todo-tile-pills" : ""
@@ -99,7 +102,7 @@ export function TodoPage(props: TodoPageProps) {
         /* See .dialog-title-strip: the window's own bar while a dialog is open. */
         <div className="dialog-title-strip" data-tauri-drag-region aria-hidden="true" />
       ) : null}
-      <div id="normal-mode">
+      <div id="normal-mode" inert={detailsReplaceList} aria-hidden={detailsReplaceList || undefined}>
         {m.embedTaskIds ? (
           /* Only the cards asked for, as cards of a list: see embedTaskIds. */
           <div className="task-area list-column todo-embed">
@@ -182,7 +185,9 @@ export function TodoPage(props: TodoPageProps) {
         )}
       </div>
 
-      {renderCalendarCard(m)}
+      <div inert={detailsReplaceList} aria-hidden={detailsReplaceList || undefined}>
+        {renderCalendarCard(m)}
+      </div>
       {renderNotesOverlay(m)}
 
       {renderListDialog(m)}
@@ -193,7 +198,9 @@ export function TodoPage(props: TodoPageProps) {
 
       {renderSettings(m)}
 
-      {renderTodaySession(m)}
+      <div inert={detailsReplaceList} aria-hidden={detailsReplaceList || undefined}>
+        {renderTodaySession(m)}
+      </div>
 
       {renderUndoNote(m)}
     </div>

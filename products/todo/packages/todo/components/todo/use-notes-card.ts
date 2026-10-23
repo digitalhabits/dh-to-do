@@ -14,6 +14,7 @@ export function useNotesCardState() {
   const [openNotesTaskId, setOpenNotesTaskId] = React.useState<string | null>(null);
   /** The open note, over the whole window. See renderNotesOverlay. */
   const [notesExpanded, setNotesExpanded] = React.useState(false);
+  const detailsOpenerRef = React.useRef<HTMLElement | null>(null);
   /** The expanded card's own pickers, so the card's stay untouched. */
   const [overlayListOpen, setOverlayListOpen] = React.useState(false);
   const [overlayAssignAnchor, setOverlayAssignAnchor] =
@@ -72,6 +73,7 @@ export function useNotesCardState() {
   const focusSubtaskOnOpenRef = React.useRef(false);
 
   return {
+    detailsOpenerRef,
     focusSubtaskOnOpenRef,
     openNotesTaskId,
     setOpenNotesTaskId,
@@ -152,7 +154,8 @@ export function useNotesCard({
   React.useEffect(() => {
     if (!notesExpanded) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if ((event.target as HTMLElement | null)?.closest?.(".assign-menu-portal, .task-menu, .task-list-picker, .due-popover, .duration-popover, .trix-lightbox, .people-editor")) return;
       // Escape in the title's box puts the box away, not the card.
       if ((event.target as HTMLElement | null)?.closest?.(".notes-overlay-title-input")) return;
       event.stopPropagation();
@@ -160,13 +163,13 @@ export function useNotesCard({
       // puts the reader back on the board, not into the small note box.
       if (openNotesTaskId) saveNotes(openNotesTaskId);
     };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notesExpanded]);
+  }, [notesExpanded, openNotesTaskId, notesDraft]);
 
 
-  function saveNotes(taskId: string) {
+  function saveNotes(taskId: string, restoreFocus = true) {
     /*
       Straight from the editor, not from the draft.
 
@@ -189,7 +192,7 @@ export function useNotesCard({
     */
     if (notesUploading.current > 0 || pendingAttachments(html) > 0) {
       toast.error(t("pictureUploading"));
-      return;
+      return false;
     }
     setOpenNotesTaskId(null);
     setNotesExpanded(false);
@@ -197,15 +200,20 @@ export function useNotesCard({
     void mutateTask(taskId, {
       notesHtml: isEmpty ? null : html,
     });
+    if (restoreFocus) requestAnimationFrame(() => notesCard.detailsOpenerRef.current?.focus({ preventScroll: true }));
+    return true;
   }
 
 
   /**
-   * The whole task, expanded: title, list, people, duration, notes and
-   * subtasks in one card over the window. The expand button on a card and
-   * the subtask chip both come here.
+   * Open task details from a title, subtask count or the Today session.
+   * Switching tasks saves the live note before loading the next document.
    */
   function openTaskOverlay(task: TodoTask, opts?: { focusSubtask?: boolean }) {
+    if (openNotesTaskId && openNotesTaskId !== task.id && !saveNotes(openNotesTaskId, false)) return;
+    if (openNotesTaskId !== task.id || !notesExpanded) {
+      notesCard.detailsOpenerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
     notesCard.focusSubtaskOnOpenRef.current = Boolean(opts?.focusSubtask);
     if (openNotesTaskId === task.id) {
       /*
@@ -225,6 +233,11 @@ export function useNotesCard({
       setNotesDraft(task.notesHtml ?? "");
     }
     setNotesExpanded(true);
+    notesCard.setOverlayListOpen(false);
+    notesCard.setOverlayAssignAnchor(null);
+    requestAnimationFrame(() => {
+      if (!opts?.focusSubtask) document.querySelector<HTMLButtonElement>(".task-details-back")?.focus({ preventScroll: true });
+    });
   }
 
   return { toggleNotes, readOpenNote, saveNotes, openTaskOverlay };

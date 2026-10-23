@@ -1,3 +1,4 @@
+import { openTaskDetails, closeTaskDetails } from "./page-walk.mjs";
 /**
  * Settings: each switch and what it changes on the board, the language,
  * the theme and the zoom (the buttons, and the keys the desktop app
@@ -138,17 +139,19 @@ export async function walkSettings(page) {
   }
   check(
     "assigning on shows the people on a card",
-    await until(() => Boolean(cardOf("Box the books")?.querySelector(".task-chip-assign.is-set")))
+    await until(() => cardOf("Box the books")?.textContent.includes("Pip"))
   );
+  await openTaskDetails("Sweep the loft");
   check(
     "and a task made while it was off can take a person",
-    await until(() => Boolean(cardOf("Sweep the loft")?.querySelector(".task-chip-assign")))
+    await until(() => Boolean($('.task-details-panel [aria-label="Assigned to"]')))
   );
+  await closeTaskDetails();
   await flip(t("enableAssignTasks"));
   await closeSettings();
   check(
     "assigning off takes them away",
-    await until(() => !cardOf("Box the books")?.querySelector(".task-chip-assign"))
+    await until(() => !cardOf("Box the books")?.textContent.includes("Pip"))
   );
   check("the people stay on the task", board.query("SELECT * FROM todo_task_assignees").length === 1);
 
