@@ -144,10 +144,10 @@ export async function walkShell(page) {
 
   // The focus windows.
   check("the page listens on the focus channel", await until(() => channels.openCount(FOCUS_CHANNEL) === 1));
-  await openTaskDetails("Tune the piano");
-  const focusBtn = () => $(".task-details-focus");
-  check("a card has a focus button in the shell", Boolean(focusBtn("Tune the piano")));
+  const focusBtn = (words) => cardOf(words)?.querySelector(".task-row-focus");
+  check("every unfinished task has a labelled Focus button", $$(".task-item:not(.completed-task)").every(card => card.querySelector(".task-row-focus")?.textContent === "Focus"));
   click(focusBtn("Tune the piano"));
+  check("one-click Focus does not open task details", !$(".task-details-panel"));
   check(
     "the focus button asks the shell for a window",
     await until(() => commands("open_focus_popout").some((c) => c.args.taskId === tune.id)),
@@ -159,7 +159,6 @@ export async function walkShell(page) {
   window1.postMessage({ type: "focus-ended", taskId: tune.id });
   check("a window that ends takes the mark off", await until(() => !focusBtn("Tune the piano")?.classList.contains("active-focus")));
   window1.postMessage({ type: "focus-started", taskId: dust.id });
-  await openTaskDetails("Dust the shelves");
   check("a window that starts puts it on", await until(() => focusBtn("Dust the shelves")?.classList.contains("active-focus")));
   click(focusBtn("Dust the shelves"));
   check(
@@ -201,6 +200,7 @@ export async function walkShell(page) {
     await until(() => cardOf("Tune the old piano")?.textContent.includes("10m")),
     cardOf("Tune the old piano")?.textContent
   );
+  check("completed tasks do not offer Focus", !focusBtn("Tune the old piano"));
   // As the window really does it: it says the task is done first, and
   // saves its time after. The board's own write carries the time, so it
   // is kept even when the window's save comes late, or finds no task (a

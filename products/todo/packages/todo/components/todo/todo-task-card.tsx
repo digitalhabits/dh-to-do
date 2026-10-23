@@ -811,7 +811,7 @@ function cardMenu(
   );
 }
 
-/** The chip of the task's steps. */
+/** The chip of the task's subtasks. */
 function cardSubtaskChip(
   m: TodoPageModel,
   task: TodoTask
@@ -841,8 +841,7 @@ function cardSubtaskChip(
       {subtasksDone}/{mySubtasks.length}
     </button>
   ) : task.completed ? null : (
-    // No steps yet: a ghost, in the add row's slot for them. It opens
-    // the expanded card, where the first step is written.
+    // No subtasks yet: open details to add the first one.
     <button
       type="button"
       className="task-chip is-icon task-chip-subtasks is-ghost"
@@ -913,7 +912,7 @@ function cardFavouriteButton(
 function cardFocusButton(
   m: TodoPageModel,
   task: TodoTask,
-  { isFocused }: { isFocused: boolean }
+  { isFocused, labelled = false }: { isFocused: boolean; labelled?: boolean }
 ) {
   const {
     nativeShell,
@@ -922,7 +921,9 @@ function cardFocusButton(
   return (
     nativeShell && !task.completed ? (
       <button
-        className={`focus-btn ${isFocused ? "active-focus" : "is-ghost"}`}
+        type="button"
+        className={labelled ? `task-row-focus${isFocused ? " active-focus" : ""}` : `focus-btn ${isFocused ? "active-focus" : "is-ghost"}`}
+        aria-pressed={isFocused}
         title={isFocused ? "Exit focus mode" : "Focus on this task"}
         onClick={(e) => {
           e.stopPropagation();
@@ -930,6 +931,7 @@ function cardFocusButton(
         }}
       >
         <FocusIcon />
+        {labelled ? <span>{m.t(isFocused ? "taskStopFocus" : "taskFocus")}</span> : null}
       </button>
     ) : null
   );
@@ -993,9 +995,9 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
     </button>
   );
   if (where === "board") {
-    const steps = m.subtasksByTask.get(task.id)?.length ?? 0;
-    const hasMeta = task.dueOn || hasDuration || task.notesHtml || steps ||
-      (m.assignEnabled && assignees.length) || task.isFavourite || isFocused ||
+    const subtaskCount = m.subtasksByTask.get(task.id)?.length ?? 0;
+    const hasMeta = task.dueOn || hasDuration || task.notesHtml || subtaskCount ||
+      (m.assignEnabled && assignees.length) || task.isFavourite ||
       isAllListsView || task.githubNumber;
     return {
       utilityPill: null,
@@ -1015,10 +1017,9 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
             </span>
           ) : null}
           {task.notesHtml ? <span className="task-summary-value"><NotesIcon />{t("fieldNotes")}</span> : null}
-          {steps ? cardSubtaskChip(m, task) : null}
+          {subtaskCount ? cardSubtaskChip(m, task) : null}
           {m.assignEnabled && assignees.length ? <span className="task-summary-value">{assignees.map(p => shortPersonName(p.name)).join(", ")}</span> : null}
           {task.isFavourite ? <span className="task-summary-value"><HeartIcon size={13} filled />{t("taskFavourite")}</span> : null}
-          {isFocused ? <span className="task-summary-value"><FocusIcon />{t("taskFocusing")}</span> : null}
           {isAllListsView ? <span className="task-summary-value">{m.listOfTask(task)?.name}</span> : null}
           <TaskGithubLink task={task} t={t} />
         </div>
@@ -1206,7 +1207,7 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         {task.completed && task.completedAt ? (
           <DoneStamp completedAt={task.completedAt} lang={lang} />
         ) : null}
-
+        {cardFocusButton(m, task, { isFocused: m.activeFocusTaskIds.has(task.id), labelled: true })}
       </div>
       {/* The corner pill and the row under the words: see taskCardChrome. */}
       {chrome ? chrome.utilityPill : null}

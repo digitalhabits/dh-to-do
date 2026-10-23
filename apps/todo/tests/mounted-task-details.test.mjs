@@ -25,6 +25,7 @@ suite(async () => {
   opener.focus();
   press(opener, 'Enter');
   await until(() => Boolean($('.task-details-panel')));
+  check('task details name the section Subtasks', $('.task-details-subtasks-heading')?.textContent === 'Subtasks');
   check('keyboard opens details beside the list at wide widths', $('.todo-shell').classList.contains('task-details-open') && !$('.todo-shell').classList.contains('task-details-replace'));
   check('board layout uses the width remaining beside details', await until(() => $('.todo-shell').classList.contains('todo-w-stack')));
   const editor = await noteEditor('.notes-overlay-body trix-editor');

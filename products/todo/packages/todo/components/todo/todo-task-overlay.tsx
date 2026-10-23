@@ -437,6 +437,7 @@ export function renderNotesOverlay(m: TodoPageModel) {
           <TaskDetailsActions m={m} task={task} />
           <TaskOverlayChips m={m} task={task} />
           <div className="task-overlay-subtasks" aria-label={t("subtasks")}>
+              <h3 className="task-details-subtasks-heading">{t("subtasks")}</h3>
               <div className="task-subtask-list" ref={subtaskListRef}>
                 {/* One flat list, the add row keyed in it like a row. It
                     moves down as steps are added, and React keeps it:
@@ -655,6 +656,7 @@ export function renderNotesOverlay(m: TodoPageModel) {
                           onClick={() => toggleTaskFocusPopout(subtask)}
                         >
                           <FocusIcon />
+                          <span>{t(activeFocusTaskIds.has(subtask.id) ? "taskStopFocus" : "taskFocus")}</span>
                         </button>
                       ) : nativeShell ? (
                         /* A done step has no focus button. Its place is

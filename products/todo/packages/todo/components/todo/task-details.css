@@ -80,6 +80,40 @@
 .todo-shell .task-summary-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; padding-left: 28px; }
 .todo-shell .task-summary-value { display: inline-flex; align-items: center; gap: 5px; color: var(--text-tertiary); font-size: 12px; }
 .todo-shell .task-summary-value svg { width: 13px; height: 13px; }
+.todo-shell .task-main-row .task-row-focus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--focus-btn-bg);
+  color: var(--focus-btn-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.todo-shell .task-main-row .task-row-focus:hover { background: var(--focus-btn-bg-hover); }
+.todo-shell .task-row-focus.active-focus { box-shadow: inset 0 0 0 2px var(--accent-primary); }
+.todo-shell .task-row-focus svg { width: 15px; height: 15px; }
+.todo-shell .task-details-panel .task-details-subtasks-heading {
+  margin: 0 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.todo-shell .task-details-panel .task-subtask-focus {
+  opacity: 1;
+  height: auto;
+  min-height: 28px;
+  padding: 4px 7px;
+  background: var(--focus-btn-bg);
+  color: var(--focus-btn-text);
+}
 .todo-shell .task-item.is-selected { outline: 2px solid var(--border-color-strong); outline-offset: -2px; }
 .todo-shell .task-details-panel .task-subtask-row { flex-wrap: wrap; }
 .todo-shell .task-details-panel .task-subtask-actions { flex-wrap: wrap; }
@@ -88,6 +122,8 @@
 .todo-shell.mac-window.task-details-replace .task-details-panel { padding-top: 30px; }
 @media (pointer: coarse) {
   .todo-shell .task-details-back,
-  .todo-shell .task-details-actions button { min-height: 44px; }
+  .todo-shell .task-details-actions button,
+  .todo-shell .task-main-row .task-row-focus,
+  .todo-shell .task-details-panel .task-subtask-focus { min-height: 44px; }
 }
 .todo-shell.mac-window.task-details-replace .dialog-title-strip { display: block; z-index: 2001; }
