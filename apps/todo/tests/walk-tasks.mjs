@@ -1,3 +1,4 @@
+import { openTaskDetails, editTaskTitle, openTaskMenu, closeTaskDetails } from "./page-walk.mjs";
 /**
  * A task, by hand: tick it and take the tick back with Cmd+Z, delete it and
  * undo that, change its words, and open its card to write a note and add
@@ -97,7 +98,7 @@ export async function walkTasks(page) {
 
   // Delete from the card's menu, and take it back from the toast.
   const sweep = row("Sweep the floor");
-  click(cardOf("Sweep the floor").querySelector(".task-menu-btn"));
+  await openTaskMenu("Sweep the floor");
   const del = await until(() => Boolean($(".delete-task-item")));
   check("the card's menu opens", del);
   if (del) click($(".delete-task-item"));
@@ -113,7 +114,7 @@ export async function walkTasks(page) {
   check("the card comes back", await until(() => Boolean(cardOf("Sweep the floor"))));
 
   // Delete again, and take it back with Cmd+Z this time.
-  click(cardOf("Sweep the floor").querySelector(".task-menu-btn"));
+  await openTaskMenu("Sweep the floor");
   if (await until(() => Boolean($(".delete-task-item")))) click($(".delete-task-item"));
   await until(() => row("Sweep the floor") === null);
   await settle();
@@ -126,11 +127,11 @@ export async function walkTasks(page) {
   await until(() => Boolean(cardOf("Sweep the floor")));
 
   // Change a task's words: a click on the words, new words, Enter.
-  click(cardOf("Sort the screws").querySelector(".task-text"));
-  const editor = await until(() => Boolean($("textarea.task-edit-input")));
+  await editTaskTitle("Sort the screws");
+  const editor = await until(() => Boolean($("textarea.notes-overlay-title-input")));
   check("a click on the words opens them for editing", editor);
   if (editor) {
-    const box = $("textarea.task-edit-input");
+    const box = $("textarea.notes-overlay-title-input");
     typeInto(box, "Sort the screws by size");
     press(box, "Enter");
   }
@@ -140,12 +141,12 @@ export async function walkTasks(page) {
     JSON.stringify(board.query("SELECT text FROM todo_tasks"))
   );
   check("the card shows the new words", await until(() => Boolean(cardOf("Sort the screws by size"))));
-  check("the editor closes", !$("textarea.task-edit-input"));
+  check("the editor closes", !$("textarea.notes-overlay-title-input"));
 
   // Escape leaves the words as they were.
-  click(cardOf("Sort the screws by size").querySelector(".task-text"));
-  if (await until(() => Boolean($("textarea.task-edit-input")))) {
-    const box = $("textarea.task-edit-input");
+  await editTaskTitle("Sort the screws by size");
+  if (await until(() => Boolean($("textarea.notes-overlay-title-input")))) {
+    const box = $("textarea.notes-overlay-title-input");
     typeInto(box, "Throw the screws away");
     press(box, "Escape");
   }
@@ -157,8 +158,8 @@ export async function walkTasks(page) {
 
   // The card: a note, and a step added and ticked.
   const parent = row("Oil the hinges");
-  click(cardOf("Oil the hinges").querySelector(".task-expand-btn"));
-  check("the expand button opens the card", await until(() => Boolean($(".notes-overlay"))));
+  await openTaskDetails("Oil the hinges");
+  check("the task title opens details", await until(() => Boolean($(".notes-overlay"))));
   const note = await noteEditor(".notes-overlay-body trix-editor");
   check("the card has a notes editor", Boolean(note));
   if (note) writeNote(note, "<div>Use the light oil</div>");
@@ -310,8 +311,8 @@ export async function walkTasks(page) {
   );
 
   // Collapse: the card goes, and the note goes with the save.
-  click($(".notes-collapse-btn"));
-  check("the collapse button closes the card", await until(() => !$(".notes-overlay")));
+  click($(".task-details-back"));
+  check("Back to tasks closes details", await until(() => !$(".notes-overlay")));
   check(
     "the note is saved",
     await until(() => (row("Oil the hinges")?.notes_html ?? "").includes("Use the light oil")),
@@ -411,13 +412,14 @@ export async function walkTasks(page) {
     window.dispatchEvent(new window.Event("focus"));
     await settle(400);
   };
-  click(cardOf("Sweep the floor").querySelector(".task-text"));
-  await until(() => Boolean($("textarea.task-edit-input")));
+  await editTaskTitle("Sweep the floor");
+  await until(() => Boolean($("textarea.notes-overlay-title-input")));
   await call("/api/todo/tasks", "POST", { listId: list.id, text: "Hang the rake" });
   await backAtFront();
   check("while words are being written, the board is not read again", !cardOf("Hang the rake"));
-  press($("textarea.task-edit-input"), "Escape");
-  await until(() => !$("textarea.task-edit-input"));
+  press($("textarea.notes-overlay-title-input"), "Escape");
+  await until(() => !$("textarea.notes-overlay-title-input"));
+  await closeTaskDetails();
   await backAtFront();
   check("after, it is", await until(() => Boolean(cardOf("Hang the rake"))));
 

@@ -66,8 +66,10 @@ const PILL_FOLD_MAX = 340;
  */
 export function useShellSize({
   setBoardStacked,
+  detailsOpen = false,
 }: {
   setBoardStacked: React.Dispatch<React.SetStateAction<boolean>>;
+  detailsOpen?: boolean;
 }) {
   /**
    * How wide this page actually is, watched.
@@ -93,14 +95,19 @@ export function useShellSize({
   }, []);
   /* Until it has been measured, the wide board — what it has always
      opened as, and one frame later the measurement settles it. */
+  // Match task-details.css: both the board behaviour and its CSS must use
+  // the space left beside the details panel, rather than the whole shell.
+  const availableWidth = shellWidth != null && detailsOpen && shellWidth > 1000
+    ? shellWidth - Math.min(520, shellWidth * 0.44)
+    : shellWidth;
   React.useEffect(() => {
-    if (shellWidth == null) return;
-    setBoardStacked(shellWidth <= BOARD_STACK_MAX);
-  }, [shellWidth, setBoardStacked]);
+    if (availableWidth == null) return;
+    setBoardStacked(availableWidth <= BOARD_STACK_MAX);
+  }, [availableWidth, setBoardStacked]);
   const shellWidthClasses =
-    shellWidth == null
+    availableWidth == null
       ? ""
-      : SHELL_WIDTHS.filter((w) => shellWidth <= w.max)
+      : SHELL_WIDTHS.filter((w) => availableWidth <= w.max)
           .map((w) => w.className)
           .join(" ");
 

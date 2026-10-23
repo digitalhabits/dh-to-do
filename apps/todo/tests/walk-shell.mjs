@@ -1,3 +1,4 @@
+import { openTaskDetails, editTaskTitle, openTaskMenu, closeTaskDetails } from "./page-walk.mjs";
 /**
  * The page in a desktop shell: the focus windows, which talk to the board
  * over a BroadcastChannel, Apple Reminders, which the board writes to as it
@@ -143,7 +144,8 @@ export async function walkShell(page) {
 
   // The focus windows.
   check("the page listens on the focus channel", await until(() => channels.openCount(FOCUS_CHANNEL) === 1));
-  const focusBtn = (words) => cardOf(words)?.querySelector(".focus-btn");
+  await openTaskDetails("Tune the piano");
+  const focusBtn = () => $(".task-details-focus");
   check("a card has a focus button in the shell", Boolean(focusBtn("Tune the piano")));
   click(focusBtn("Tune the piano"));
   check(
@@ -157,6 +159,7 @@ export async function walkShell(page) {
   window1.postMessage({ type: "focus-ended", taskId: tune.id });
   check("a window that ends takes the mark off", await until(() => !focusBtn("Tune the piano")?.classList.contains("active-focus")));
   window1.postMessage({ type: "focus-started", taskId: dust.id });
+  await openTaskDetails("Dust the shelves");
   check("a window that starts puts it on", await until(() => focusBtn("Dust the shelves")?.classList.contains("active-focus")));
   click(focusBtn("Dust the shelves"));
   check(
@@ -166,6 +169,7 @@ export async function walkShell(page) {
     )
   );
 
+  await closeTaskDetails();
   await call("/api/todo/tasks", "PATCH", { id: tune.id, text: "Tune the old piano" });
   window1.postMessage({ type: "task-updated", taskId: tune.id });
   check("a window's change is read again", await until(() => Boolean(cardOf("Tune the old piano"))));
@@ -229,10 +233,10 @@ export async function walkShell(page) {
     JSON.stringify({ spent: row("Tune the old piano")?.time_spent_seconds })
   );
 
-  click(cardOf("Dust the shelves").querySelector(".task-text"));
-  if (await until(() => Boolean($("textarea.task-edit-input")))) {
-    typeInto($("textarea.task-edit-input"), "Dust the top shelves");
-    press($("textarea.task-edit-input"), "Enter");
+  await editTaskTitle("Dust the shelves");
+  if (await until(() => Boolean($("textarea.notes-overlay-title-input")))) {
+    typeInto($("textarea.notes-overlay-title-input"), "Dust the top shelves");
+    press($("textarea.notes-overlay-title-input"), "Enter");
   }
   check(
     "a change on the board is told to the windows",
@@ -252,6 +256,7 @@ export async function walkShell(page) {
     await until(() => channels.posts.some((p) => p.data.type === "focus-timer-pref" && p.data.always === false))
   );
 
+  await closeTaskDetails();
   // The Calendar view.
   settingsSwitch(t("enablePlanMode")).click();
   click($("#settings-modal .cancel-btn"));
@@ -279,16 +284,9 @@ export async function walkShell(page) {
   // 10px under the task's bottom (120), less the 22px the popover keeps over
   // the card for its hover bubble: the card itself stands 10px under.
   check("the card stands under the task", place()?.top === "108px" && place()?.left === "100px", JSON.stringify({ top: place()?.top, left: place()?.left }));
-  // While the card's note is open, Escape is not for the card.
-  const notesChip = $(".calendar-task-popover .task-chip-notes, .calendar-task-popover .notes-btn");
-  if (notesChip) click(notesChip);
-  check("the card's note opens", await until(() => Boolean($(".calendar-task-popover .notes-container.open"))));
-  press(window, "Escape");
-  await settle(100);
-  check("Escape leaves the card while its note is open", Boolean($(".calendar-task-popover")));
-  const noteDone = $(".calendar-task-popover .notes-done-btn");
-  if (noteDone) click(noteDone);
-  await until(() => !$(".calendar-task-popover .notes-container.open"));
+  click($(".calendar-task-popover .task-text"));
+  check("the calendar card opens task details", await until(() => Boolean($(".task-details-panel"))));
+  await closeTaskDetails();
   press(window, "Escape");
   check("Escape puts the card away", await until(() => !$(".calendar-task-popover")));
   // Zoomed in, the same task's card is placed in the shell's pixels.
@@ -391,16 +389,16 @@ export async function walkShell(page) {
       commands("update_reminders_status").some((c) => c.args.taskId === "rem-parcel" && c.args.completed === true)
     )
   );
-  click(cardOf("Buy stamps").querySelector(".task-text"));
-  if (await until(() => Boolean($("textarea.task-edit-input")))) {
-    typeInto($("textarea.task-edit-input"), "Buy first-class stamps");
-    press($("textarea.task-edit-input"), "Enter");
+  await editTaskTitle("Buy stamps");
+  if (await until(() => Boolean($("textarea.notes-overlay-title-input")))) {
+    typeInto($("textarea.notes-overlay-title-input"), "Buy first-class stamps");
+    press($("textarea.notes-overlay-title-input"), "Enter");
   }
   check(
     "new words on a linked list are sent to Reminders",
     await until(() => commands("update_reminders_title").some((c) => c.args.title === "Buy first-class stamps"))
   );
-  click(cardOf("Buy first-class stamps").querySelector(".task-menu-btn"));
+  await openTaskMenu("Buy first-class stamps");
   if (await until(() => Boolean($(".delete-task-item")))) click($(".delete-task-item"));
   check(
     "a delete on a linked list is sent to Reminders",
@@ -410,7 +408,7 @@ export async function walkShell(page) {
   // Moved onto the linked list from the menu: the task gets its reminder.
   click($(`.tabs .tab[data-list-id="${studio.id}"]`));
   await until(() => Boolean(cardOf("Oil the easel")));
-  click(cardOf("Oil the easel").querySelector(".task-menu-btn"));
+  await openTaskMenu("Oil the easel");
   if (await until(() => Boolean($(".move-task-item")))) click($(".move-task-item"));
   const target = await until(() =>
     $$(".task-menu .task-menu-item").some((b) => b.textContent.includes("Errands"))

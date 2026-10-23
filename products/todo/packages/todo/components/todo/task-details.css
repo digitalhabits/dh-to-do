@@ -1,0 +1,93 @@
+/* Task details share the app shell; its measured width also accounts for zoom
+   and embedding. Keep the list mounted so Back preserves its scroll position. */
+.todo-shell.task-details-open { --task-details-width: min(44%, 520px); }
+.todo-shell.task-details-open:not(.task-details-replace) #normal-mode { margin-right: var(--task-details-width); }
+.todo-shell.task-details-replace #normal-mode { visibility: hidden; pointer-events: none; }
+.todo-shell .notes-overlay.task-details-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--task-details-width);
+  padding: 0;
+  z-index: 2000;
+  background: var(--modal-bg);
+  border-left: 1px solid var(--border-color-medium);
+}
+.todo-shell.task-details-replace .task-details-panel { width: 100%; border-left: 0; }
+.todo-shell .task-details-panel .task-overlay-card {
+  --overlay-gutter: 30px;
+  --overlay-side: 22px;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+  box-shadow: none;
+}
+.todo-shell .task-details-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.todo-shell .task-details-back,
+.todo-shell .task-details-actions button,
+.todo-shell .task-details-open-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  width: auto;
+  height: auto;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 1;
+  pointer-events: auto;
+}
+.todo-shell .task-details-back:hover,
+.todo-shell .task-details-actions button:hover { background: var(--hover-bg); }
+.todo-shell .task-details-panel .notes-overlay-head { padding: 22px var(--overlay-side); }
+.todo-shell .task-details-panel .notes-overlay-title,
+.todo-shell .task-details-panel .notes-overlay-title-input { font-size: 25px; line-height: 1.3; }
+.todo-shell .task-details-panel .task-overlay-gutter { padding-top: 5px; }
+.todo-shell .task-details-panel .task-overlay-gutter .task-checkbox { width: 19px; height: 19px; }
+.todo-shell .task-details-panel .task-overlay-top { padding: 0 var(--overlay-side) 22px; gap: 20px; }
+.todo-shell .task-details-panel .task-overlay-notes-band { padding: 20px var(--overlay-side); }
+.todo-shell .task-details-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.todo-shell .task-details-actions .task-menu-wrap { margin-left: auto; }
+.todo-shell .task-details-actions .task-details-focus { background: var(--focus-btn-bg); color: var(--focus-btn-text); }
+.todo-shell .task-details-actions button[aria-pressed="true"] { background: var(--active-bg); }
+.todo-shell .task-details-panel .task-overlay-chips { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.todo-shell .task-details-field { display: grid; grid-template-columns: 95px minmax(0, 1fr); gap: 10px; align-items: center; }
+.todo-shell .task-details-field-label { color: var(--text-tertiary); font-size: 13px; }
+.todo-shell .task-details-field > :last-child { min-width: 0; }
+.todo-shell .task-details-panel .task-overlay-list-wrap { margin-left: 0; }
+.todo-shell .task-details-panel .task-overlay-list-chip { max-width: 100%; }
+.todo-shell .task-details-panel .task-overlay-list-chip > span { overflow: hidden; text-overflow: ellipsis; }
+.todo-shell .task-summary-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; padding-left: 28px; }
+.todo-shell .task-summary-value { display: inline-flex; align-items: center; gap: 5px; color: var(--text-tertiary); font-size: 12px; }
+.todo-shell .task-summary-value svg { width: 13px; height: 13px; }
+.todo-shell .task-item.is-selected { outline: 2px solid var(--border-color-strong); outline-offset: -2px; }
+.todo-shell .task-details-panel .task-subtask-row { flex-wrap: wrap; }
+.todo-shell .task-details-panel .task-subtask-actions { flex-wrap: wrap; }
+.todo-shell .task-details-panel .task-subtask-row > .task-subtask-actions { margin-left: auto; }
+.todo-shell .task-details-panel .task-overlay-done-band { flex-wrap: wrap; }
+.todo-shell.mac-window.task-details-replace .task-details-panel { padding-top: 30px; }
+@media (pointer: coarse) {
+  .todo-shell .task-details-back,
+  .todo-shell .task-details-actions button { min-height: 44px; }
+}
+.todo-shell.mac-window.task-details-replace .dialog-title-strip { display: block; z-index: 2001; }

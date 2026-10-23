@@ -416,3 +416,27 @@ export function renderHook(hook, initialArgs) {
     },
   };
 }
+
+/** Enter the task's adaptive details surface through its title. */
+export async function openTaskDetails(words) {
+  click(cardOf(words).querySelector('.task-text'));
+  await until(() => $('.task-details-panel .task-overlay-card')?.getAttribute('aria-label') === words);
+}
+
+export async function editTaskTitle(words) {
+  await openTaskDetails(words);
+  click($('.notes-overlay-title'));
+  await until(() => Boolean($('.notes-overlay-title-input')));
+  return $('.notes-overlay-title-input');
+}
+
+export async function openTaskMenu(words) {
+  await openTaskDetails(words);
+  click($('.task-details-actions .task-menu-btn'));
+  await until(() => Boolean($('.task-menu')));
+}
+
+export async function closeTaskDetails() {
+  if ($('.task-details-back')) click($('.task-details-back'));
+  await until(() => !$('.task-details-panel'));
+}
