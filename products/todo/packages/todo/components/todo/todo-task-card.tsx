@@ -1000,11 +1000,7 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
       (m.assignEnabled && assignees.length) || task.isFavourite ||
       isAllListsView || task.githubNumber;
     return {
-      utilityPill: m.nativeShell && !task.completed ? (
-        <div className="task-utility-pill task-focus-pill">
-          {cardFocusButton(m, task, { isFocused, row: true })}
-        </div>
-      ) : null,
+      utilityPill: null,
       anyOpen: false,
       metaRow: hasMeta ? (
         <div className="task-meta-row task-summary-row">
@@ -1211,6 +1207,7 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         {task.completed && task.completedAt ? (
           <DoneStamp completedAt={task.completedAt} lang={lang} />
         ) : null}
+        {cardFocusButton(m, task, { isFocused: m.activeFocusTaskIds.has(task.id), row: true })}
       </div>
       {/* The corner pill and the row under the words: see taskCardChrome. */}
       {chrome ? chrome.utilityPill : null}

@@ -145,7 +145,7 @@ export async function walkShell(page) {
   // The focus windows.
   check("the page listens on the focus channel", await until(() => channels.openCount(FOCUS_CHANNEL) === 1));
   const focusBtn = (words) => cardOf(words)?.querySelector(".task-row-focus");
-  check("every unfinished task has an accessible Focus button in its original hover pill", $$(".task-item:not(.completed-task)").every(card => card.querySelector(".task-utility-pill .task-row-focus")?.getAttribute("aria-label") === "Focus"));
+  check("every unfinished task has the round Focus button inside its row", $$(".task-item:not(.completed-task)").every(card => card.querySelector(".task-main-row .task-row-focus")?.getAttribute("aria-label") === "Focus"));
   click(focusBtn("Tune the piano"));
   check("one-click Focus does not open task details", !$(".task-details-panel"));
   check(

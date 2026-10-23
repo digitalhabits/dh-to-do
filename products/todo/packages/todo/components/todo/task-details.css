@@ -80,9 +80,23 @@
 .todo-shell .task-summary-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; padding-left: 28px; }
 .todo-shell .task-summary-value { display: inline-flex; align-items: center; gap: 5px; color: var(--text-tertiary); font-size: 12px; }
 .todo-shell .task-summary-value svg { width: 13px; height: 13px; }
-/* Reuse the original pill and its scroll-container clearance. The compact
-   card's lift also keeps the pill clear of long titles on wider cards. */
-.todo-shell:has(.task-focus-pill) { --task-pill-overhang: 26px; }
+/* Keep the original round control inside the row. Its small slot stays put
+   so revealing it does not move or cover the task's title. */
+.todo-shell .task-item .task-main-row .task-row-focus {
+  display: inline-flex;
+  position: static;
+  flex: 0 0 26px;
+  min-width: 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-left: 6px;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.todo-shell .task-item:hover .task-main-row .task-row-focus,
+.todo-shell .task-item:focus-within .task-main-row .task-row-focus { opacity: 1; pointer-events: auto; }
 .todo-shell .task-details-panel .task-details-subtasks-heading {
   margin: 0 0 10px;
   font-family: inherit;
@@ -111,8 +125,7 @@
   .todo-shell .task-details-panel .task-subtask-focus { min-height: 44px; }
 }
 @media (hover: none) {
-  .todo-shell .task-item .task-focus-pill { display: inline-flex; }
-  .todo-shell .task-item .task-focus-pill .task-row-focus { display: inline-flex; }
+  .todo-shell .task-item .task-main-row .task-row-focus { opacity: 1; pointer-events: auto; }
   .todo-shell .task-details-panel .task-subtask-focus { opacity: 1; }
 }
 .todo-shell.mac-window.task-details-replace .dialog-title-strip { display: block; z-index: 2001; }
