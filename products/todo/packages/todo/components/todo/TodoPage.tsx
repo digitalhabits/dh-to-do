@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import "./task-details.css";
 
 import { renderCalendarCard } from "@/components/todo/todo-calendar-popover";
 import {
@@ -30,10 +31,37 @@ import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
 import { renderNotesOverlay } from "@/components/todo/todo-task-overlay";
 import { useTodoPage, type TodoPageProps } from "@/components/todo/use-todo-page";
 
+/* What a click on the list side does its own work on, so it leaves
+   task details open. Everything else there is background. */
+const BACKGROUND_CLICK_SKIP = [
+  "button", "a", "input", "textarea", "select", "label", "summary",
+  "[contenteditable]", "[role=button]", "[role=menu]", "[role=menuitem]",
+  "[role=dialog]", "[role=listbox]", "[role=option]", "[role=tab]",
+  ".task-item", ".task-composer",
+].join(", ");
+
 export type { TodoPageSnapshot } from "@/components/todo/use-board-reads";
+
+/**
+ * Where task details stand. Beside the list when the app is wide enough.
+ * In a narrow one, and over the Today session, they take the whole app, in
+ * a column down its middle (task-details.css). They also take it when the
+ * reader widened them (TaskDetailsBar): a centred document.
+ */
+function detailsLayout(m: ReturnType<typeof useTodoPage>, detailsOpen: boolean) {
+  const detailsTakeWindow = m.shellWidth == null || m.shellWidth <= 1000 || Boolean(m.sessionIds);
+  const detailsFull = detailsOpen && !detailsTakeWindow && m.detailsFull;
+  return { detailsTakeWindow, detailsFull, detailsReplaceList: detailsOpen && (detailsTakeWindow || detailsFull) };
+}
+
+function detailsLayoutClasses(replace: boolean, full: boolean): string {
+  return `${replace ? " task-details-replace" : ""}${full ? " task-details-full" : ""}`;
+}
 
 export function TodoPage(props: TodoPageProps) {
   const m = useTodoPage(props);
+  const detailsOpen = Boolean(m.notesExpanded && m.state.tasks.some((task) => task.id === m.openNotesTaskId));
+  const { detailsTakeWindow, detailsFull, detailsReplaceList } = detailsLayout(m, detailsOpen);
   /* Tasks added in the embedded add row show at once, before the page
      around it has heard of them. */
   const [embedAdded, setEmbedAdded] = React.useState<string[]>([]);
@@ -72,7 +100,7 @@ export function TodoPage(props: TodoPageProps) {
   return (
     <div
       ref={shellRef}
-      className={`todo-shell ${
+      className={`todo-shell${detailsOpen ? " task-details-open" : ""}${detailsLayoutClasses(detailsReplaceList, detailsFull)} ${
         draggingTaskId || draggingListId || draggingGroupId ? "is-reordering" : ""
       }${boardAccordion || boardPills || m.embedTaskIds ? " todo-tile-compact" : ""}${
         boardPills ? " todo-tile-pills" : ""
@@ -82,15 +110,26 @@ export function TodoPage(props: TodoPageProps) {
         openMenuTaskId || openListPickerTaskId || openAssignTaskId
           ? " task-menu-open"
           : ""
+      }${
+        // One-line cards: picked in Settings, or a small tile elsewhere in
+        // the planner, where that is what a tile is for.
+        m.compactCards || m.embedTaskIds ? " todo-cards-one-line" : ""
       }${focusMode ? " focus-mode" : ""}${macWindow ? " mac-window" : ""}${
         m.calendarOnly ? " todo-calendar-only" : ""
       }${
         shellWidthClasses ? ` ${shellWidthClasses}` : ""
       }`}
-      data-theme={effectiveDark ? "dark" : undefined}
+      /* "light" said, not left out: the Calendar view takes the nearest
+         theme around it, and in the planner the page's own can be dark. */
+      data-theme={effectiveDark ? "dark" : "light"}
       style={
         {
           ["--todo-zoom"]: String(zoom / 100),
+          // Beside the list, details take the width the reader dragged
+          // them to (details-width.ts); task-details.css has the default.
+          ...(detailsOpen && !detailsReplaceList && m.detailsWidth != null
+            ? { ["--task-details-width"]: `${m.detailsWidth}px` }
+            : {}),
           ...(zoom !== 100 ? { zoom: zoom / 100 } : {}),
         } as React.CSSProperties
       }
@@ -99,7 +138,26 @@ export function TodoPage(props: TodoPageProps) {
         /* See .dialog-title-strip: the window's own bar while a dialog is open. */
         <div className="dialog-title-strip" data-tauri-drag-region aria-hidden="true" />
       ) : null}
-      <div id="normal-mode">
+      <div
+        id="normal-mode"
+        inert={detailsReplaceList}
+        aria-hidden={detailsReplaceList || undefined}
+        /* With details beside the list, a click on the list's empty space
+           closes them, as "Back to tasks" does. A click on a card, a
+           control or a menu does its own work. */
+        onClick={
+          detailsOpen && !detailsReplaceList && view !== "plan"
+            ? (event) => {
+                const target = event.target as HTMLElement | null;
+                // Menus drawn elsewhere in the page still pass clicks up here.
+                if (!target || !event.currentTarget.contains(target)) return;
+                if (window.getSelection()?.toString()) return;
+                if (target.closest(BACKGROUND_CLICK_SKIP)) return;
+                if (m.openNotesTaskId) m.saveNotes(m.openNotesTaskId, false);
+              }
+            : undefined
+        }
+      >
         {m.embedTaskIds ? (
           /* Only the cards asked for, as cards of a list: see embedTaskIds. */
           <div className="task-area list-column todo-embed">
@@ -182,8 +240,10 @@ export function TodoPage(props: TodoPageProps) {
         )}
       </div>
 
-      {renderCalendarCard(m)}
-      {renderNotesOverlay(m)}
+      <div inert={detailsReplaceList} aria-hidden={detailsReplaceList || undefined}>
+        {renderCalendarCard(m)}
+      </div>
+      {renderNotesOverlay(m, { canExpand: !detailsTakeWindow })}
 
       {renderListDialog(m)}
 
@@ -193,7 +253,9 @@ export function TodoPage(props: TodoPageProps) {
 
       {renderSettings(m)}
 
-      {renderTodaySession(m)}
+      <div inert={detailsReplaceList} aria-hidden={detailsReplaceList || undefined}>
+        {renderTodaySession(m)}
+      </div>
 
       {renderUndoNote(m)}
     </div>

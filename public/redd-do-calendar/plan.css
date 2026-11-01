@@ -40,7 +40,7 @@
     --plan-input-bg: #ffffff;
 }
 
-[data-theme="dark"] #plan-mode {
+#plan-mode.plan-theme-dark {
     --plan-app-bg: linear-gradient(180deg, #14202c 0%, #1a2735 100%);
     --plan-container-bg: transparent;
     --plan-panel-bg: rgba(255, 255, 255, 0.04);
@@ -82,7 +82,7 @@
     padding: 12px 24px;
     background: transparent;
     -webkit-app-region: drag;
-    gap: 12px 24px;
+    gap: 12px 16px;
     flex-shrink: 0;
 }
 
@@ -124,8 +124,8 @@
     box-shadow: 0 1px 3px rgba(30, 45, 62, 0.16), 0 0 0 1px rgba(30, 45, 62, 0.04);
 }
 
-[data-theme="dark"] #plan-mode .plan-view-mode-btn.active,
-[data-theme="dark"] #plan-mode .plan-view-mode-btn.active:hover {
+#plan-mode.plan-theme-dark .plan-view-mode-btn.active,
+#plan-mode.plan-theme-dark .plan-view-mode-btn.active:hover {
     background: rgba(255, 255, 255, 0.14);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
@@ -203,14 +203,6 @@
 #plan-mode .plan-nav-btn.small {
     width: 24px;
     height: 24px;
-}
-
-/* Undo/Redo */
-#plan-mode .plan-undo-redo-nav {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    -webkit-app-region: no-drag;
 }
 
 /* Groups Panel */
@@ -309,9 +301,10 @@
     align-items: stretch;
 }
 
-/* The week view scrolls sideways by the day. One more day is drawn at each
-   side, as wide as the others and out of sight. Every day is moved one day
-   to the left, and then by how far the scroll has gone. The grid cuts off
+/* The week view scrolls sideways by the day. More days are drawn at each
+   side (--week-buffer, seven), as wide as the others and out of sight. Every
+   day is moved that many days to the left here, and by how far the scroll
+   has gone with its own `translate` (applyWeekShift). The grid cuts off
    what is outside it, and the hours column covers the day that goes under
    it. See onWeekWheel in plan.js. */
 #plan-mode .plan-calendar-grid.plan-week-grid--carousel {
@@ -319,11 +312,8 @@
 }
 
 #plan-mode .plan-week-grid--carousel .plan-week-day-column {
-    transform: translateX(calc(-100% - 12px + var(--week-shift, 0px)));
-}
-
-#plan-mode .plan-week-grid--carousel.plan-week-grid--snapping .plan-week-day-column {
-    transition: transform 0.24s ease-out;
+    transform: translateX(calc((-100% - 12px) * var(--week-buffer, 1)));
+    will-change: translate;
 }
 
 #plan-mode .plan-week-grid--carousel .plan-week-time-gutter {
@@ -335,7 +325,7 @@
     background: #faf8f5;
 }
 
-[data-theme="dark"] #plan-mode .plan-week-grid--carousel .plan-week-time-gutter {
+#plan-mode.plan-theme-dark .plan-week-grid--carousel .plan-week-time-gutter {
     background: #15212d;
 }
 
@@ -499,7 +489,7 @@
     background: color-mix(in srgb, var(--goal-colour) 11%, transparent);
 }
 
-[data-theme="dark"] #plan-mode .plan-week-goal-pill--assigned {
+#plan-mode.plan-theme-dark .plan-week-goal-pill--assigned {
     border-color: rgba(245, 240, 232, 0.18);
     background: rgba(245, 240, 232, 0.08);
     border-color: color-mix(in srgb, var(--goal-colour) 45%, transparent);
@@ -688,7 +678,7 @@
     --plan-week-head-fill: var(--plan-panel-bg-soft);
 }
 
-[data-theme="dark"] #plan-mode .plan-week-day-column.weekend {
+#plan-mode.plan-theme-dark .plan-week-day-column.weekend {
     background: rgba(255, 255, 255, 0.04);
     --plan-week-head-fill: rgba(255, 255, 255, 0.04);
 }
@@ -718,7 +708,7 @@
         var(--plan-week-page-bg, #faf8f5);
 }
 
-[data-theme="dark"] #plan-mode .plan-week-day-header {
+#plan-mode.plan-theme-dark .plan-week-day-header {
     --plan-week-page-bg: #15212d;
 }
 
@@ -805,11 +795,7 @@
 /* The week scrolls sideways by moving every day card. The pieces in the
    gaps move with them, by the same step. See the carousel rules above. */
 #plan-mode .plan-week-grid--carousel .plan-week-goal-bridge {
-    transform: translateX(calc(var(--week-shift, 0px) - var(--week-day-step, 0px)));
-}
-
-#plan-mode .plan-week-grid--carousel.plan-week-grid--snapping .plan-week-goal-bridge {
-    transition: transform 0.24s ease-out;
+    transform: translateX(calc(var(--week-day-step, 0px) * -1 * var(--week-buffer, 1)));
 }
 
 #plan-mode .plan-week-goal-pill--span-first {
@@ -864,7 +850,7 @@
     opacity: 0.5;
 }
 
-[data-theme="dark"] #plan-mode .plan-week-goal-pill:hover .plan-week-goal-edge::after {
+#plan-mode.plan-theme-dark .plan-week-goal-pill:hover .plan-week-goal-edge::after {
     background: var(--plan-text-primary);
 }
 
@@ -1063,7 +1049,7 @@
     text-decoration: underline;
 }
 
-[data-theme="dark"] #plan-mode .plan-deadline-card-name {
+#plan-mode.plan-theme-dark .plan-deadline-card-name {
     color: #fbbf77;
 }
 
@@ -1120,12 +1106,12 @@
     color: #5b3fa0;
 }
 
-[data-theme="dark"] #plan-mode .plan-course-card .plan-deadline-card-name {
+#plan-mode.plan-theme-dark .plan-course-card .plan-deadline-card-name {
     color: #c4b0f0;
 }
 
-[data-theme="dark"] #plan-mode .plan-note-text.facilitator-course,
-[data-theme="dark"] #plan-mode .plan-week-allday-item.facilitator-course {
+#plan-mode.plan-theme-dark .plan-note-text.facilitator-course,
+#plan-mode.plan-theme-dark .plan-week-allday-item.facilitator-course {
     color: #c4b0f0;
 }
 
@@ -1172,8 +1158,8 @@
     z-index: 1;
 }
 
-[data-theme="dark"] #plan-mode .plan-note-text.calendar-task,
-[data-theme="dark"] #plan-mode .plan-week-allday-item.calendar-task {
+#plan-mode.plan-theme-dark .plan-note-text.calendar-task,
+#plan-mode.plan-theme-dark .plan-week-allday-item.calendar-task {
     color: #6ad0c1;
 }
 
@@ -1189,8 +1175,8 @@
     opacity: 0.55;
 }
 
-[data-theme="dark"] #plan-mode .plan-note-text.application-deadline,
-[data-theme="dark"] #plan-mode .plan-week-allday-item.application-deadline {
+#plan-mode.plan-theme-dark .plan-note-text.application-deadline,
+#plan-mode.plan-theme-dark .plan-week-allday-item.application-deadline {
     color: #fbbf77;
 }
 
@@ -1249,7 +1235,7 @@
     background: rgba(30, 45, 62, 0.14);
 }
 
-[data-theme="dark"] #plan-mode .plan-day-more {
+#plan-mode.plan-theme-dark .plan-day-more {
     background: rgba(255, 255, 255, 0.1);
 }
 
@@ -1444,7 +1430,7 @@
     background: #333333;
 }
 
-[data-theme="dark"] #plan-mode .plan-week-line-bar {
+#plan-mode.plan-theme-dark .plan-week-line-bar {
     background: #d8d8d8;
 }
 
@@ -1570,7 +1556,7 @@
     margin: 0;
 }
 
-[data-theme="dark"] #plan-mode .plan-week-block--task {
+#plan-mode.plan-theme-dark .plan-week-block--task {
     background: #243632;
     border-color: rgba(78, 192, 176, 0.45);
     color: #6ad0c1;
@@ -1581,12 +1567,12 @@
     background: #dceaf8;
 }
 
-[data-theme="dark"] #plan-mode .plan-week-event {
+#plan-mode.plan-theme-dark .plan-week-event {
     background: #243632;
     border-color: rgba(78, 192, 176, 0.45);
 }
 
-[data-theme="dark"] #plan-mode .plan-week-event.calendar-event {
+#plan-mode.plan-theme-dark .plan-week-event.calendar-event {
     background: #243548;
     border-color: rgba(106, 169, 234, 0.5);
 }
@@ -1737,7 +1723,7 @@
     background: var(--plan-panel-bg-soft);
 }
 
-[data-theme="dark"] #plan-mode .plan-day-row.weekend {
+#plan-mode.plan-theme-dark .plan-day-row.weekend {
     background: rgba(255, 255, 255, 0.04);
 }
 
@@ -1801,7 +1787,7 @@
     text-align: right;
 }
 
-[data-theme="dark"] #plan-mode .plan-week-number {
+#plan-mode.plan-theme-dark .plan-week-number {
     opacity: 0.6;
 }
 
@@ -1847,7 +1833,7 @@
 }
 
 /* Dark mode: user-drawn lines should be almost white and fully opaque */
-[data-theme="dark"] #plan-mode .plan-note-line:not(.calendar-event) {
+#plan-mode.plan-theme-dark .plan-note-line:not(.calendar-event) {
     background: #e0e0e0;
     opacity: 1;
 }
@@ -2039,7 +2025,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     z-index: 2000;
 }
 
-[data-theme="dark"] #plan-mode .plan-inline-toolbar {
+#plan-mode.plan-theme-dark .plan-inline-toolbar {
     background: var(--plan-modal-bg);
     border-color: rgba(255, 255, 255, 0.2);
 }
@@ -2065,7 +2051,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: rgba(30, 45, 62, 0.06);
 }
 
-[data-theme="dark"] #plan-mode .plan-toolbar-btn:hover {
+#plan-mode.plan-theme-dark .plan-toolbar-btn:hover {
     background: rgba(255, 255, 255, 0.08);
 }
 
@@ -2074,7 +2060,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: rgba(30, 45, 62, 0.12);
 }
 
-[data-theme="dark"] #plan-mode .plan-toolbar-btn.is-on {
+#plan-mode.plan-theme-dark .plan-toolbar-btn.is-on {
     background: rgba(255, 255, 255, 0.16);
 }
 
@@ -2110,7 +2096,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     flex-shrink: 0;
 }
 
-[data-theme="dark"] #plan-mode input[type="checkbox"] {
+#plan-mode.plan-theme-dark input[type="checkbox"] {
     background: var(--plan-modal-bg);
     border-color: rgba(255, 255, 255, 0.2);
 }
@@ -2203,7 +2189,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     cursor: pointer;
 }
 
-[data-theme="dark"] #plan-mode .plan-line-width-select {
+#plan-mode.plan-theme-dark .plan-line-width-select {
     background: var(--plan-modal-bg);
 }
 
@@ -2224,7 +2210,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     border-color: var(--plan-accent-color);
 }
 
-[data-theme="dark"] #plan-mode .plan-line-label-field {
+#plan-mode.plan-theme-dark .plan-line-label-field {
     background: var(--plan-modal-bg);
 }
 
@@ -2288,7 +2274,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     z-index: 105;
 }
 
-[data-theme="dark"] #plan-mode .plan-line-label {
+#plan-mode.plan-theme-dark .plan-line-label {
     background: transparent;
 }
 
@@ -2300,7 +2286,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: transparent;
 }
 
-[data-theme="dark"] #plan-mode .plan-line-label:hover {
+#plan-mode.plan-theme-dark .plan-line-label:hover {
     background: transparent;
 }
 
@@ -2330,7 +2316,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     transform: translateX(-50%);
 }
 
-[data-theme="dark"] #plan-mode .plan-line-label-input {
+#plan-mode.plan-theme-dark .plan-line-label-input {
     background: var(--plan-modal-bg);
 }
 
@@ -2343,7 +2329,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 #plan-mode .plan-calendar-sync-nav {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     margin-left: auto;
     -webkit-app-region: no-drag;
 }
@@ -2430,7 +2416,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     -webkit-app-region: no-drag;
 }
 
-[data-theme="dark"] #plan-mode .plan-toolbar-menu {
+#plan-mode.plan-theme-dark .plan-toolbar-menu {
     border-color: rgba(255, 255, 255, 0.15);
 }
 
@@ -2571,7 +2557,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     overflow: hidden;
 }
 
-[data-theme="dark"] #plan-mode .plan-calendar-popover {
+#plan-mode.plan-theme-dark .plan-calendar-popover {
     background: var(--plan-modal-bg);
     border-color: rgba(255, 255, 255, 0.1);
 }
@@ -2612,21 +2598,13 @@ body.dark-mode #plan-mode .plan-modal-dialog {
         height: 28px;
     }
 
-    #plan-mode .plan-undo-redo-nav {
-        gap: 2px;
-    }
-
     /* Break the sync-nav container so its children (toggles + buttons)
        participate directly in the title-bar flex layout */
     #plan-mode .plan-calendar-sync-nav {
         display: contents;
     }
 
-    /* Sync/add buttons stay on row 1 alongside period-nav and undo/redo */
-    #plan-mode .plan-calendar-sync-all-btn {
-        order: 0;
-    }
-
+    /* The add button stays on row 1 beside the dates. */
     #plan-mode .plan-calendar-add-btn {
         order: 0;
     }
@@ -3216,21 +3194,6 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 
 #plan-mode .plan-calendar-add-save-btn:hover {
     background: var(--plan-accent-hover);
-}
-
-/* Sync all button animation */
-#plan-mode .plan-calendar-sync-all-btn.syncing svg {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
 }
 
 /* Calendar events tooltip popup */
@@ -3860,7 +3823,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     color: var(--band-text);
 }
 
-[data-theme="dark"] #plan-mode .plan-roadmap-band {
+#plan-mode.plan-theme-dark .plan-roadmap-band {
     --band-bg: color-mix(in srgb, var(--band) 22%, #1f2937);
     --band-text: #f3f4f6;
 }
@@ -3961,13 +3924,14 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     clip-path: inset(var(--week-head-cover, 0px) 0 0 0);
 }
 
-/* With the days scrolling sideways, the layer moves as they do. */
+/* With the days scrolling sideways, the layer moves as they do. Its box
+   reaches over the days drawn at both sides: the clip-path cuts at the
+   box before the move, so a box only as wide as the grid cut each bar
+   short by the days at the left (a full week's bar ended on Thursday). */
 #plan-mode .plan-week-grid--carousel .plan-week-roadmap-layer {
-    transform: translateX(calc(var(--week-step, 0px) * -1 + var(--week-shift, 0px)));
-}
-
-#plan-mode .plan-week-grid--carousel.plan-week-grid--snapping .plan-week-roadmap-layer {
-    transition: transform 0.24s ease-out;
+    right: calc(var(--week-step, 0px) * -2 * var(--week-buffer, 1));
+    transform: translateX(calc(var(--week-step, 0px) * -1 * var(--week-buffer, 1)));
+    will-change: translate;
 }
 
 #plan-mode .plan-week-roadmap-bar {
@@ -4021,7 +3985,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 #plan-mode .plan-week-roadmap-bar.is-research { --band: #3b82f6; --band-bg: #e8f1fb; --band-text: #1e3a8a; }
 #plan-mode .plan-week-roadmap-bar.is-grant { --band: #d97706; --band-bg: #fbf3dd; --band-text: #78350f; }
 
-[data-theme="dark"] #plan-mode .plan-week-roadmap-bar {
+#plan-mode.plan-theme-dark .plan-week-roadmap-bar {
     --band-bg: color-mix(in srgb, var(--band) 22%, #1f2937);
     --band-text: #f3f4f6;
 }
@@ -4033,7 +3997,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
    ------------------------------------------------------------------ */
 #plan-mode .plan-week-day-column,
 #plan-mode .plan-week-day-column.weekend,
-[data-theme="dark"] #plan-mode .plan-week-day-column.weekend {
+#plan-mode.plan-theme-dark .plan-week-day-column.weekend {
     background: transparent;
     border: 0;
     border-radius: 0;
@@ -4060,7 +4024,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: var(--plan-panel-bg-soft);
 }
 
-[data-theme="dark"] #plan-mode .plan-week-day-column.weekend .plan-week-day-card {
+#plan-mode.plan-theme-dark .plan-week-day-column.weekend .plan-week-day-card {
     background: rgba(255, 255, 255, 0.04);
 }
 
@@ -4163,7 +4127,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     overflow: hidden;
 }
 
-[data-theme="dark"] #plan-mode .plan-week-allday-row .plan-week-allday-item.calendar-task {
+#plan-mode.plan-theme-dark .plan-week-allday-row .plan-week-allday-item.calendar-task {
     background: rgba(255, 255, 255, 0.07);
 }
 
@@ -4285,7 +4249,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     font-weight: 600;
 }
 
-[data-theme="dark"] #plan-mode .plan-roadmap-card-track.is-on {
+#plan-mode.plan-theme-dark .plan-roadmap-card-track.is-on {
     background: color-mix(in srgb, var(--band) 28%, #1f2937);
 }
 
@@ -4405,7 +4369,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-[data-theme="dark"] #plan-mode .plan-calendar-popover {
+#plan-mode.plan-theme-dark .plan-calendar-popover {
     background: #15212d;
 }
 
@@ -4484,7 +4448,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     color: #1f5f55;
 }
 
-[data-theme="dark"] #plan-mode .plan-calendar-section-head .plan-calendar-added-title {
+#plan-mode.plan-theme-dark .plan-calendar-section-head .plan-calendar-added-title {
     color: var(--plan-accent-color);
 }
 
@@ -4571,7 +4535,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: rgba(30, 45, 62, 0.06);
 }
 
-[data-theme="dark"] #plan-mode .plan-calendar-show-group {
+#plan-mode.plan-theme-dark .plan-calendar-show-group {
     background: rgba(255, 255, 255, 0.06);
 }
 
@@ -4605,7 +4569,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     line-height: 1.5;
 }
 
-[data-theme="dark"] #plan-mode .plan-calendar-hint {
+#plan-mode.plan-theme-dark .plan-calendar-hint {
     background: rgba(255, 255, 255, 0.05);
 }
 
@@ -4789,8 +4753,8 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     --band-text: color-mix(in srgb, var(--band) 55%, #111827);
 }
 
-[data-theme="dark"] #plan-mode .plan-roadmap-band.has-own-colour,
-[data-theme="dark"] #plan-mode .plan-week-roadmap-bar.has-own-colour {
+#plan-mode.plan-theme-dark .plan-roadmap-band.has-own-colour,
+#plan-mode.plan-theme-dark .plan-week-roadmap-bar.has-own-colour {
     --band-bg: color-mix(in srgb, var(--band) 22%, #1f2937);
     --band-text: #f3f4f6;
 }
@@ -4881,7 +4845,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     color: #1f5f55;
 }
 
-[data-theme="dark"] #plan-mode .plan-day-list-head {
+#plan-mode.plan-theme-dark .plan-day-list-head {
     color: var(--plan-accent-color);
 }
 
@@ -4895,7 +4859,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: rgba(30, 45, 62, 0.045);
 }
 
-[data-theme="dark"] #plan-mode .plan-day-list-row {
+#plan-mode.plan-theme-dark .plan-day-list-row {
     background: rgba(255, 255, 255, 0.05);
 }
 
@@ -5034,126 +4998,9 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     margin-left: -7px;
 }
 
-#plan-mode .plan-people-shortcuts {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    margin-bottom: 8px;
-}
-
-#plan-mode .plan-people-shortcut {
-    padding: 7px 10px;
-    border: none;
-    border-radius: 8px;
-    background: var(--plan-panel-bg-soft);
-    color: var(--plan-text-primary);
-    font: inherit;
-    font-size: 13px;
-    cursor: pointer;
-}
-
-#plan-mode .plan-people-shortcut:hover:not(:disabled) {
-    background: var(--plan-row-hover-bg);
-}
-
-#plan-mode .plan-people-shortcut.is-on {
-    background: var(--plan-accent-color);
-    color: #14202c;
-    font-weight: 600;
-}
-
-#plan-mode .plan-people-shortcut:disabled {
-    opacity: 0.45;
-    cursor: default;
-}
-
-#plan-mode .plan-people-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 6px 8px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--plan-text-primary);
-    font: inherit;
-    font-size: 13px;
-    text-align: left;
-    cursor: pointer;
-}
-
-#plan-mode .plan-people-row:hover {
-    background: var(--plan-row-hover-bg);
-}
-
-#plan-mode .plan-people-check {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 4px;
-    border: 1.5px solid var(--plan-border-color);
-    box-sizing: border-box;
-}
-
-#plan-mode .plan-people-row.is-on .plan-people-check {
-    border-color: var(--plan-accent-color);
-    background: var(--plan-accent-color)
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='%2314202c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
-        center / 14px no-repeat;
-}
-
-#plan-mode .plan-people-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#plan-mode .plan-people-count {
-    color: var(--plan-text-muted);
-    font-variant-numeric: tabular-nums;
-}
-
-/* The Lists pill (renderListsToggle): the rows are the People pill's. */
+/* The Lists pill (renderListsToggle). */
 #plan-mode .plan-toolbar-pill--lists .plan-toolbar-pill-dots {
     gap: 3px;
-    color: var(--plan-text-muted);
-}
-
-#plan-mode .plan-lists-shortcuts {
-    grid-template-columns: 1fr;
-}
-
-/* A tab group's name over its lists; a press ticks or unticks them all. */
-#plan-mode .plan-lists-group {
-    display: block;
-    width: 100%;
-    margin: 8px 0 2px;
-    padding: 2px 8px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--plan-text-muted);
-    font: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    text-align: left;
-    cursor: pointer;
-}
-
-#plan-mode .plan-lists-group:hover {
-    color: var(--plan-text-primary);
-}
-
-#plan-mode .plan-lists-mark {
-    display: inline-flex;
-    flex: none;
-    width: 14px;
-    justify-content: center;
     color: var(--plan-text-muted);
 }
 
@@ -5185,4 +5032,359 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     background: var(--plan-accent-color);
     pointer-events: none;
     z-index: 2;
+}
+
+/* ------------------------------------------------------------------ */
+/* The bar, as one row of ghost buttons (the design's "21a"): no frame  */
+/* until the pointer is on one. Undo and redo are the keys only.        */
+/* ------------------------------------------------------------------ */
+#plan-mode .plan-title-bar .plan-nav-btn {
+    border-color: transparent;
+    background: transparent;
+}
+
+#plan-mode .plan-title-bar .plan-nav-btn:hover:not(:disabled) {
+    border-color: transparent;
+    background: var(--plan-row-hover-bg);
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-period-nav {
+    gap: 4px;
+}
+
+#plan-mode .plan-period-display {
+    min-width: 0;
+    padding: 0 8px;
+    white-space: nowrap;
+}
+
+#plan-mode .plan-view-switcher {
+    border-color: transparent;
+}
+
+#plan-mode .plan-calendar-toggles {
+    gap: 4px;
+    align-items: center;
+    margin-right: 4px;
+}
+
+#plan-mode .plan-toolbar-pill {
+    gap: 8px;
+    padding: 7px 10px;
+    border-color: transparent;
+    background: transparent;
+}
+
+#plan-mode .plan-toolbar-pill:hover,
+#plan-mode .plan-toolbar-pill.is-open {
+    background: var(--plan-row-hover-bg);
+    box-shadow: none;
+}
+
+/* A pill with no marks (Lists): its words and count only. */
+#plan-mode .plan-toolbar-pill-dots:empty {
+    display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Whose tasks: the To-Do lists tab's switch, in its sizes (todo.css,  */
+/* .board-people-scope): My tasks | Everyone, then on Everyone a face   */
+/* per person, each a toggle. A hairline after it, before the lists.   */
+/* See renderPeopleToggle.                                              */
+/* ------------------------------------------------------------------ */
+#plan-mode .plan-people-scope-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 10px;
+    margin-right: 6px;
+    border-right: 1px solid var(--plan-border-color);
+}
+
+#plan-mode .plan-people-scope {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--plan-border-color);
+    border-radius: 12px;
+    background: var(--plan-panel-bg-soft);
+    flex-shrink: 0;
+}
+
+#plan-mode .plan-people-scope-btn {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--plan-text-secondary, var(--plan-text-primary));
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#plan-mode .plan-people-scope-btn:hover {
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-people-scope-btn.is-on {
+    background: var(--plan-panel-bg);
+    border-color: var(--plan-border-color);
+    color: var(--plan-text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.08);
+}
+
+#plan-mode .plan-people-scope-count {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--plan-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* The faces: 26px, apart, no ring at rest; the face picked wears a
+   mint one and the rest step back. 3px of room keeps the ring whole. */
+#plan-mode .plan-people-faces {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px;
+}
+
+#plan-mode .plan-people-face {
+    display: inline-flex;
+    padding: 2px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+#plan-mode .plan-people-face .plan-goal-person-dot {
+    width: 26px;
+    height: 26px;
+    font-size: 10px;
+}
+
+#plan-mode .plan-people-face.is-on {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--plan-accent-color, #2a9d8f) 75%, transparent);
+}
+
+#plan-mode .plan-people-face.is-dimmed {
+    opacity: 0.5;
+}
+
+#plan-mode .plan-people-face.is-dimmed:hover {
+    opacity: 0.85;
+}
+
+/* ------------------------------------------------------------------ */
+/* The Calendars list: the Roadmap, a line, the calendars, then their  */
+/* sync and Manage (the design's "21c"). See renderCalendarsPill.      */
+/* ------------------------------------------------------------------ */
+#plan-mode .plan-toolbar-menu-divider {
+    height: 1px;
+    margin: 8px 0 12px;
+    background: var(--plan-border-color);
+}
+
+#plan-mode .plan-toolbar-menu-sync {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 8px 2px;
+}
+
+#plan-mode .plan-toolbar-menu-synced {
+    color: var(--plan-text-muted);
+    font-size: 12px;
+}
+
+#plan-mode .plan-toolbar-menu-sync .plan-toolbar-menu-all {
+    color: var(--plan-accent-color);
+    font-weight: 600;
+}
+
+#plan-mode .plan-toolbar-menu-sync .plan-toolbar-menu-all:disabled {
+    color: var(--plan-text-muted);
+    cursor: default;
+}
+
+/* Manage sits right under Sync: no line between them. */
+#plan-mode .plan-toolbar-menu-sync + .plan-toolbar-menu-foot {
+    margin-top: 0;
+    border-top: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* The week's rows above the hours change height by easing, not at     */
+/* once: a week drawn again after a sideways scroll starts at the old   */
+/* heights (plan.js keeps them), and the new ones ease in, so the hours */
+/* below slide rather than jump. Not on the week's first drawing.       */
+/* ------------------------------------------------------------------ */
+#plan-mode .plan-week-roadmap-space {
+    overflow: hidden;
+}
+
+#plan-mode .plan-week-grid--eased .plan-week-allday-row,
+#plan-mode .plan-week-grid--eased .plan-week-allday-spacer {
+    transition: min-height 0.22s ease, max-height 0.22s ease;
+}
+
+#plan-mode .plan-week-grid--eased .plan-week-roadmap-space {
+    transition: height 0.22s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #plan-mode .plan-week-grid--eased .plan-week-allday-row,
+    #plan-mode .plan-week-grid--eased .plan-week-allday-spacer,
+    #plan-mode .plan-week-grid--eased .plan-week-roadmap-space {
+        transition: none;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* The Lists menu, as the To-Do's list menu (todo.css, .task-list-     */
+/* picker): a plain panel, rows of 13px with the list's icon or an     */
+/* empty slot (never its letters), small capital group headings over a */
+/* hairline, and a search box with more than six lists. A tick says a  */
+/* list shows. See renderListsToggle.                                  */
+/* ------------------------------------------------------------------ */
+#plan-mode .plan-toolbar-menu.plan-toolbar-menu--lists {
+    min-width: 13rem;
+    max-width: min(18rem, 70vw);
+    max-height: min(26rem, 60vh);
+    overflow-y: auto;
+    padding: 4px;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.12);
+}
+
+#plan-mode .plan-list-menu-search {
+    position: sticky;
+    top: -4px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -4px -4px 4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--plan-border-color);
+    background: var(--plan-modal-bg);
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-list-menu-search input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--plan-text-primary);
+    font: inherit;
+    font-size: 13px;
+}
+
+#plan-mode .plan-list-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px !important;
+    border-radius: 6px;
+    color: var(--plan-text-primary);
+    font-size: 13px !important;
+    text-align: left;
+    transition: background 0.15s ease;
+}
+
+#plan-mode .plan-list-menu-item:hover {
+    background: var(--plan-row-hover-bg) !important;
+}
+
+#plan-mode .plan-list-menu-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-list-menu-icon svg {
+    display: block;
+}
+
+#plan-mode .plan-list-menu-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#plan-mode .plan-list-menu-count {
+    flex-shrink: 0;
+    color: var(--plan-text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+#plan-mode .plan-list-menu-tick {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 14px;
+    color: var(--plan-accent-color);
+    visibility: hidden;
+}
+
+#plan-mode .plan-list-menu-item.is-on .plan-list-menu-tick {
+    visibility: visible;
+}
+
+/* A list that does not show: its name steps back. */
+#plan-mode .plan-list-menu-item:not(.is-on) .plan-list-menu-name {
+    color: var(--plan-text-muted);
+}
+
+#plan-mode .plan-list-menu-heading {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 8px 10px 3px !important;
+    border-top: 1px solid var(--plan-border-color) !important;
+    border-radius: 0;
+    color: var(--plan-text-muted);
+    font-size: 11px !important;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: left;
+}
+
+#plan-mode .plan-list-menu-heading:hover {
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-list-menu-heading.is-line {
+    margin: 4px 0;
+    padding: 0 !important;
+}
+
+#plan-mode .plan-list-menu-none {
+    padding: 7px 10px;
+    color: var(--plan-text-muted);
+    font-size: 13px;
 }

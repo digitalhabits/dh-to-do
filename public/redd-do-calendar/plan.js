@@ -349,8 +349,18 @@ const PlanModule = (function () {
         return true;
     }
 
+    /**
+     * Days drawn out of sight at each side of the week, for the sideways
+     * scroll. Three, so a scroll of a few days only moves what is drawn and
+     * the week is drawn again once, when it stops: drawn again each time a
+     * day went by (one at each side), the scroll stuttered. Seven: a flick
+     * of a whole week stays on the days drawn, and the week is drawn again
+     * only when it is still.
+     */
+    const WEEK_SIDE_DAYS = 7;
+
     function weekRenderedRange() {
-        const buffer = weekCarouselOn() ? 1 : 0;
+        const buffer = weekCarouselOn() ? WEEK_SIDE_DAYS : 0;
         return { first: -buffer, last: 6 + buffer };
     }
 
@@ -1466,9 +1476,36 @@ const PlanModule = (function () {
     //   boardSources — what the board draws besides calendars, each with a
     //                  name and whether it is on; see boardSources above
     //   onBoardSourceToggle — the reader turned one of those on or off
+    /*
+     * Light or dark, from the nearest theme around the calendar: the
+     * To-Do's own setting when it is in the To-Do, the planner's on its
+     * Calendar tab. plan.css paints dark on `#plan-mode.plan-theme-dark`.
+     * It read any dark ancestor before, so in the planner the page's dark
+     * won over a To-Do set to light, and the calendar was half of each.
+     */
+    let planThemeObserver = null;
+    function applyPlanTheme() {
+        if (!container) return;
+        const host = container.parentElement && container.parentElement.closest('[data-theme]');
+        container.classList.toggle('plan-theme-dark', Boolean(host) && host.getAttribute('data-theme') === 'dark');
+    }
+
+    function watchPlanTheme() {
+        planThemeObserver?.disconnect();
+        applyPlanTheme();
+        if (typeof MutationObserver === 'undefined') return;
+        planThemeObserver = new MutationObserver(applyPlanTheme);
+        planThemeObserver.observe(document.documentElement, {
+            attributes: true,
+            subtree: true,
+            attributeFilter: ['data-theme'],
+        });
+    }
+
     function init(containerElement, options) {
         if (isInitialized) return;
         container = containerElement;
+        watchPlanTheme();
         const opts = options || {};
         applyStoragePrefix(opts.storagePrefix || DEFAULT_STORAGE_PREFIX);
         resetState();
@@ -1576,8 +1613,10 @@ const PlanModule = (function () {
         clearTimeout(redrawAfterWritingTimer);
         clearTimeout(scrollTimeout);
         scrollTimeout = null;
-        clearTimeout(weekSnapTimer);
-        weekSnapTimer = null;
+        stopWeekScroll();
+        planThemeObserver?.disconnect();
+        planThemeObserver = null;
+        container?.classList.remove('plan-theme-dark');
         resizeObserver?.disconnect();
         resizeObserver = null;
         if (onWindowResize) {
@@ -1618,18 +1657,7 @@ const PlanModule = (function () {
                         <button type="button" class="plan-view-mode-btn" data-view="week">Week</button>
                     </div>
 
-                    <div class="plan-undo-redo-nav">
-                        <button class="plan-nav-btn plan-undo-btn" title="Undo" disabled>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-                        </button>
-                        <button class="plan-nav-btn plan-redo-btn" title="Redo" disabled>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg>
-                        </button>
-                    </div>
                     <div class="plan-calendar-sync-nav">
-                        <button class="plan-nav-btn plan-calendar-sync-all-btn" title="Sync All Calendars">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                        </button>
                         <div class="plan-calendar-toggles"></div>
                         <div class="plan-bar-search">
                             <button type="button" class="plan-nav-btn plan-bar-search-btn" title="Search" aria-label="Search">
@@ -2552,16 +2580,19 @@ const PlanModule = (function () {
     // A day with a task, a holiday or an all-day event made its own row
     // taller, and the hour lines of that day then stood lower than the lines
     // of the other days and the hours in the gutter.
+    // The Due rows' height last set, so a week drawn again starts at it:
+    // a redraw after a scroll changes nothing that shows, and a new height
+    // then eases in.
+    let weekAllDayHeight = 0;
+
     function syncWeekAllDayRows() {
+        const grid = container.querySelector('.plan-calendar-grid.plan-week-grid');
         const rows = container.querySelectorAll('.plan-week-allday-row');
         const spacer = container.querySelector('.plan-week-allday-spacer');
         // The row of each day is always drawn, empty or not: it is where a
         // note for the day is written, where a line is drawn across the days,
         // and where a thing is dropped to take its hours away.
-        rows.forEach((row) => {
-            row.style.minHeight = '';
-            row.classList.add('plan-week-allday-row--synced');
-        });
+        rows.forEach((row) => row.classList.add('plan-week-allday-row--synced'));
 
         // Only the seven days in view say how tall the rows are. A day that
         // waits at the side, out of view, for the sideways scroll is drawn
@@ -2571,26 +2602,72 @@ const PlanModule = (function () {
         const firstKey = formatDateKey(weekStartDate);
         const lastKey = formatDateKey(addDays(weekStartDate, 6));
         const inView = (row) => row.dataset.dateKey >= firstKey && row.dataset.dateKey <= lastKey;
-        rows.forEach((row) => {
-            row.style.maxHeight = '';
-            row.style.overflow = '';
-        });
 
+        // What each row would need, read from where its things end, so the
+        // rows keep their height while they are measured: let go of it and
+        // read again, and an eased change (plan.css) started from the
+        // let-go height.
+        const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        const needed = (row) => {
+            const style = getComputedStyle(row);
+            const padTop = parseFloat(style.paddingTop) || 0;
+            const padBottom = parseFloat(style.paddingBottom) || 0;
+            const borders = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+            let end = 0;
+            for (const child of row.children) {
+                if (child.offsetParent !== row) continue;
+                end = Math.max(end, child.offsetTop + child.offsetHeight);
+            }
+            const least = style.boxSizing === 'border-box'
+                ? remPx * 2
+                : remPx * 2 + padTop + padBottom + borders;
+            return Math.max(least, end ? end + padBottom + borders : 0);
+        };
         let tallest = 0;
-        rows.forEach((row) => { if (inView(row)) tallest = Math.max(tallest, row.offsetHeight); });
+        rows.forEach((row) => { if (inView(row)) tallest = Math.max(tallest, needed(row)); });
         if (tallest <= 0) return;
 
+        // No taller than four tasks and half a fifth: a day with more
+        // scrolls in its own row, and the half shows there is more. A day
+        // of thirty tasks pushed the hours of the whole week off the screen.
+        // Measured on the tallest task: a task with a face is 2px taller
+        // than one without, and measuring whichever came first made the cap
+        // change from week to week.
+        const samples = Array.from(container.querySelectorAll('.plan-week-allday-row .plan-week-allday-item.calendar-task'));
+        if (samples.length) {
+            const style = getComputedStyle(samples[0].parentElement);
+            const gap = parseFloat(style.rowGap) || 0;
+            const taskHeight = Math.max(...samples.map(sample => sample.offsetHeight));
+            const cap = Math.round(
+                (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) +
+                taskHeight * 4.5 + gap * 4
+            );
+            tallest = Math.min(tallest, cap);
+        }
+        tallest = Math.round(tallest);
+
+        // Every row is this tall and no taller, not only the ones that are
+        // full now: the day's events are put in after this (renderFreeform-
+        // Elements), and a row under the cap grew with them, so its hours
+        // stood lower than the other days' until the rows were measured
+        // again. Now they scroll in the row until then.
         rows.forEach((row) => {
             row.style.minHeight = `${tallest}px`;
-            if (!inView(row)) {
-                row.style.maxHeight = `${tallest}px`;
-                row.style.overflow = 'hidden';
+            row.style.maxHeight = `${tallest}px`;
+            if (!inView(row)) row.style.overflow = 'hidden';
+            else {
+                row.style.overflow = '';
+                row.style.overflowY = 'auto';
             }
         });
         if (spacer) {
             spacer.style.display = 'block';
             spacer.style.minHeight = `${tallest}px`;
         }
+        weekAllDayHeight = tallest;
+        // From now on a change of height eases (plan.css). Not on the first
+        // drawing of the week: it would grow from nothing.
+        if (grid) requestAnimationFrame(() => grid.classList.add('plan-week-grid--eased'));
     }
 
     function syncWeekGoalGutterSpacer() {
@@ -3251,6 +3328,72 @@ const PlanModule = (function () {
             blockEl?.classList.toggle('is-done', task.completed);
             if (blockEl && openTask) blockEl.title = `${blockEl.title} Click to open.`;
         });
+        layoutWeekOverlaps();
+    }
+
+    /*
+     * Things at the same time in a day stand side by side, as in Apple's
+     * calendar: the events and blocks that overlap make a group, each takes
+     * the first column free at its start, and the group's columns share the
+     * day's width. A thing grows to the right over the columns that are
+     * free for all of its time. Placed by what is drawn (top and height),
+     * so a block made taller for its words counts as that tall.
+     */
+    function layoutWeekOverlaps() {
+        if (!container) return;
+        container.querySelectorAll('.plan-week-time-grid').forEach((grid) => {
+            const items = Array.from(grid.children)
+                .filter((el) => (el.classList.contains('plan-week-event') && !el.classList.contains('hidden')) ||
+                    (el.classList.contains('plan-week-block') && !el.classList.contains('plan-week-block--ghost')))
+                .map((el) => {
+                    const top = parseFloat(el.style.top) || 0;
+                    return { el, top, bottom: top + el.offsetHeight, column: 0 };
+                })
+                .sort((a, b) => a.top - b.top || b.bottom - a.bottom);
+
+            const place = (group) => {
+                const columns = [];   // per column, the things in it
+                group.forEach((item) => {
+                    let column = columns.findIndex((things) => things.every((other) => other.bottom <= item.top));
+                    if (column === -1) column = columns.push([]) - 1;
+                    columns[column].push(item);
+                    item.column = column;
+                });
+                const count = columns.length;
+                group.forEach((item) => {
+                    const { el } = item;
+                    if (count === 1) {
+                        el.style.left = '';
+                        el.style.right = '';
+                        el.style.width = '';
+                        return;
+                    }
+                    let span = 1;
+                    while (item.column + span < count &&
+                        columns[item.column + span].every((other) => other.bottom <= item.top || other.top >= item.bottom)) {
+                        span += 1;
+                    }
+                    const lastColumn = item.column + span === count;
+                    el.style.left = `calc(4px + (100% - 8px) * ${item.column / count})`;
+                    el.style.width = `calc((100% - 8px) * ${span / count}${lastColumn ? '' : ' - 2px'})`;
+                    el.style.right = 'auto';
+                });
+            };
+
+            // A group ends where nothing in it reaches the next thing's start.
+            let group = [];
+            let groupEnd = -Infinity;
+            items.forEach((item) => {
+                if (group.length && item.top >= groupEnd) {
+                    place(group);
+                    group = [];
+                    groupEnd = -Infinity;
+                }
+                group.push(item);
+                groupEnd = Math.max(groupEnd, item.bottom);
+            });
+            if (group.length) place(group);
+        });
     }
 
     function setupWeekGoalPointerDrag(pill, goal) {
@@ -3508,6 +3651,8 @@ const PlanModule = (function () {
             piece.style.background = window.getComputedStyle(bar).backgroundColor;
             grid.appendChild(piece);
         });
+        // New pieces where the days have slid to.
+        applyWeekShift();
     }
 
     function dayGoalsRow(dateKey) {
@@ -3748,7 +3893,7 @@ const PlanModule = (function () {
     }
 
     // Calendar functions
-    function updatePeriodDisplay() {
+    function updatePeriodDisplay(dayOffset = 0) {
         const display = container.querySelector('.plan-period-display');
         const todayBtn = container.querySelector('.plan-today-btn');
         // The host took the calendar off the page — a tab was left, or the
@@ -3757,22 +3902,30 @@ const PlanModule = (function () {
         if (!display) return;
 
         if (calendarViewMode === 'week') {
-            const weekEnd = addDays(weekStartDate, 6);
+            // While the days slide, the week that is mostly in view.
+            const weekStartDate_ = addDays(weekStartDate, dayOffset);
+            const weekEnd = addDays(weekStartDate_, 6);
             const months = currentLanguage === 'da' ? MONTHS_DA : MONTHS_EN;
-            const startLabel = `${weekStartDate.getDate()} ${months[weekStartDate.getMonth()].slice(0, 3)}`;
-            const endLabel = `${weekEnd.getDate()} ${months[weekEnd.getMonth()].slice(0, 3)}`;
-
-            if (weekStartDate.getFullYear() === weekEnd.getFullYear()) {
-                display.textContent = `${startLabel} – ${endLabel} ${weekStartDate.getFullYear()}`;
+            const month = date => months[date.getMonth()].slice(0, 3);
+            const startYear = weekStartDate_.getFullYear();
+            const endYear = weekEnd.getFullYear();
+            // Short: "19 – 25 Oct", "28 Sep – 4 Oct". The year only when
+            // it is not this year, and on both ends when the week spans two.
+            if (startYear !== endYear) {
+                display.textContent = `${weekStartDate_.getDate()} ${month(weekStartDate_)} ${startYear} – ${weekEnd.getDate()} ${month(weekEnd)} ${endYear}`;
             } else {
-                display.textContent = `${startLabel} ${weekStartDate.getFullYear()} – ${endLabel} ${weekEnd.getFullYear()}`;
+                const start = weekStartDate_.getMonth() === weekEnd.getMonth()
+                    ? `${weekStartDate_.getDate()}`
+                    : `${weekStartDate_.getDate()} ${month(weekStartDate_)}`;
+                const year = startYear === new Date().getFullYear() ? '' : ` ${startYear}`;
+                display.textContent = `${start} – ${weekEnd.getDate()} ${month(weekEnd)}${year}`;
             }
 
             if (todayBtn) {
                 // Any seven days that hold today count as "this week".
                 const todayKey = formatDateKey(new Date());
                 const isCurrentWeek =
-                    todayKey >= formatDateKey(weekStartDate) && todayKey <= formatDateKey(weekEnd);
+                    todayKey >= formatDateKey(weekStartDate_) && todayKey <= formatDateKey(weekEnd);
                 todayBtn.classList.toggle('hidden', isCurrentWeek);
             }
             return;
@@ -3897,6 +4050,11 @@ const PlanModule = (function () {
         const { first, last } = weekRenderedRange();
         const carousel = first < 0;
         grid.classList.toggle('plan-week-grid--carousel', carousel);
+        grid.classList.toggle('plan-week-grid--eased', weekAllDayHeight > 0);
+        // How many days are out of sight at the left: the days, the roadmap
+        // and the goals' bridges are moved left by that many (plan.css).
+        grid.style.setProperty('--week-buffer', String(-first));
+        weekStepCache = 0;
         // Seven days fill the width. The hidden days are as wide, outside it.
         grid.style.gridTemplateColumns = carousel
             ? `${WEEK_GUTTER}px repeat(${last - first + 1}, calc((100% - ${WEEK_GUTTER}px - 84px) / 7))`
@@ -3906,7 +4064,7 @@ const PlanModule = (function () {
         for (let i = first; i <= last; i++) {
             grid.appendChild(createWeekDayColumn(addDays(weekStartDate, i)));
         }
-        applyWeekShift(false);
+        applyWeekShift();
         // A new gutter starts with no shift. Once it is drawn, the observer
         // lines it up (it reports once on observe) and again on each resize.
         requestAnimationFrame(watchWeekHourGutter);
@@ -3918,20 +4076,71 @@ const PlanModule = (function () {
     const WEEK_GUTTER = 60;
 
     // ---- Sideways scroll, a day at a time ----
-    let weekShiftPx = 0;
-    let weekSnapTimer = null;
-    let weekLastDirection = 0;   // 1: to later days, -1: to earlier days
+    //
+    // As in Apple's calendar: the days follow the fingers, and when they let
+    // go, the days glide on with the flick's speed and come to rest on a
+    // whole day. The OS goes on sending wheel events after the fingers let
+    // go (its momentum); those are not followed but read, to know where the
+    // flick would stop, and the glide goes to the day nearest that.
+    let weekShiftPx = 0;         // how far the days have slid, to later days > 0
+    let weekStepCache = 0;
+    const weekWheel = {
+        lastAt: 0,               // time of the last wheel event
+        lastAbs: 0,              // its size
+        sign: 0,
+        velocity: 0,             // px per ms, smoothed
+        run: [],                 // the sizes of this run's events, newest last
+        coasting: false,         // the OS momentum is under way: its events are read, not followed
+        idleTimer: null,
+        glide: null,             // { frame, from, to, start, duration, slope }
+        shownOffset: 0,          // the days the title is ahead of the drawn week
+    };
 
+    /** One day's width and the gap after it. Measured once per drawing of
+        the week: measured on each wheel event, it made the page lay itself
+        out mid-scroll. */
     function weekColumnStep() {
+        if (weekStepCache) return weekStepCache;
         const col = container.querySelector('.plan-week-day-column');
-        return col ? rectOf(col).width + 12 : 0;
+        weekStepCache = col ? rectOf(col).width + 12 : 0;
+        return weekStepCache;
+    }
+    window.addEventListener('resize', () => { weekStepCache = 0; });
+
+    /*
+     * The days, the Roadmap's layer and the goals' pieces in the gaps are
+     * moved with their own `translate`, set on each. A CSS variable on the
+     * grid did it before, and every element of the week was styled again on
+     * each frame of the scroll.
+     */
+    function applyWeekShift() {
+        const grid = container && container.querySelector('.plan-calendar-grid.plan-week-grid--carousel');
+        if (!grid) return;
+        const x = weekShiftPx ? `${-weekShiftPx}px 0` : '';
+        for (const el of grid.children) {
+            if (el.classList.contains('plan-week-day-column') ||
+                el.classList.contains('plan-week-roadmap-layer') ||
+                el.classList.contains('plan-week-goal-bridge')) {
+                el.style.translate = x;
+            }
+        }
+        const step = weekColumnStep();
+        const offset = step ? Math.round(weekShiftPx / step) : 0;
+        if (offset !== weekWheel.shownOffset) {
+            weekWheel.shownOffset = offset;
+            updatePeriodDisplay(offset);
+        }
     }
 
-    function applyWeekShift(glide) {
-        const grid = container.querySelector('.plan-calendar-grid');
-        if (!grid) return;
-        grid.classList.toggle('plan-week-grid--snapping', Boolean(glide));
-        grid.style.setProperty('--week-shift', `${-weekShiftPx}px`);
+    /** The fingers' moves, put on screen once a frame: wheel events come
+        at their own times, and each one moved the days at once. */
+    let weekShiftFrame = 0;
+    function scheduleWeekShift() {
+        if (weekShiftFrame) return;
+        weekShiftFrame = requestAnimationFrame(() => {
+            weekShiftFrame = 0;
+            applyWeekShift();
+        });
     }
 
     function shiftWeekByDays(days) {
@@ -3939,14 +4148,120 @@ const PlanModule = (function () {
         const barWeekBefore = getCurrentWeekKey();
         weekStartDate = addDays(weekStartDate, days);
         if (getCurrentWeekKey() !== barWeekBefore) hideWeekGoalForm();
+        weekShiftPx -= days * (weekColumnStep() || 0);
+        weekWheel.shownOffset = 0;
         renderCalendar();
         renderFreeformElements();
         updatePeriodDisplay();
         calendarContainer.scrollTop = top;
     }
 
-    // The days follow the scroll. When half a day has gone by, the first day
-    // changes. When the scroll stops, the days glide on to a whole day.
+    /** The farthest the days may slide before the week must be drawn again. */
+    function weekShiftLimit(step) {
+        return WEEK_SIDE_DAYS * step;
+    }
+
+    function stopWeekScroll() {
+        clearTimeout(weekWheel.idleTimer);
+        weekWheel.idleTimer = null;
+        if (weekWheel.glide) cancelAnimationFrame(weekWheel.glide.frame);
+        weekWheel.glide = null;
+        weekWheel.coasting = false;
+        weekWheel.run = [];
+    }
+
+    /*
+     * Glide from where the days are to `to`, starting at `velocity` (px per
+     * ms) so the fingers' speed goes on without a jolt, and slowing to rest.
+     * A cubic with that slope at the start and none at the end.
+     */
+    function glideWeekTo(to, velocity) {
+        if (weekWheel.glide) cancelAnimationFrame(weekWheel.glide.frame);
+        const from = weekShiftPx;
+        const distance = to - from;
+        if (Math.abs(distance) < 0.5) {
+            weekShiftPx = to;
+            applyWeekShift();
+            restWeekScroll();
+            return;
+        }
+        // Thrown: as long as it takes to slow evenly from the flick's speed
+        // to rest on the day: twice the time the way would take at that
+        // speed. So the glide starts at the very speed the days had and only
+        // ever slows; held shorter, it had to speed up after the fingers let
+        // go, and the end looked like a second slide. Not thrown: a short
+        // settle from rest.
+        const speed = Math.abs(velocity);
+        const towards = Math.sign(velocity) === Math.sign(distance);
+        let duration;
+        if (speed > 0.05 && towards) {
+            duration = Math.min(1600, Math.max(220, (2 * Math.abs(distance)) / speed));
+            // A short way at speed: no slower start than the flick's, and
+            // no steeper than a curve that keeps on slowing (3).
+            duration = Math.min(duration, (3 * Math.abs(distance)) / speed);
+        } else {
+            duration = Math.min(360, Math.max(200, 140 + Math.sqrt(Math.abs(distance)) * 10));
+        }
+        // The start's slope, in the cubic's own units: 2 slows evenly, 3
+        // slows sooner; past 3 it would go beyond the day and come back.
+        const slope = towards ? Math.min(3, (speed * duration) / Math.abs(distance)) : 0;
+        const glide = { from, to, start: performance.now(), duration, slope, frame: 0 };
+        weekWheel.glide = glide;
+        const frame = (now) => {
+            if (weekWheel.glide !== glide) return;
+            // A frame's time can be a little before the glide began.
+            const t = Math.min(1, Math.max(0, (now - glide.start) / glide.duration));
+            const t2 = t * t;
+            const t3 = t2 * t;
+            const eased = (t3 - 2 * t2 + t) * glide.slope + (-2 * t3 + 3 * t2);
+            weekShiftPx = glide.from + (glide.to - glide.from) * eased;
+            applyWeekShift();
+            if (t < 1) {
+                glide.frame = requestAnimationFrame(frame);
+                return;
+            }
+            weekWheel.glide = null;
+            restWeekScroll();
+        };
+        glide.frame = requestAnimationFrame(frame);
+    }
+
+    /** At rest on a whole day: the week is drawn again around it, with no
+        change to what shows. After a frame, so the last frame of the glide
+        is on screen first. */
+    function restWeekScroll() {
+        const step = weekColumnStep();
+        if (!step) return;
+        const days = Math.round(weekShiftPx / step);
+        if (!days) {
+            weekShiftPx = 0;
+            applyWeekShift();
+            return;
+        }
+        requestAnimationFrame(() => setTimeout(() => {
+            if (!isInitialized || weekWheel.glide || calendarViewMode !== 'week') return;
+            if (Math.abs(weekShiftPx - days * step) > 1) return;   // moved again
+            shiftWeekByDays(days);
+        }, 0));
+    }
+
+    /**
+     * The day to rest on, for days that would come to rest at `projected`,
+     * going `sign`'s way: the nearest day to that, but not one behind where
+     * the days are now (turning back at the end is a correction that
+     * shows), unless they are barely past it: a nudge springs back.
+     */
+    function weekRestFor(projected, step, sign = 0) {
+        const limit = weekShiftLimit(step);
+        let to = Math.round(projected / step) * step;
+        const behind = sign > 0 ? Math.floor(weekShiftPx / step) * step : Math.ceil(weekShiftPx / step) * step;
+        const ahead = sign > 0 ? Math.ceil(weekShiftPx / step) * step : Math.floor(weekShiftPx / step) * step;
+        if (sign && (to - weekShiftPx) * sign < -0.5) {
+            to = Math.abs(weekShiftPx - behind) < step * 0.25 ? behind : ahead;
+        }
+        return Math.max(-limit, Math.min(limit, to));
+    }
+
     function onWeekWheel(event) {
         if (calendarViewMode !== 'week' || !weekCarouselOn() || isWeekGoalDragInProgress) return;
         if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
@@ -3954,45 +4269,100 @@ const PlanModule = (function () {
         const step = weekColumnStep();
         if (!step) return;
 
-        weekShiftPx += event.deltaMode === 1 ? event.deltaX * 16 : event.deltaX;
-        if (event.deltaX !== 0) weekLastDirection = event.deltaX > 0 ? 1 : -1;
-        while (weekShiftPx >= step / 2) {
-            shiftWeekByDays(1);
-            weekShiftPx -= step;
-        }
-        while (weekShiftPx <= -step / 2) {
-            shiftWeekByDays(-1);
-            weekShiftPx += step;
-        }
-        applyWeekShift(false);
+        const now = performance.now();
+        const dx = event.deltaMode === 1 ? event.deltaX * 16 : event.deltaX;
+        const abs = Math.abs(dx);
+        const sign = Math.sign(dx);
+        const gap = now - weekWheel.lastAt;
+        const sameRun = gap < 70 && sign === weekWheel.sign;
+        const lastAbs = weekWheel.lastAbs;
+        weekWheel.lastAt = now;
+        weekWheel.lastAbs = abs;
+        weekWheel.sign = sign;
 
-        clearTimeout(weekSnapTimer);
-        weekSnapTimer = setTimeout(settleWeekScroll, 140);
+        if (weekWheel.coasting) {
+            // The rest of the momentum is not followed; a new push is.
+            if (sameRun && abs <= lastAbs * 1.15 + 1) {
+                resetWeekIdle();
+                return;
+            }
+            weekWheel.coasting = false;
+        }
+        if (weekWheel.glide) {
+            // Taken again mid-glide: the days stop where they are and follow.
+            cancelAnimationFrame(weekWheel.glide.frame);
+            weekWheel.glide = null;
+        }
+
+        const instant = dx / Math.max(gap, 8);
+        weekWheel.velocity = sameRun ? weekWheel.velocity * 0.6 + instant * 0.4 : instant;
+        weekWheel.run = sameRun ? [...weekWheel.run.slice(-5), abs] : [abs];
+
+        // A wheel of a mouse turns by notches: a day each.
+        if (event.deltaMode === 1 || (!sameRun && abs >= 60)) {
+            const to = weekRestFor(Math.round(weekShiftPx / step) * step + sign * step, step);
+            glideWeekTo(to, 0);
+            resetWeekIdle();
+            return;
+        }
+
+        weekShiftPx += dx;
+        // Near the last day drawn at a side: draw the week again there.
+        const limit = weekShiftLimit(step) - step / 2;
+        if (Math.abs(weekShiftPx) >= limit) shiftWeekByDays(Math.round(weekShiftPx / step));
+        scheduleWeekShift();
+
+        const fade = weekMomentumFade(weekWheel.run);
+        if (fade) {
+            // The momentum: where it would end is a sum that shrinks by the
+            // same part each time. The glide goes to the day nearest that,
+            // from the speed the days have now, and the rest of the
+            // momentum is only read.
+            const projected = weekShiftPx + dx * (fade / (1 - fade));
+            weekWheel.coasting = true;
+            glideWeekTo(weekRestFor(projected, step, sign), weekWheel.velocity);
+        }
+        resetWeekIdle();
     }
 
-    // The scroll stopped between two days. Go on to the next whole day in the
-    // way the scroll was going, and never back: a scroll that goes a little
-    // too far and then comes back by itself feels wrong under the fingers.
-    // A touch of a few pixels is not a scroll, and goes back to where it was.
-    function settleWeekScroll() {
-        const step = weekColumnStep();
-        const barely = 8;
-        if (step) {
-            if (weekLastDirection > 0 && weekShiftPx > barely) {
-                shiftWeekByDays(1);
-                weekShiftPx -= step;
-            } else if (weekLastDirection < 0 && weekShiftPx < -barely) {
-                shiftWeekByDays(-1);
-                weekShiftPx += step;
-            }
+    /*
+     * Whether a run of wheel events is the OS momentum, and if so by what
+     * part each event shrinks. The momentum's events come in whole pixels,
+     * so one is often the same size as the one before (5, 5, 4, 4, 3…): a
+     * run of four that never grows (a pixel of give), and that has shrunk
+     * by a tenth over its last three.
+     */
+    function weekMomentumFade(run) {
+        if (run.length < 4) return 0;
+        const last = run.slice(-4);
+        for (let i = 1; i < last.length; i++) {
+            if (last[i] > last[i - 1] + 1) return 0;
         }
-        // Put the new days where the old ones were, with no glide, and let the
-        // page take that in. Then glide to the whole day.
-        applyWeekShift(false);
-        const grid = container.querySelector('.plan-calendar-grid');
-        if (grid) void grid.offsetWidth;
-        weekShiftPx = 0;
-        applyWeekShift(true);
+        if (last[3] < 1 || last[3] > last[0] * 0.9) return 0;
+        const fade = Math.pow(last[3] / last[0], 1 / 3);
+        return Math.min(0.97, Math.max(0.5, fade));
+    }
+
+    // No more events: the fingers stopped and let go with no flick. Rest on
+    // the nearest day, a little on in the way they were going.
+    function resetWeekIdle() {
+        clearTimeout(weekWheel.idleTimer);
+        weekWheel.idleTimer = setTimeout(() => {
+            weekWheel.idleTimer = null;
+            const coasted = weekWheel.coasting;
+            weekWheel.coasting = false;
+            weekWheel.run = [];
+            // The speed is the last event's, from before the pause: old.
+            // Left in, it sent the days on a day more once a flick's glide
+            // had ended (the second slide).
+            weekWheel.velocity = 0;
+            // A flick's glide brought the days to their day already.
+            if (coasted || weekWheel.glide) return;
+            const step = weekColumnStep();
+            if (!step) return;
+            // Let go with no flick: the nearest day.
+            glideWeekTo(weekRestFor(weekShiftPx, step), 0);
+        }, 90);
     }
 
     function createWeekTimeGutter() {
@@ -4015,6 +4385,10 @@ const PlanModule = (function () {
 
         const alldaySpacer = document.createElement('div');
         alldaySpacer.className = 'plan-week-allday-spacer';
+        if (weekAllDayHeight) {
+            alldaySpacer.style.display = 'block';
+            alldaySpacer.style.minHeight = `${weekAllDayHeight}px`;
+        }
         alldaySpacer.appendChild(weekRowLabel('Due', 'Frist'));
         gutter.appendChild(alldaySpacer);
 
@@ -4106,6 +4480,12 @@ const PlanModule = (function () {
         alldayRow.className =
             'plan-week-allday-row' + (isWeekend ? ' weekend' : '') + (isToday ? ' today' : '');
         alldayRow.dataset.dateKey = dateKey;
+        if (weekAllDayHeight) {
+            alldayRow.style.minHeight = `${weekAllDayHeight}px`;
+            alldayRow.style.maxHeight = `${weekAllDayHeight}px`;
+            alldayRow.style.overflowY = 'auto';
+            alldayRow.classList.add('plan-week-allday-row--synced');
+        }
 
         const holidays = getHolidays(date.getFullYear());
         if (holidays[dateKey]) {
@@ -4872,13 +5252,17 @@ const PlanModule = (function () {
 
     /*
      * Whose due tasks the calendar shows: everyone (null), or the people
-     * picked in the People pill. Kept on this device, as the Roadmap's
-     * choice is. A task shows when one of its people is picked; a task for
-     * no one shows only with everyone. A day says how many it hides, so
-     * nothing goes away without a word.
+     * picked with the faces (or "My tasks": me alone). Kept on this device,
+     * as the Roadmap's choice is. A task shows when one of its people is
+     * picked; a task for no one shows only with everyone. A day says how
+     * many it hides, so nothing goes away without a word.
+     *
+     * A new key for the switch: the old People pill kept who was left
+     * showing (all but the one unticked), which the faces would read as
+     * "4 people" picked. Everyone starts on Everyone again.
      */
     function taskPeopleKey() {
-        return STORAGE_PREFIX + 'task-people';
+        return STORAGE_PREFIX + 'task-people-picked';
     }
 
     function readTaskPeople() {
@@ -5095,13 +5479,21 @@ const PlanModule = (function () {
         return { from: formatDateKey(weekStartDate), to: formatDateKey(addDays(weekStartDate, 6)) };
     }
 
+    /** The days drawn: the week, and the days out of sight at its sides. */
+    function weekDrawnKeys() {
+        const { first, last } = weekRenderedRange();
+        return { from: formatDateKey(addDays(weekStartDate, first)), to: formatDateKey(addDays(weekStartDate, last)) };
+    }
+
     /** The entries the week shows, in start order, the switch and categories obeyed. */
     function weekRoadmapItems() {
         const data = roadmapData();
         if (!data) return [];
         const view = readRoadmapView();
         if (!view.shown) return [];
-        const { from, to } = weekVisibleKeys();
+        // On every day drawn, so the days at the sides have their bars
+        // while the week scrolls sideways, before it is drawn again.
+        const { from, to } = weekDrawnKeys();
         return data.items
             .filter(item => item && item.start && item.end && !view.hidden.includes(item.category))
             .filter(item => item.start <= to && item.end >= from)
@@ -5111,31 +5503,53 @@ const PlanModule = (function () {
     /**
      * Each bar takes the first line that is free on all its days, so bars
      * that do not meet share a line. The entries come sorted by start.
+     *
+     * The week's own bars first: they make the lines, as if no other day
+     * were drawn. A bar only on the days out of sight then takes a line
+     * that is free on its days; with none free it is not drawn (the week
+     * it is in gives it one). So the strip is as tall as the week needs.
      */
     function packWeekRoadmapLanes() {
-        const { from } = weekVisibleKeys();
-        const lineEnds = [];
+        const shown = weekVisibleKeys();
+        const drawn = weekDrawnKeys();
+        const inWeek = item => item.start <= shown.to && item.end >= shown.from;
+        const lines = [];   // per line, the [start, end] it holds
+        const free = (line, start, end) => line.every(([a, b]) => b < start || a > end);
         weekRoadmapLanes = new Map();
-        weekRoadmapEntries.forEach(item => {
-            const start = item.start < from ? from : item.start;
-            let lane = lineEnds.findIndex(end => end < start);
-            if (lane === -1) lane = lineEnds.length;
-            lineEnds[lane] = item.end;
+        weekRoadmapEntries.filter(inWeek).forEach(item => {
+            const start = item.start < drawn.from ? drawn.from : item.start;
+            const end = item.end > drawn.to ? drawn.to : item.end;
+            let lane = lines.findIndex(line => free(line, start, end));
+            if (lane === -1) lane = lines.push([]) - 1;
+            lines[lane].push([start, end]);
             weekRoadmapLanes.set(item.id, lane);
         });
-        weekRoadmapLaneCount = lineEnds.length;
+        weekRoadmapLaneCount = lines.length;
+        weekRoadmapEntries.filter(item => !inWeek(item)).forEach(item => {
+            const start = item.start < drawn.from ? drawn.from : item.start;
+            const end = item.end > drawn.to ? drawn.to : item.end;
+            const lane = lines.findIndex(line => free(line, start, end));
+            if (lane === -1) return;
+            lines[lane].push([start, end]);
+            weekRoadmapLanes.set(item.id, lane);
+        });
     }
 
     function weekRoadmapStripHeight() {
+        if (!weekRoadmapLaneCount) return '0px';
         return `${weekRoadmapLaneCount * (WEEK_ROADMAP_LANE + WEEK_ROADMAP_GAP) + WEEK_ROADMAP_GAP * 2}px`;
     }
 
+    // The strip's height on screen, so a week drawn again starts at it and
+    // a new height eases in (drawWeekRoadmap), as the Due rows do.
+    let weekStripShown = '0px';
+
     /** The room for the strip, the same in every day and in the hours column. */
     function weekRoadmapSpace() {
-        if (!weekRoadmapEntries.length) return null;
+        if (!weekRoadmapLaneCount && weekStripShown === '0px') return null;
         const space = document.createElement('div');
         space.className = 'plan-week-roadmap-space';
-        space.style.height = weekRoadmapStripHeight();
+        space.style.height = weekStripShown;
         return space;
     }
 
@@ -5175,14 +5589,18 @@ const PlanModule = (function () {
         const grid = container.querySelector('.plan-calendar-grid.plan-week-grid');
         if (!grid) return;
         grid.querySelectorAll('.plan-week-roadmap-layer').forEach(el => el.remove());
-        if (!weekRoadmapEntries.length) return;
         // A bar that was moved can now meet another one, or no longer meet it.
         weekRoadmapEntries.sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end));
         packWeekRoadmapLanes();
         const strip = weekRoadmapStripHeight();
         grid.querySelectorAll('.plan-week-roadmap-space').forEach(el => { el.style.height = strip; });
+        weekStripShown = strip;
+        if (!weekRoadmapLaneCount) return;
         const { from, to } = weekVisibleKeys();
+        const drawn = weekDrawnKeys();
         const columnFor = key => grid.querySelector(`.plan-week-day-column[data-date-key="${key}"]`);
+        const weekFirst = columnFor(from);
+        const weekLast = columnFor(to);
         // The layer moves with the days when they scroll sideways (see the
         // carousel rules in plan.css): one day's width, then the scroll.
         grid.style.setProperty('--week-step', `${weekColumnStep()}px`);
@@ -5191,33 +5609,46 @@ const PlanModule = (function () {
         const data = roadmapData();
         const labels = new Map(((data && data.categories) || []).map(c => [c.id, c.label]));
         weekRoadmapEntries.forEach(item => {
-            const lane = weekRoadmapLanes.get(item.id) || 0;
-            const startKey = item.start < from ? from : item.start;
-            const endKey = item.end > to ? to : item.end;
+            if (!weekRoadmapLanes.has(item.id)) return;
+            const lane = weekRoadmapLanes.get(item.id);
+            const startKey = item.start < drawn.from ? drawn.from : item.start;
+            const endKey = item.end > drawn.to ? drawn.to : item.end;
             const first = columnFor(startKey);
             const last = columnFor(endKey);
             const space = first && first.querySelector('.plan-week-roadmap-space');
             if (!first || !last || !space) return;
             const bar = document.createElement('div');
             bar.className = 'plan-week-roadmap-bar' + (item.category ? ` is-${item.category}` : '') +
-                (item.start < from ? ' continues-before' : '') + (item.end > to ? ' continues-after' : '');
+                (item.start < drawn.from ? ' continues-before' : '') + (item.end > drawn.to ? ' continues-after' : '');
             paintRoadmapColour(bar, item.category);
-            bar.style.left = `${first.offsetLeft}px`;
-            bar.style.width = `${last.offsetLeft + last.offsetWidth - first.offsetLeft}px`;
+            const left = first.offsetLeft;
+            const right = last.offsetLeft + last.offsetWidth;
+            bar.style.left = `${left}px`;
+            bar.style.width = `${right - left}px`;
+            // Its words stay in the week: a bar that reaches into the days
+            // out of sight keeps its name from Monday and its "until" by
+            // Sunday, where they were before those days were drawn.
+            // Across Monday: begun before the week. Across Sunday: goes on after it.
+            const acrossMonday = item.start < from && item.end >= from;
+            const acrossSunday = item.end > to && item.start <= to;
+            if (acrossMonday && weekFirst) bar.style.paddingLeft = `${weekFirst.offsetLeft - left + 10}px`;
+            if (acrossSunday && weekLast) bar.style.paddingRight = `${right - weekLast.offsetLeft - weekLast.offsetWidth + 10}px`;
             bar.style.top = `${first.offsetTop + space.offsetTop + WEEK_ROADMAP_GAP + lane * (WEEK_ROADMAP_LANE + WEEK_ROADMAP_GAP)}px`;
             bar.style.height = `${WEEK_ROADMAP_LANE}px`;
             const category = labels.get(item.category);
             bar.title = `${item.title}${category ? ` · ${category}` : ''}\n${item.start} – ${item.end}`;
-            if (item.start >= from) {
+            const begunBefore = acrossMonday || item.start < drawn.from;
+            const goesOn = acrossSunday || item.end > drawn.to;
+            if (!begunBefore) {
                 const dot = document.createElement('span');
                 dot.className = 'plan-week-roadmap-dot';
                 bar.appendChild(dot);
             }
             const name = document.createElement('span');
             name.className = 'plan-week-roadmap-name';
-            name.textContent = `${item.start < from ? '‹ ' : ''}${item.title}`;
+            name.textContent = `${begunBefore ? '‹ ' : ''}${item.title}`;
             bar.appendChild(name);
-            if (item.end > to) {
+            if (goesOn) {
                 const until = document.createElement('span');
                 until.className = 'plan-week-roadmap-until';
                 until.textContent = `${currentLanguage === 'da' ? 'til' : 'until'} ${shortDay(item.end)} ›`;
@@ -5228,6 +5659,8 @@ const PlanModule = (function () {
             layer.appendChild(bar);
         });
         grid.appendChild(layer);
+        // Where the days have slid to.
+        applyWeekShift();
     }
 
     /*
@@ -5552,7 +5985,7 @@ const PlanModule = (function () {
         if (isDragInProgress) return;
         window.PlanRoadmap = data;
         if (!container) return;
-        renderRoadmapToggle();
+        renderCalendarsPill();
         if (calendarViewMode === 'week') {
             renderCalendar();
             renderFreeformElements();
@@ -5584,8 +6017,11 @@ const PlanModule = (function () {
         const { pill } = toolbarMenu;
         toolbarMenu.close();
         toolbarMenu = null;
-        // The next time the list opens, its palettes are put away.
+        // The next time the list opens, its palettes are put away, and
+        // the Lists menu's search is empty.
         toolbarColourFor = null;
+        listsMenuQuery = '';
+        listsMenuOpen = false;
         if (returnFocus && pill.isConnected) pill.focus();
     }
 
@@ -5901,111 +6337,100 @@ const PlanModule = (function () {
         return note;
     }
 
-    /** How many of the tasks in view are each person's: by the week shown, or all in the months. */
-    function taskCountsByPerson() {
-        let inView = calendarTasks;
-        if (calendarViewMode === 'week') {
-            const first = formatDateKey(weekStartDate);
-            const end = new Date(weekStartDate);
-            end.setDate(end.getDate() + 6);
-            const last = formatDateKey(end);
-            inView = calendarTasks.filter(task => task.dateKey >= first && task.dateKey <= last);
-        }
-        const counts = {};
-        inView.forEach(task => task.assigneeIds.forEach(id => { counts[id] = (counts[id] || 0) + 1; }));
-        return counts;
+    /** The tasks in view: the week shown, or all in the months. */
+    function tasksInView() {
+        if (calendarViewMode !== 'week') return calendarTasks;
+        const first = formatDateKey(weekStartDate);
+        const last = formatDateKey(addDays(weekStartDate, 6));
+        return calendarTasks.filter(task => task.dateKey >= first && task.dateKey <= last);
     }
 
     /**
-     * The People pill, after the Roadmap pill: whose due tasks show. Just me
-     * and Everyone, then a box per person, with how many tasks in view are
-     * theirs. Only on a board with people.
+     * Whose due tasks show, as the list view's switch: "My tasks N |
+     * Everyone N", and on Everyone a face per person, each a toggle; with
+     * faces picked, the Everyone half says whose ("Ingrid 4", "2 people 9")
+     * and a click on it shows everyone again. Without "me" on the board,
+     * Everyone and the faces. Only on a board with people.
      */
     function renderPeopleToggle() {
         if (!container) return;
         const toggles = container.querySelector('.plan-calendar-toggles');
         if (!toggles) return;
         toggles.querySelectorAll('.plan-toolbar-pill--people').forEach(el => el.remove());
-        if (!goalPeople.length) {
-            if (toolbarMenu && toolbarMenu.key === 'people') closeToolbarMenu(false);
-            return;
-        }
+        if (toolbarMenu && toolbarMenu.key === 'people') closeToolbarMenu(false);
+        if (!goalPeople.length) return;
         const da = currentLanguage === 'da';
         const picked = pickedTaskPeople();
         const ids = goalPeople.map(person => person.id);
-        const isOn = id => picked === null || picked.includes(id);
         const me = mePersonId && ids.includes(mePersonId) ? mePersonId : null;
         const justMe = me !== null && picked !== null && picked.length === 1 && picked[0] === me;
         const change = next => {
-            writeTaskPeople(next !== null && next.length === ids.length ? null : next);
+            writeTaskPeople(next !== null && (next.length === 0 || next.length === ids.length) ? null : next);
             renderCalendar();
             scheduleLayoutRefresh();
         };
-        const toggle = id => {
-            const now = picked === null ? ids : picked;
-            change(now.includes(id) ? now.filter(other => other !== id) : [...now, id]);
+        const inView = tasksInView();
+        const countFor = who => inView.filter(task => task.assigneeIds.some(id => who.includes(id))).length;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'plan-toolbar-pill--people plan-people-scope-row';
+        wrap.setAttribute('role', 'group');
+        wrap.setAttribute('aria-label', da ? 'Hvis opgaver der vises' : 'Whose tasks show');
+        ['pointerdown', 'mousedown', 'dblclick'].forEach(type =>
+            wrap.addEventListener(type, e => e.stopPropagation()));
+
+        const segment = (words, count, on, onClick) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'plan-people-scope-btn' + (on ? ' is-on' : '');
+            button.setAttribute('aria-pressed', String(on));
+            const name = document.createElement('span');
+            name.textContent = words;
+            const number = document.createElement('span');
+            number.className = 'plan-people-scope-count';
+            number.textContent = String(count);
+            button.append(name, number);
+            button.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+            return button;
         };
-        const shown = ids.filter(isOn).length;
-        const label = picked === null
+        const switcher = document.createElement('div');
+        switcher.className = 'plan-people-scope';
+        if (me !== null) {
+            switcher.appendChild(segment(da ? 'Mine opgaver' : 'My tasks', countFor([me]), justMe, () => change([me])));
+        }
+        const someone = picked !== null && !justMe;
+        const whose = !someone
             ? (da ? 'Alle' : 'Everyone')
-            : justMe
-                ? (da ? 'Kun mig' : 'Just me')
-                : (da ? 'Personer' : 'People');
-        const counts = taskCountsByPerson();
+            : picked.length === 1
+                ? firstNameOf(goalPeople.find(person => person.id === picked[0])?.name || '')
+                : (da ? `${picked.length} personer` : `${picked.length} people`);
+        switcher.appendChild(segment(whose, someone ? countFor(picked) : inView.length, !justMe, () => change(null)));
+        wrap.appendChild(switcher);
 
-        toolbarPill(toggles, {
-            key: 'people',
-            label,
-            title: da ? 'Vælg hvis opgaver der vises' : 'Choose whose tasks show',
-            avatars: goalPeople.filter(person => isOn(person.id)).map(goalPersonDot),
-            dots: [],
-            shown,
-            total: ids.length,
-            fill: menu => {
-                const shortcuts = document.createElement('div');
-                shortcuts.className = 'plan-people-shortcuts';
-                const shortcut = (words, on, onClick, disabled) => {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'plan-people-shortcut' + (on ? ' is-on' : '');
-                    button.textContent = words;
-                    button.setAttribute('aria-pressed', String(on));
-                    button.disabled = Boolean(disabled);
-                    button.addEventListener('click', e => {
-                        e.stopPropagation();
-                        onClick();
-                    });
-                    shortcuts.appendChild(button);
-                };
-                shortcut(da ? 'Kun mig' : 'Just me', justMe, () => change([me]), me === null);
-                shortcut(da ? 'Alle' : 'Everyone', picked === null, () => change(null));
-                menu.appendChild(shortcuts);
-
-                goalPeople.forEach(person => {
-                    const row = document.createElement('button');
-                    row.type = 'button';
-                    row.className = 'plan-people-row' + (isOn(person.id) ? ' is-on' : '');
-                    row.setAttribute('role', 'menuitemcheckbox');
-                    row.setAttribute('aria-checked', String(isOn(person.id)));
-                    const box = document.createElement('span');
-                    box.className = 'plan-people-check';
-                    box.setAttribute('aria-hidden', 'true');
-                    const name = document.createElement('span');
-                    name.className = 'plan-people-name';
-                    name.textContent = shortGoalPersonName(person)
-                        + (person.id === me ? (da ? ' (dig)' : ' (you)') : '');
-                    const count = document.createElement('span');
-                    count.className = 'plan-people-count';
-                    count.textContent = String(counts[person.id] || 0);
-                    row.append(box, goalPersonDot(person), name, count);
-                    row.addEventListener('click', e => {
-                        e.stopPropagation();
-                        toggle(person.id);
-                    });
-                    menu.appendChild(row);
+        // The faces, on Everyone: a toggle each, any number at once.
+        if (!justMe) {
+            const faces = document.createElement('div');
+            faces.className = 'plan-people-faces';
+            goalPeople.forEach(person => {
+                const on = picked !== null && picked.includes(person.id);
+                const face = document.createElement('button');
+                face.type = 'button';
+                face.className = 'plan-people-face' + (on ? ' is-on' : '') + (picked !== null && !on ? ' is-dimmed' : '');
+                face.title = person.name;
+                face.setAttribute('aria-label', person.name);
+                face.setAttribute('aria-pressed', String(on));
+                face.appendChild(goalPersonDot(person));
+                face.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const now = picked === null ? [] : picked;
+                    change(now.includes(person.id) ? now.filter(id => id !== person.id) : [...now, person.id]);
                 });
-            },
-        });
+                faces.appendChild(face);
+            });
+            wrap.appendChild(faces);
+        }
+        toggles.appendChild(wrap);
+        orderToolbarPills();
     }
 
     /** How many of the tasks in view are on each list (NO_LIST_ID: on none). */
@@ -6031,6 +6456,48 @@ const PlanModule = (function () {
      * then the lists under their tab groups (a group's name ticks or unticks
      * all of its lists), and the tasks on no list. Only with lists.
      */
+    // The Lists menu's search, kept while a tick draws the menu again;
+    // cleared when the menu closes (closeToolbarMenu).
+    let listsMenuQuery = '';
+    let listsMenuOpen = false;
+
+    /** A list's icon in the Lists menu, or an empty slot: never its letters. */
+    function listMenuIcon(list) {
+        const slot = document.createElement('span');
+        slot.className = 'plan-list-menu-icon';
+        if (list && Array.isArray(list.icon) && list.icon.length) {
+            slot.classList.add('has-icon');
+            const svg = createTaskIcon(list);
+            svg.setAttribute('width', '14');
+            svg.setAttribute('height', '14');
+            svg.setAttribute('stroke-width', '2');
+            slot.appendChild(svg);
+        }
+        return slot;
+    }
+
+    function listMenuName(words) {
+        const name = document.createElement('span');
+        name.className = 'plan-list-menu-name';
+        name.textContent = words;
+        return name;
+    }
+
+    function listMenuCount(count) {
+        const number = document.createElement('span');
+        number.className = 'plan-list-menu-count';
+        if (count !== null) number.textContent = String(count || 0);
+        return number;
+    }
+
+    function listMenuTick() {
+        const tick = document.createElement('span');
+        tick.className = 'plan-list-menu-tick';
+        tick.setAttribute('aria-hidden', 'true');
+        tick.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+        return tick;
+    }
+
     function renderListsToggle() {
         if (!container) return;
         const toggles = container.querySelector('.plan-calendar-toggles');
@@ -6059,25 +6526,16 @@ const PlanModule = (function () {
         const shown = taskLists.filter(list => isOn(list.id)).length;
         const counts = taskCountsByList();
 
-        const row = (mark, words, id, count) => {
+        // A row as the To-Do's list menu has it: the list's icon (none:
+        // an empty slot, so the names line up; never its letters), its
+        // name, its count, and a tick while it shows.
+        const row = (iconOf, words, id, count) => {
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'plan-people-row' + (isOn(id) ? ' is-on' : '');
+            button.className = 'plan-list-menu-item' + (isOn(id) ? ' is-on' : '');
             button.setAttribute('role', 'menuitemcheckbox');
             button.setAttribute('aria-checked', String(isOn(id)));
-            const box = document.createElement('span');
-            box.className = 'plan-people-check';
-            box.setAttribute('aria-hidden', 'true');
-            const name = document.createElement('span');
-            name.className = 'plan-people-name';
-            name.textContent = words;
-            const number = document.createElement('span');
-            number.className = 'plan-people-count';
-            number.textContent = String(count || 0);
-            const markWrap = document.createElement('span');
-            markWrap.className = 'plan-lists-mark';
-            markWrap.appendChild(mark);
-            button.append(box, markWrap, name, number);
+            button.append(listMenuIcon(iconOf), listMenuName(words), listMenuCount(count), listMenuTick());
             button.addEventListener('click', e => {
                 e.stopPropagation();
                 toggle(id);
@@ -6089,73 +6547,146 @@ const PlanModule = (function () {
             key: 'lists',
             label: hidden.length ? (da ? 'Lister' : 'Lists') : (da ? 'Alle lister' : 'All lists'),
             title: da ? 'Vælg hvilke listers opgaver der vises' : 'Choose which lists\' tasks show',
-            avatars: taskLists.filter(list => isOn(list.id)).slice(0, 3).map(createTaskIcon),
+            // Its words and count only: the lists' marks made the bar long.
             dots: [],
             shown,
             total: taskLists.length,
             fill: menu => {
-                const shortcuts = document.createElement('div');
-                shortcuts.className = 'plan-people-shortcuts plan-lists-shortcuts';
-                const all = document.createElement('button');
-                all.type = 'button';
-                all.className = 'plan-people-shortcut' + (hidden.length ? '' : ' is-on');
-                all.textContent = da ? 'Alle lister' : 'All lists';
-                all.setAttribute('aria-pressed', String(!hidden.length));
-                all.addEventListener('click', e => {
-                    e.stopPropagation();
-                    change([]);
-                });
-                shortcuts.appendChild(all);
-                menu.appendChild(shortcuts);
-
-                // Under their groups, in the board's order; then the lists in
-                // no group, and last the tasks on no list.
-                let lastGroup;
-                taskLists.forEach(list => {
-                    if (list.groupId !== lastGroup && (list.groupId || lastGroup !== undefined)) {
-                        lastGroup = list.groupId;
-                        const groupIds = taskLists.filter(other => other.groupId === list.groupId).map(other => other.id);
-                        const head = document.createElement('button');
-                        head.type = 'button';
-                        head.className = 'plan-lists-group';
-                        head.textContent = list.groupName || (da ? 'Ingen gruppe' : 'No group');
-                        head.title = da ? 'Vis eller skjul hele gruppen' : 'Show or hide the whole group';
-                        head.addEventListener('click', e => {
+                const items = document.createElement('div');
+                items.className = 'plan-list-menu-items';
+                const fold = text => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+                const draw = () => {
+                    items.replaceChildren();
+                    const query = fold(listsMenuQuery.trim());
+                    const matches = list => !query || fold(list.name).includes(query);
+                    if (!query) {
+                        const all = document.createElement('button');
+                        all.type = 'button';
+                        all.className = 'plan-list-menu-item' + (hidden.length ? '' : ' is-on');
+                        all.setAttribute('role', 'menuitemcheckbox');
+                        all.setAttribute('aria-checked', String(!hidden.length));
+                        all.append(listMenuIcon(null), listMenuName(da ? 'Alle lister' : 'All lists'), listMenuCount(null), listMenuTick());
+                        all.addEventListener('click', e => {
                             e.stopPropagation();
-                            toggleGroup(groupIds);
+                            change([]);
                         });
-                        menu.appendChild(head);
+                        items.appendChild(all);
                     }
-                    lastGroup = list.groupId;
-                    menu.appendChild(row(createTaskIcon(list), list.name, list.id, counts[list.id]));
-                });
-                if (counts[NO_LIST_ID] || hidden.includes(NO_LIST_ID)) {
-                    menu.appendChild(row(
-                        createTaskIcon({ icon: [], initials: '' }),
-                        da ? 'Ingen liste' : 'No list',
-                        NO_LIST_ID,
-                        counts[NO_LIST_ID],
-                    ));
+                    // Under their groups, in the board's order; then the
+                    // lists in no group, and last the tasks on no list. A
+                    // group's heading shows or hides the whole group.
+                    let lastGroup;
+                    let any = false;
+                    taskLists.filter(matches).forEach(list => {
+                        if (list.groupId !== lastGroup && (list.groupId || lastGroup !== undefined)) {
+                            lastGroup = list.groupId;
+                            const groupIds = taskLists.filter(other => other.groupId === list.groupId).map(other => other.id);
+                            const head = document.createElement('button');
+                            head.type = 'button';
+                            head.className = 'plan-list-menu-heading';
+                            head.textContent = list.groupName || (da ? 'Ingen gruppe' : 'No group');
+                            head.title = da ? 'Vis eller skjul hele gruppen' : 'Show or hide the whole group';
+                            head.addEventListener('click', e => {
+                                e.stopPropagation();
+                                toggleGroup(groupIds);
+                            });
+                            items.appendChild(head);
+                        }
+                        lastGroup = list.groupId;
+                        any = true;
+                        items.appendChild(row(list, list.name, list.id, counts[list.id]));
+                    });
+                    const noListName = da ? 'Ingen liste' : 'No list';
+                    if ((counts[NO_LIST_ID] || hidden.includes(NO_LIST_ID)) && (!query || fold(noListName).includes(query))) {
+                        const line = document.createElement('div');
+                        line.className = 'plan-list-menu-heading is-line';
+                        items.appendChild(line);
+                        items.appendChild(row(null, noListName, NO_LIST_ID, counts[NO_LIST_ID]));
+                        any = true;
+                    }
+                    if (!any) {
+                        const none = document.createElement('div');
+                        none.className = 'plan-list-menu-none';
+                        none.textContent = da ? 'Ingen lister passer' : 'No lists match';
+                        items.appendChild(none);
+                    }
+                };
+                // More than six lists: a search box first, as in the To-Do.
+                if (taskLists.length > 6) {
+                    const search = document.createElement('label');
+                    search.className = 'plan-list-menu-search';
+                    search.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = listsMenuQuery;
+                    input.placeholder = da ? 'Søg i lister' : 'Search lists';
+                    input.setAttribute('aria-label', input.placeholder);
+                    input.autocomplete = 'off';
+                    input.spellcheck = false;
+                    input.addEventListener('input', () => {
+                        listsMenuQuery = input.value;
+                        draw();
+                    });
+                    input.addEventListener('keydown', e => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            items.querySelector('.plan-list-menu-item')?.click();
+                        }
+                        // The caret's own keys stay in the box.
+                        if (e.key === 'Home' || e.key === 'End') e.stopPropagation();
+                    });
+                    search.appendChild(input);
+                    menu.appendChild(search);
+                    // A frame after it opens, when the menu is placed. Not
+                    // when a tick drew the menu again under the pointer.
+                    if (!listsMenuOpen) requestAnimationFrame(() => input.focus({ preventScroll: true }));
                 }
+                listsMenuOpen = true;
+                draw();
+                menu.appendChild(items);
             },
         });
+        orderToolbarPills();
+    }
+
+    /*
+     * The calendars' part of the Calendars list, given by the calendar code
+     * (renderCalendarToggles): their dots, how many show, and their rows,
+     * or null with no calendar.
+     */
+    let calendarsSection = () => null;
+
+    /** People, then Lists, then Calendars: the bar's order, whichever drew last. */
+    function orderToolbarPills() {
+        const toggles = container && container.querySelector('.plan-calendar-toggles');
+        if (!toggles) return;
+        const wanted = ['.plan-people-scope-row', '.plan-toolbar-pill--lists', '.plan-toolbar-pill--calendars']
+            .map(selector => toggles.querySelector(`:scope > ${selector}`))
+            .filter(Boolean);
+        const now = Array.from(toggles.children).filter(el => wanted.includes(el));
+        // Moved only when out of order: a move takes the caret off a pill.
+        if (now.every((el, i) => el === wanted[i])) return;
+        wanted.forEach(el => toggles.appendChild(el));
     }
 
     /**
-     * The Roadmap pill, after the Calendars pill: one row per category, to
-     * show or hide it. With the Roadmap off as a whole (as an older version
-     * could leave it), every category counts as hidden, and showing one
-     * turns the Roadmap on with that one alone.
+     * The Calendars pill: one list for the Roadmap and the calendars. The
+     * Roadmap's categories come first, as its band sits above the grid;
+     * then the calendars, with Sync now and Manage calendars under them.
+     * With the Roadmap off as a whole (as an older version could leave
+     * it), every category counts as hidden, and showing one turns the
+     * Roadmap on with that one alone.
      */
-    function renderRoadmapToggle() {
+    function renderCalendarsPill() {
         if (!container) return;
         const toggles = container.querySelector('.plan-calendar-toggles');
         if (!toggles) return;
-        toggles.querySelectorAll('.plan-toolbar-pill--roadmap').forEach(el => el.remove());
+        toggles.querySelectorAll('.plan-toolbar-pill--calendars').forEach(el => el.remove());
         const data = roadmapData();
         const categories = (data && data.categories) || [];
-        if (!data || !categories.length) {
-            if (toolbarMenu && toolbarMenu.key === 'roadmap') closeToolbarMenu(false);
+        const cals = calendarsSection();
+        if (!categories.length && !cals) {
+            if (toolbarMenu && toolbarMenu.key === 'calendars') closeToolbarMenu(false);
             return;
         }
         const view = readRoadmapView();
@@ -6163,7 +6694,7 @@ const PlanModule = (function () {
         const isOff = id => !view.shown || view.hidden.includes(id);
         const change = next => {
             writeRoadmapView(next);
-            renderRoadmapToggle();
+            renderCalendarsPill();
             // The week keeps room for the strip: more or fewer lanes is a new week.
             if (calendarViewMode === 'week') renderCalendar();
             renderFreeformElements();
@@ -6178,33 +6709,59 @@ const PlanModule = (function () {
         const allShown = shown === ids.length;
 
         toolbarPill(toggles, {
-            key: 'roadmap',
-            label: 'Roadmap',
-            title: 'Show or hide parts of the Roadmap',
-            dots: categories.map(c => ({ colour: colourOf(c.id), off: isOff(c.id) })),
-            shown,
-            total: ids.length,
+            key: 'calendars',
+            label: cals ? 'Calendars' : 'Roadmap',
+            title: cals
+                ? (categories.length ? 'Show or hide the Roadmap and your calendars' : 'Show or hide your calendars')
+                : 'Show or hide parts of the Roadmap',
+            dots: [
+                ...categories.map(c => ({ colour: colourOf(c.id), off: isOff(c.id) })),
+                ...(cals ? cals.dots : []),
+            ],
+            shown: shown + (cals ? cals.shown : 0),
+            total: ids.length + (cals ? cals.total : 0),
             fill: menu => {
-                menu.appendChild(toolbarMenuHead('Roadmap', {
-                    label: allShown ? 'Hide all' : 'Show all',
-                    onClick: e => {
-                        e.stopPropagation();
-                        change({ shown: true, hidden: allShown ? ids : [] });
-                    },
-                }));
-                categories.forEach(category => menu.appendChild(toolbarMenuRow({
-                    colour: colourOf(category.id),
-                    off: isOff(category.id),
-                    name: category.label,
-                    onToggle: () => toggle(category.id),
-                    colourKey: `roadmap:${category.id}`,
-                    // Its own colour first, to go back to.
-                    choices: [ROADMAP_COLOURS[category.id] || '#64748b', ...CALENDAR_PALETTE],
-                    onColour: colour => setRoadmapColour(category.id, colour),
-                    redraw: renderRoadmapToggle,
-                })));
+                if (categories.length) {
+                    menu.appendChild(toolbarMenuHead('Roadmap', {
+                        label: allShown ? 'Hide all' : 'Show all',
+                        onClick: e => {
+                            e.stopPropagation();
+                            change({ shown: true, hidden: allShown ? ids : [] });
+                        },
+                    }));
+                    categories.forEach(category => menu.appendChild(toolbarMenuRow({
+                        colour: colourOf(category.id),
+                        off: isOff(category.id),
+                        name: category.label,
+                        onToggle: () => toggle(category.id),
+                        colourKey: `roadmap:${category.id}`,
+                        // Its own colour first, to go back to.
+                        choices: [ROADMAP_COLOURS[category.id] || '#64748b', ...CALENDAR_PALETTE],
+                        onColour: colour => setRoadmapColour(category.id, colour),
+                        redraw: renderCalendarsPill,
+                    })));
+                }
+                if (categories.length && cals) {
+                    const line = document.createElement('div');
+                    line.className = 'plan-toolbar-menu-divider';
+                    menu.appendChild(line);
+                }
+                if (cals) cals.fill(menu);
             },
         });
+        orderToolbarPills();
+    }
+
+    /** "Synced 10:30", or with the day when it was not today. */
+    function calendarSyncedWords() {
+        if (calendarSyncInFlight) return 'Syncing…';
+        if (!calendarLastSync) return 'Not synced yet';
+        const when = new Date(calendarLastSync);
+        if (Number.isNaN(when.getTime())) return 'Not synced yet';
+        const time = when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (formatDateKey(when) === formatDateKey(new Date())) return `Synced ${time}`;
+        const months = currentLanguage === 'da' ? MONTHS_DA : MONTHS_EN;
+        return `Synced ${when.getDate()} ${months[when.getMonth()].slice(0, 3)}, ${time}`;
     }
 
     function createDayMoreButton(dateKey, count, expanded) {
@@ -8677,12 +9234,9 @@ const PlanModule = (function () {
     }
 
     function setupToolbarListeners() {
-        // Undo/Redo
-        container.querySelector('.plan-undo-btn').addEventListener('click', () => stepHistory('undo'));
-        container.querySelector('.plan-redo-btn').addEventListener('click', () => stepHistory('redo'));
+        // Undo and redo are the keys only: the bar has no buttons for them.
 
         // Calendar sync buttons
-        const calendarSyncAllBtn = container.querySelector('.plan-calendar-sync-all-btn');
         const calendarAddBtn = container.querySelector('.plan-calendar-add-btn');
         const calendarPopover = container.querySelector('.plan-calendar-popover');
         const calendarList = container.querySelector('.plan-calendar-list');
@@ -9299,8 +9853,6 @@ const PlanModule = (function () {
         syncCalendarsNow = syncAllCalendars;
 
         async function runCalendarSync(options) {
-            // Start spinning animation
-            if (calendarSyncAllBtn) calendarSyncAllBtn.classList.add('syncing');
             if (calendarStatus) calendarStatus.textContent = 'Syncing...';
 
             try {
@@ -9441,19 +9993,7 @@ const PlanModule = (function () {
             } catch (error) {
                 console.error('[Plan] Calendar sync error:', error);
                 if (calendarStatus) calendarStatus.textContent = 'Sync failed: ' + error.message;
-            } finally {
-                // Stop spinning animation
-                if (calendarSyncAllBtn) calendarSyncAllBtn.classList.remove('syncing');
             }
-        }
-
-        // Sync All button
-        if (calendarSyncAllBtn) {
-            calendarSyncAllBtn.addEventListener('click', () => {
-                // Asked for by hand: the feed is asked even if it told us to
-                // wait — see the 429 wait in calendar-sync.js.
-                syncAllCalendars({ force: true });
-            });
         }
 
         // The search: the magnifier opens a box; what is typed narrows the
@@ -9577,7 +10117,6 @@ const PlanModule = (function () {
             document.addEventListener('click', (e) => {
                 const isInsidePopover = calendarPopover.contains(e.target);
                 const isAddBtn = calendarAddBtn && calendarAddBtn.contains(e.target);
-                const isSyncBtn = calendarSyncAllBtn && calendarSyncAllBtn.contains(e.target);
                 // A press anywhere but the dropdown puts it away first, so
                 // one press outside the popover does not close both.
                 if (calendarMenuIsOpen()) {
@@ -9587,7 +10126,7 @@ const PlanModule = (function () {
                 }
                 // A row drawn again under the pointer is no longer in the
                 // drawer: it was a press inside it all the same.
-                if (!isInsidePopover && !isAddBtn && !isSyncBtn && e.target.isConnected) {
+                if (!isInsidePopover && !isAddBtn && e.target.isConnected) {
                     closeCalendarDrawer();
                 }
             });
@@ -9648,9 +10187,6 @@ const PlanModule = (function () {
         }
         // The Calendars pill in the toolbar, and its list to show or hide each one.
         function renderCalendarToggles() {
-            // With no calendar there is nothing to sync, so the sync button goes.
-            const syncAllBtn = container.querySelector('.plan-calendar-sync-all-btn');
-            if (syncAllBtn) syncAllBtn.classList.toggle('hidden', calendars.length === 0);
             // With a calendar there is its pill, whose list says "Manage
             // calendars": the button to add one is only for the first.
             const addBtn = container.querySelector('.plan-calendar-add-btn');
@@ -9663,50 +10199,67 @@ const PlanModule = (function () {
             calendars.forEach(cal => {
                 if (cal.visible === undefined) cal.visible = true;
             });
-            if (calendars.length) {
-                const shown = calendars.filter(cal => cal.visible !== false).length;
-                toolbarPill(togglesContainer, {
-                    key: 'calendars',
-                    label: 'Calendars',
-                    title: 'Show or hide your calendars',
-                    dots: calendars.map(cal => ({
+            // The calendars' half of the Calendars list (renderCalendarsPill).
+            calendarsSection = () => !calendars.length ? null : {
+                dots: calendars.map(cal => ({
+                    colour: cal.fontColor || '#4a90e2',
+                    off: cal.visible === false,
+                })),
+                shown: calendars.filter(cal => cal.visible !== false).length,
+                total: calendars.length,
+                fill: menu => {
+                    menu.appendChild(toolbarMenuHead('Calendars'));
+                    calendars.forEach(cal => menu.appendChild(toolbarMenuRow({
                         colour: cal.fontColor || '#4a90e2',
                         off: cal.visible === false,
-                    })),
-                    shown,
-                    total: calendars.length,
-                    fill: menu => {
-                        menu.appendChild(toolbarMenuHead('Calendars'));
-                        calendars.forEach(cal => menu.appendChild(toolbarMenuRow({
-                            colour: cal.fontColor || '#4a90e2',
-                            off: cal.visible === false,
-                            name: `${cal.emoji ? `${cal.emoji} ` : ''}${cal.name || 'Calendar'}`,
-                            colourKey: `calendars:${cal.id}`,
-                            choices: CALENDAR_PALETTE,
-                            onColour: colour => {
-                                setCalendarColour(liveCalendar(cal), colour);
-                                renderCalendarList();
-                            },
-                            redraw: renderCalendarToggles,
-                            onToggle: () => {
-                                const live = liveCalendar(cal);
-                                live.visible = live.visible === false;
-                                localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
-                                renderFreeformElements();
-                                renderCalendarToggles();
-                                renderCalendarList();
-                            },
-                        })));
-                        menu.appendChild(toolbarMenuFoot('Manage calendars →', () => {
-                            closeToolbarMenu(false);
-                            // The settings of each calendar: its colour,
-                            // its name, which events show, and more to add.
-                            if (calendarPopover.classList.contains('hidden')) calendarAddBtn.click();
-                        }));
-                    },
-                });
-            }
-            renderRoadmapToggle();
+                        name: `${cal.emoji ? `${cal.emoji} ` : ''}${cal.name || 'Calendar'}`,
+                        colourKey: `calendars:${cal.id}`,
+                        choices: CALENDAR_PALETTE,
+                        onColour: colour => {
+                            setCalendarColour(liveCalendar(cal), colour);
+                            renderCalendarList();
+                        },
+                        redraw: renderCalendarToggles,
+                        onToggle: () => {
+                            const live = liveCalendar(cal);
+                            live.visible = live.visible === false;
+                            localStorage.setItem(CALENDARS_KEY, JSON.stringify(calendars));
+                            renderFreeformElements();
+                            renderCalendarToggles();
+                            renderCalendarList();
+                        },
+                    })));
+                    // Sync and Manage under the calendars' rows: they are
+                    // for the calendars only, not the Roadmap.
+                    const sync = document.createElement('div');
+                    sync.className = 'plan-toolbar-menu-sync';
+                    const when = document.createElement('span');
+                    when.className = 'plan-toolbar-menu-synced';
+                    when.textContent = calendarSyncedWords();
+                    const now = document.createElement('button');
+                    now.type = 'button';
+                    now.className = 'plan-toolbar-menu-all';
+                    now.textContent = 'Sync now';
+                    now.disabled = Boolean(calendarSyncInFlight);
+                    now.addEventListener('click', e => {
+                        e.stopPropagation();
+                        // Asked for by hand: the feed is asked even if it told us to
+                        // wait — see the 429 wait in calendar-sync.js.
+                        const run = syncAllCalendars({ force: true });
+                        renderCalendarToggles();
+                        run.finally(() => { if (isInitialized) renderCalendarToggles(); });
+                    });
+                    sync.append(when, now);
+                    menu.appendChild(sync);
+                    menu.appendChild(toolbarMenuFoot('Manage calendars →', () => {
+                        closeToolbarMenu(false);
+                        // The settings of each calendar: its colour,
+                        // its name, which events show, and more to add.
+                        if (calendarPopover.classList.contains('hidden')) calendarAddBtn.click();
+                    }));
+                },
+            };
+            renderCalendarsPill();
             renderPeopleToggle();
             renderListsToggle();
         }
@@ -9940,7 +10493,7 @@ const PlanModule = (function () {
         updateViewModeButtons();
         renderCalendar();
         renderWeekGoals();
-        renderRoadmapToggle();
+        renderCalendarsPill();
         scheduleLayoutRefresh();
     }
 

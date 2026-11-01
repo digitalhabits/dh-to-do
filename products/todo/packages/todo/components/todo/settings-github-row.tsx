@@ -17,7 +17,6 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { SettingsInfoLabel } from "@/components/todo/settings-info-label";
 import { describeError } from "@/lib/todo/errors";
 import { fillText } from "@/lib/todo/i18n";
 import { todoHostApi } from "@/lib/todo/standalone-api";
@@ -73,7 +72,6 @@ export function SettingsGithubRow({ t }: { t: (key: string) => string }) {
   const [status, setStatus] = React.useState<Status | null>(null);
   const [pending, setPending] = React.useState<Pending | null>(null);
   const [interval, setPollInterval] = React.useState(5);
-  const [infoOpen, setInfoOpen] = React.useState(false);
 
   React.useEffect(() => {
     void todoHostApi("/api/todo/github/status", "GET")
@@ -157,9 +155,8 @@ export function SettingsGithubRow({ t }: { t: (key: string) => string }) {
   return (
     <div className="settings-row settings-integration-row">
       <div className="settings-row-copy">
-        <SettingsInfoLabel label="GitHub" open={infoOpen} onToggle={() => setInfoOpen((v) => !v)} t={t}>
-          {teamApp ? t("githubTeamAppInfo") : t("githubInfo")}
-        </SettingsInfoLabel>
+        <span className="settings-row-label">GitHub</span>
+        <span className="settings-row-hint">{teamApp ? t("githubTeamAppInfo") : t("githubInfo")}</span>
         {teamApp ? (
           <div className="settings-account-info">
             {t("githubAsTeamApp")}

@@ -13,6 +13,9 @@ export default defineConfig({
   server: {
     port: 3472,
     strictPort: true,
+    // Cargo's output is not the page. On Windows a watch on a file that
+    // cargo holds open fails with EBUSY and stops the dev server.
+    watch: { ignored: ["**/src-tauri/**"] },
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {

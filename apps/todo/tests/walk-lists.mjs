@@ -1,3 +1,4 @@
+import { openTaskDetails, editTaskTitle, openTaskMenu, closeTaskDetails } from "./page-walk.mjs";
 /**
  * The lists and the people on the board: My tasks and Everyone, the person
  * pills, the search (Cmd+F), and the dialogs that make, rename and delete a
@@ -51,9 +52,11 @@ export async function walkLists(page) {
   const garage = (await call("/api/todo/lists", "POST", { name: "Garage" })).list;
   const ada = (await call("/api/todo/people", "POST", { name: "Ada Quill", email: "ada@example.org", sourceKind: "manual" })).person;
   const ben = (await call("/api/todo/people", "POST", { name: "Ben Rook", email: "ben@example.org", sourceKind: "manual" })).person;
+  const cy = (await call("/api/todo/people", "POST", { name: "Cy Lamb", email: "cy@example.org", sourceKind: "manual" })).person;
   await call("/api/todo/tasks", "POST", { listId: kitchen.id, text: "Descale the kettle", assigneeIds: [ada.id] });
   await call("/api/todo/tasks", "POST", { listId: kitchen.id, text: "Wipe the hob", assigneeIds: [ben.id] });
   await call("/api/todo/tasks", "POST", { listId: garage.id, text: "Pump the tyres" });
+  await call("/api/todo/tasks", "POST", { listId: garage.id, text: "Sand the shelf", assigneeIds: [cy.id] });
 
   // Assigning is on, and the reader is Ada: by the address the planner's
   // login gives, or by the "Me" mark the desktop app keeps. Board View is
@@ -98,8 +101,14 @@ export async function walkLists(page) {
   check("Everyone shows every task", await until(() => shown("Wipe the hob") && shown("Descale the kettle")));
   check("the choice is kept on the device", localStorage.getItem("redd-plan-todo-people-scope") === "everyone");
   const pill = (person) => $(`.board-assignee-filter [data-person-id="${person.id}"]`);
-  check("Everyone offers a pill per person with a task", Boolean(pill(ada)) && Boolean(pill(ben)));
+  // A face per person with a task, the reader's too.
+  check("Everyone offers a face per person, the reader's too", Boolean(pill(ada)) && Boolean(pill(ben)) && Boolean(pill(cy)));
   click(pill(ben));
+  check(
+    "the Everyone half then says whose, and how many",
+    await until(() => scopeBtn("Ben")?.classList.contains("active") && scopeBtn("Ben")?.querySelector(".board-people-scope-count")?.textContent === "1"),
+    $$(".board-people-scope-btn").map((b) => b.textContent).join(" | ")
+  );
   check(
     "a person pill shows that person's tasks",
     await until(() => shown("Wipe the hob") && !shown("Descale the kettle") && !shown("Pump the tyres"))
@@ -126,45 +135,56 @@ export async function walkLists(page) {
   );
   click(pill(ben));
   check("the pill again shows everyone", await until(() => shown("Descale the kettle") && shown("Pump the tyres")));
-  // Carry Ben's pill in front of Ada's: the order is the roster's.
+  // Carry Cy's face to the front: the order is the roster's.
   const undoBoxes = stubBoxes((el) => {
     if (!el.dataset?.personId) return null;
     const chips = $$(".board-assignee-filter [data-person-id]");
     return { left: chips.indexOf(el) * 100, top: 0, width: 90, height: 24 };
   });
   const chipOrder = () => $$(".board-assignee-filter [data-person-id]").map((el) => el.title).join();
-  const benAt = $$(".board-assignee-filter [data-person-id]").indexOf(pill(ben)) * 100 + 40;
-  const benPill = pill(ben);
-  benPill.dispatchEvent(
-    new window.PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientX: benAt, clientY: 10 })
+  const cyAt = $$(".board-assignee-filter [data-person-id]").indexOf(pill(cy)) * 100 + 40;
+  pill(cy).dispatchEvent(
+    new window.PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientX: cyAt, clientY: 10 })
   );
-  for (const x of [benAt - 20, 60, 5]) {
+  for (const x of [cyAt - 20, 60, 5]) {
     window.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, clientX: x, clientY: 10 }));
     await settle(20);
   }
-  check("mid-carry the pills follow the pointer", await until(() => chipOrder() === "Ben Rook,Ada Quill"), chipOrder());
+  check("mid-carry the pills follow the pointer", await until(() => chipOrder() === "Cy Lamb,Ada Quill,Ben Rook"), chipOrder());
   const holdPeople = holdWrites(/^\s*UPDATE todo_people/i, 1500);
   window.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true, clientX: 5, clientY: 10 }));
   // The browser ends a carry with a click on the pill let go of.
-  click(pill(ben));
+  click(pill(cy));
   undoBoxes();
   await settle(100);
-  check("the pills stay in the new order while the save is on its way", chipOrder() === "Ben Rook,Ada Quill", chipOrder());
+  check("the pills stay in the new order while the save is on its way", chipOrder() === "Cy Lamb,Ada Quill,Ben Rook", chipOrder());
   holdPeople();
   const personRow = (id) => board.query("SELECT position FROM todo_people WHERE id = ?", [id])[0];
   check(
     "a person pill carried to the front is saved there",
-    await until(() => personRow(ben.id).position < personRow(ada.id).position),
-    JSON.stringify({ ben: personRow(ben.id), ada: personRow(ada.id) })
+    await until(() => personRow(cy.id).position < personRow(ada.id).position),
+    JSON.stringify({ cy: personRow(cy.id), ada: personRow(ada.id) })
   );
-  check("and drawn there", await until(() => chipOrder() === "Ben Rook,Ada Quill"), chipOrder());
-  check("a carry does not turn the pill on", !pill(ben).classList.contains("active"));
+  check("and drawn there", await until(() => chipOrder() === "Cy Lamb,Ada Quill,Ben Rook"), chipOrder());
+  check("a carry does not turn the pill on", !pill(cy).classList.contains("active"));
   await settle();
 
+  // The reader and Ben, each face a toggle: all of the reader's own, the
+  // task nobody is on that they made too, and Ben's.
   click(pill(ada));
+  click(pill(ben));
+  check(
+    "the faces are toggles: the reader's and Ben's on shows both",
+    await until(() => shown("Descale the kettle") && shown("Pump the tyres") && shown("Wipe the hob") && !shown("Sand the shelf")),
+    $$(".task-item .task-text").map((e) => e.textContent).join(" | ")
+  );
+  check("and the Everyone half says 2 people", scopeBtn(t("filterPeopleCount").replace("{n}", "2"))?.classList.contains("active"));
+  click(scopeBtn(t("filterPeopleCount").replace("{n}", "2")));
+  await until(() => shown("Sand the shelf"));
+  click(pill(cy));
   await until(() => !shown("Wipe the hob"));
   click(scopeBtn(t("myTasks")));
-  check("My tasks lets the pills go", await until(() => !pill(ada)));
+  check("My tasks lets the pills go", await until(() => !pill(cy)));
   click(scopeBtn(t("filterEveryone")));
   check(
     "a pill does not stay on through My tasks",
@@ -213,13 +233,12 @@ export async function walkLists(page) {
   click($$(".list-search-tab").find((c) => c.textContent.includes("Garage")));
   check("the picked list's chip comes first", await until(() => chips()[0] === "Garage"), chips().join());
   check("and its hits show", await until(() => shown("Pump the tyres") && !shown("Wipe the hob")));
-  // On Favourites a task's words are not edited: they open its list.
-  click(cardOf("Pump the tyres").querySelector(".task-text"));
-  check(
-    "on Favourites, a task's words open its list",
-    await until(() => $('.view-btn[data-view-id="lists"]')?.classList.contains("active") && tabNamed("Garage")?.classList.contains("active"))
-  );
-  check("and are not edited", !$("textarea.task-edit-input"));
+  await openTaskDetails("Pump the tyres");
+  check("Favourites opens the same task details", Boolean($(".task-details-panel")));
+  await closeTaskDetails();
+  click($('.view-btn[data-view-id="lists"]'));
+  await until(() => Boolean(tabNamed("Garage")));
+  click(tabNamed("Garage"));
   press(window, "Escape");
   await until(() => !$(".list-search-inner.open"));
   click($('.view-btn[data-view-id="lists"]'));
@@ -297,7 +316,7 @@ export async function walkLists(page) {
   click(deletedItem().querySelector(".settings-deleted-restore"));
   check("Restore brings the list back", await until(() => Boolean(listNamed("Garden shed"))));
   check("and the row goes, with nothing left deleted", await until(() => !$(".settings-deleted-head")));
-  click($("#settings-modal .cancel-btn"));
+  click($("#settings-modal .settings-sheet-back"));
   await until(() => !$("#settings-modal"));
   check("its tab is back", await until(() => Boolean(tabNamed("Garden shed"))));
 
@@ -327,7 +346,7 @@ export async function walkLists(page) {
     board.query("SELECT id FROM todo_tasks WHERE text = ?", ["Hang the rake"]).length === 0
   );
   check("and the row goes", await until(() => !$(".settings-deleted-head")));
-  click($("#settings-modal .cancel-btn"));
+  click($("#settings-modal .settings-sheet-back"));
   await until(() => !$("#settings-modal"));
 
   // Groups: on in Settings, then one made by its dialog, then deleted.
@@ -341,7 +360,7 @@ export async function walkLists(page) {
     await until(() => lists().every((l) => l.group_id === groups()[0]?.id)),
     JSON.stringify(lists())
   );
-  click($("#settings-modal .cancel-btn") ?? $(".settings-sheet-back"));
+  click($("#settings-modal .settings-sheet-back"));
   await until(() => !$("#settings-modal"));
   check("the group row is drawn", await until(() => Boolean($(".groups-container .group-tab"))));
   click($(".add-group-btn"));
@@ -393,6 +412,19 @@ export async function walkLists(page) {
     JSON.stringify(groups())
   );
   check("and drawn there", await until(() => groupOrder() === "Everything,Holiday,General"), groupOrder());
+  // Everything has the plain row: All, then every list, group by group
+  // (2026-10-23). Not "All Holiday", "All General": a tab per group.
+  click($(".groups .group-tab-everything"));
+  const tabNames = () => $$(".tabs .tab .tab-name").map((el) => el.textContent).join();
+  const everyList = () => {
+    const order = board.query("SELECT id FROM todo_groups ORDER BY position").map((g) => g.id);
+    const rows = board.query("SELECT name, group_id, position FROM todo_lists WHERE deleted_at IS NULL ORDER BY position");
+    return ["All", ...order.flatMap((id) => rows.filter((l) => l.group_id === id).map((l) => l.name))].join();
+  };
+  check("Everything's row is All, then every list, group by group", await until(() => tabNames() === everyList()), `${tabNames()} | ${everyList()}`);
+  check("and has no + for a list outside a group", !$(".tabs .add-tab-btn-subtle"));
+  click(holidayTab());
+  await settle();
   click(holidayTab().querySelector(".group-delete-btn"));
   if (await until(() => Boolean($(".delete-confirm-btn")))) click($(".delete-confirm-btn"));
   check("the group is deleted", await until(() => !groups().some((g) => g.name === "Holiday")));
@@ -432,7 +464,7 @@ export async function walkLists(page) {
   // Settings closing reads the connections again.
   click($(".title-bar-settings-btn"));
   await until(() => Boolean($("#settings-modal")));
-  click($("#settings-modal .cancel-btn"));
+  click($("#settings-modal .settings-sheet-back"));
   await until(() => !$("#settings-modal"));
   click($(".add-tab-btn-subtle"));
   const pick = async (label, option) => {
@@ -460,17 +492,20 @@ export async function walkLists(page) {
   const tyres = () => cardOf("Pump the tyres");
   await until(() => Boolean(tyres()));
   const tyresRow = () => board.query("SELECT * FROM todo_tasks WHERE text = ?", ["Pump the tyres"])[0];
-  click(tyres().querySelector(".fav-btn"));
+  await openTaskDetails("Pump the tyres");
+  click($(".task-details-actions button[aria-pressed]"));
   check("the heart makes a task a favourite", await until(() => tyresRow()?.is_favourite === 1));
-  click(tyres().querySelector(".task-chip-due"));
+  click($(".task-overlay-due"));
   check("the due chip opens its popover", await until(() => Boolean($(".due-popover"))));
   press(window, "Escape");
   await until(() => !$(".due-popover"));
-  click(tyres().querySelector(".task-list-origin"));
+  click($(".task-details-list-btn"));
   const toKitchen = () => $$(".task-list-picker .task-list-picker-item").find((el) => el.textContent.includes("Kitchen"));
   check("the list chip opens the list picker", await until(() => Boolean(toKitchen())));
   click(toKitchen());
   check("a list picked there moves the task", await until(() => tyresRow()?.list_id === kitchen.id));
+
+  await closeTaskDetails();
 
   // A long list, and a task added to it: the note offers Board View.
   for (let i = 1; i <= 9; i += 1) {

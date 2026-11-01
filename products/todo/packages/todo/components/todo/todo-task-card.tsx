@@ -13,13 +13,15 @@ import * as React from "react";
 
 import {
   Calendar,
+  Check,
+  Columns3,
+  CornerDownRight,
   List,
   ListChecks,
   User,
 } from "lucide-react";
 
 import { DuePopover } from "@/components/todo/DuePopover";
-import { DurationPopover } from "@/components/todo/DurationPopover";
 import { MenuKeys } from "@/components/todo/MenuKeys";
 import { SearchableListMenu } from "@/components/todo/SearchableListMenu";
 import { MenuPortal } from "@/components/todo/MenuPortal";
@@ -37,7 +39,10 @@ import {
 } from "@/components/todo/task-icons";
 import { renderNotesEditor } from "@/components/todo/todo-task-overlay";
 import { TaskGithubItem, TaskGithubLink } from "@/components/todo/task-github-item";
-import { isInteractiveDragTarget } from "@/components/todo/use-pointer-drag";
+import { isCardClickSkip, isInteractiveDragTarget, lastTaskDragEnd } from "@/components/todo/use-pointer-drag";
+import { TaskInfoMenuItem } from "@/components/todo/task-details-info";
+import { MakeSubtaskItem, ParentPickerItems } from "@/components/todo/task-menu-parent";
+import { ColumnPickerItems } from "@/components/todo/task-menu-columns";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { DoneStamp } from "@/components/todo/DoneStamp";
 import { formatDurationShort } from "@/lib/todo/duration";
@@ -53,10 +58,15 @@ import {
   animTargetKey,
   columnEnd, dueDatePatch,
   isUnlistedTask,
-  listOriginLetters,
   timeSpentLabel,
 } from "@/lib/todo/task-helpers";
-import { type TodoPerson, type TodoTask } from "@/lib/todo/types";
+import { boardColumnOf, type TodoPerson, type TodoTask } from "@/lib/todo/types";
+import { nudgeIntoView } from "@/lib/todo/hover-nudge";
+import { NotesChip } from "@/components/todo/notes-chip";
+import { randomSubtaskPartyEmoji, spawnCompletionParty } from "@/lib/todo/task-celebration";
+import { earliestStepDue } from "@/lib/todo/step-due";
+import { StepListMark } from "@/components/todo/step-list-mark";
+import { flashSubtaskRow } from "@/components/todo/use-notes-card";
 
 /** How long a finger holds a card before the card is carried, not the list scrolled. */
 const TOUCH_DRAG_HOLD_MS = 320;
@@ -254,75 +264,6 @@ function cardDueChip(
   ) : null;
 }
 
-/** The chip of the duration, and its popover. */
-function cardDurationChip(
-  m: TodoPageModel,
-  task: TodoTask,
-  {
-    hasDuration,
-    durationPopoverOpen,
-    openDurationPopover,
-  }: {
-    hasDuration: boolean;
-    durationPopoverOpen: boolean;
-    openDurationPopover: (anchor: HTMLElement) => void;
-  }
-) {
-  const {
-    setDurationPopoverTaskId,
-    durationPopoverAnchor,
-    setDurationPopoverAnchor,
-    t,
-    mutateTask,
-  } = m;
-  const closeDurationPopover = () => {
-    durationPopoverAnchor?.focus();
-    setDurationPopoverTaskId(null);
-    setDurationPopoverAnchor(null);
-  };
-  return (
-    <span className="task-chip-wrap">
-      <button
-        type="button"
-        className={`task-chip task-chip-duration${
-          hasDuration ? " is-set" : " is-icon is-ghost"
-        }${durationPopoverOpen ? " is-on" : ""}`}
-        title={hasDuration ? "Click to edit duration" : t("addDuration")}
-        aria-haspopup="dialog"
-        aria-expanded={durationPopoverOpen}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (durationPopoverOpen) closeDurationPopover();
-          else openDurationPopover(e.currentTarget);
-        }}
-      >
-        <ClockIcon size={13} />
-        {hasDuration && task.expectedDurationMinutes != null ? (
-          <span className="task-chip-label">
-            {formatDurationShort(
-              task.expectedDurationMinutes,
-              t("minutes"),
-              t("hoursShort")
-            )}
-          </span>
-        ) : null}
-      </button>
-      {durationPopoverOpen ? (
-      <DurationPopover
-        open={durationPopoverOpen}
-        anchorEl={durationPopoverOpen ? durationPopoverAnchor : null}
-        minutes={task.expectedDurationMinutes}
-        onPick={(minutes) => {
-          closeDurationPopover();
-          void mutateTask(task.id, { expectedDurationMinutes: minutes });
-        }}
-        onClose={closeDurationPopover}
-        t={t}
-      />
-      ) : null}
-    </span>
-  );
-}
 
 /** The duration on the row: said, or offered, or typed in. */
 function cardDurationMeta(
@@ -448,7 +389,7 @@ function cardOriginPicker(
         type="button"
         className={`task-list-origin${
           listOriginIconId || unlisted ? " has-icon" : ""
-        }${unlisted ? " is-unassigned" : ""}`}
+        }${unlisted ? " is-unassigned" : ""}${!listOriginIconId && !unlisted ? " has-name" : ""}`}
         title={
           unlisted
             ? "Assign to a list"
@@ -482,7 +423,7 @@ function cardOriginPicker(
         ) : unlisted ? (
           <List size={14} strokeWidth={1.75} aria-hidden />
         ) : (
-          listOriginLetters(taskList)
+          <span className="task-list-origin-name">{taskList?.name ?? "?"}</span>
         )}
       </button>
       {/* Built only while open: every card has one, and a closed menu's
@@ -528,11 +469,8 @@ function cardOriginPicker(
                   iconId ? " has-icon" : ""
                 }`}
               >
-                {iconId ? (
-                  <ListIcon id={iconId} size={14} />
-                ) : (
-                  listOriginLetters(l)
-                )}
+                {/* No icon: the slot stays empty, so the names line up. */}
+                  {iconId ? <ListIcon id={iconId} size={14} /> : null}
               </span>
               <span className="task-list-picker-name">{l.name}</span>
             </button>
@@ -559,14 +497,29 @@ function cardMenu(
     unlisted: boolean;
     hasDuration: boolean;
     openDurationPopover: (anchor: HTMLElement) => void;
-  }
+  },
+  /** "card": the full menu. "details": in task details, beside Back.
+      "row": the ⋮ a task row shows on hover. The last two leave out what
+      details already offer (time, notes, favourite). */
+  variant: "card" | "details" | "row" = "card"
 ) {
+  const trimmed = variant !== "card";
+  const inDetails = variant === "details";
+  /* Board View: an open task can be moved to another column from here,
+     as by a drag. A subtask is not on the board. */
+  const currentColumn = boardColumnOf(task, m.somedayEnabled);
+  const canMoveColumn = m.showBoard && !task.completed && !task.parentTaskId;
   const {
     setOpenMenuTaskId,
     menuAnchorEl,
     setMenuAnchorEl,
     menuShowsMoveTargets,
     setMenuShowsMoveTargets,
+    menuShowsColumns,
+    setMenuShowsColumns,
+    menuShowsParents,
+    setMenuShowsParents,
+    boardColumnLabel,
     setOpenListPickerTaskId,
     setOpenAssignTaskId,
     t,
@@ -583,6 +536,9 @@ function cardMenu(
     setEditingDurationTaskId,
     setEditingDuration,
   } = m;
+  // Open only where its ⋮ was pressed: details and the card behind them
+  // share the task, and both menus opened, one over the other.
+  menuOpen = menuOpen && (!menuAnchorEl || menuAnchorEl.classList.contains("task-details-more") === inDetails);
   /* The "…" menu: in the meta row of an open card, in the hover pill of
      a done row. */
   return (
@@ -590,8 +546,10 @@ function cardMenu(
           className={`task-menu-wrap ${menuOpen ? "has-open-menu" : ""}`}
         >
           <button
-            className="task-menu-btn is-ghost"
-            title="Task options"
+            type="button"
+            className={inDetails ? "task-menu-btn task-details-more" : variant === "row" ? "task-menu-btn task-row-more" : "task-menu-btn is-ghost"}
+            title={trimmed ? t("taskMore") : "Task options"}
+            aria-label={trimmed ? t("taskMore") : undefined}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={(e) => {
@@ -603,14 +561,14 @@ function cardMenu(
               setOpenMenuTaskId(menuOpen ? null : task.id);
             }}
           >
-            <MenuDotsIcon />
+            {inDetails ? <MenuDotsIcon size={20} strokeWidth={2.5} /> : <MenuDotsIcon size={variant === "row" ? 16 : 14} />}
           </button>
           {/* Built only while open, as the list picker is. */}
           {menuOpen ? (
           <MenuPortal
             open={menuOpen}
             anchorEl={menuOpen ? menuAnchorEl : null}
-            className="task-menu"
+            className={trimmed ? "task-menu task-details-menu" : "task-menu"}
             role="menu"
             ariaLabel="Task options"
           >
@@ -620,8 +578,9 @@ function cardMenu(
                 not close on its own caret when Move to redraws it —
                 which is also why that redraw is a fresh key. */}
             <MenuKeys
-              key={menuShowsMoveTargets ? "move" : "offers"}
+              key={menuShowsMoveTargets ? "move" : menuShowsColumns ? "columns" : menuShowsParents ? "parents" : "offers"}
               closeOnBlur={false}
+              focusOnOpen={!menuShowsParents}
               onClose={() => {
                 const anchor = menuAnchorEl;
                 setOpenMenuTaskId(null);
@@ -630,10 +589,20 @@ function cardMenu(
                 anchor?.focus();
               }}
             >
-            {menuShowsMoveTargets ? (
-              moveTargets.lists
-                .filter((l) => l.id !== task.listId)
-                .map((l, i, shown) => {
+            {menuShowsParents ? (
+              <ParentPickerItems m={m} task={task} inDetails={inDetails} close={() => setOpenMenuTaskId(null)} />
+            ) : menuShowsColumns ? (
+              <ColumnPickerItems
+                m={m}
+                task={task}
+                close={() => {
+                  setOpenMenuTaskId(null);
+                  setMenuShowsColumns(false);
+                }}
+              />
+            ) : menuShowsMoveTargets ? (
+              // Every list, the task's own among them, ticked (the caret starts there).
+              moveTargets.lists.map((l, i, shown) => {
                   // Each list under its own icon, as the tabs draw them,
                   // and another group's lists under that group's name.
                   const iconId = resolveListIconId(l.emoji);
@@ -649,12 +618,13 @@ function cardMenu(
                       </div>
                     ) : null}
                     <button
-                      role="menuitem"
-                      className="task-menu-item"
+                      role="menuitemradio"
+                      aria-checked={l.id === task.listId}
+                      className={`task-menu-item${l.id === task.listId ? " board-sort-item is-current" : ""}`}
                       onClick={() => {
                         setOpenMenuTaskId(null);
                         setMenuShowsMoveTargets(false);
-                        void mutateTask(task.id, { listId: l.id });
+                        if (l.id !== task.listId) void mutateTask(task.id, { listId: l.id });
                       }}
                     >
                       <span
@@ -662,13 +632,11 @@ function cardMenu(
                           iconId ? " has-icon" : ""
                         }`}
                       >
-                        {iconId ? (
-                          <ListIcon id={iconId} size={14} />
-                        ) : (
-                          listOriginLetters(l)
-                        )}
+                        {/* No icon: the slot stays empty, so the names line up. */}
+                          {iconId ? <ListIcon id={iconId} size={14} /> : null}
                       </span>
                       {l.name}
+                      {l.id === task.listId ? <Check size={14} strokeWidth={2.5} className="board-sort-item-arrow" aria-hidden /> : null}
                     </button>
                     </React.Fragment>
                   );
@@ -714,6 +682,18 @@ function cardMenu(
                     {t("moveTo")}
                   </button>
                 ) : null}
+                {canMoveColumn ? (
+                  <button
+                    role="menuitem"
+                    className="task-menu-item move-task-item"
+                    onClick={() => setMenuShowsColumns(true)}
+                  >
+                    <Columns3 size={16} strokeWidth={2} aria-hidden />
+                    {t("moveToColumn")}
+                    <span className="task-menu-item-aside">{boardColumnLabel(currentColumn)}</span>
+                  </button>
+                ) : null}
+                <MakeSubtaskItem m={m} task={task} onOpen={() => setMenuShowsParents(true)} />
                 {/* The pill's offers, when the tile is too slim to hold
                     them there — see PILL_FOLD_MAX. */}
                 {foldPillActions && !hasDuration && !task.completed ? (
@@ -735,7 +715,7 @@ function cardMenu(
                 ) : null}
                 {/* A done row shows only this menu on hover: the time,
                     the note and the heart it has not got are here. */}
-                {task.completed && !hasDuration ? (
+                {!trimmed && task.completed && !hasDuration ? (
                   <button
                     role="menuitem"
                     className="task-menu-item"
@@ -750,7 +730,7 @@ function cardMenu(
                     {t("addTimeSpent")}
                   </button>
                 ) : null}
-                {(foldPillActions || task.completed) && !task.notesHtml ? (
+                {!trimmed && (foldPillActions || task.completed) && !task.notesHtml ? (
                   <button
                     role="menuitem"
                     className="task-menu-item"
@@ -764,7 +744,7 @@ function cardMenu(
                     {t("fieldNotes")}
                   </button>
                 ) : null}
-                {task.completed && !task.isFavourite && !kanbanEnabled ? (
+                {!trimmed && task.completed && !task.isFavourite && !kanbanEnabled ? (
                   <button
                     role="menuitem"
                     className="task-menu-item"
@@ -785,11 +765,16 @@ function cardMenu(
                   mutateTask={mutateTask}
                   closeMenu={() => setOpenMenuTaskId(null)}
                 />
+                {inDetails ? <TaskInfoMenuItem t={t} closeMenu={() => setOpenMenuTaskId(null)} /> : null}
                 <button
                   role="menuitem"
                   className="task-menu-item delete-task-item"
                   onClick={() => {
                     setOpenMenuTaskId(null);
+                    if (inDetails) {
+                      m.setOpenNotesTaskId(null);
+                      m.setNotesExpanded(false);
+                    }
                     void removeTask(task.id);
                   }}
                 >
@@ -805,7 +790,7 @@ function cardMenu(
   );
 }
 
-/** The chip of the task's steps. */
+/** The chip of the task's subtasks. */
 function cardSubtaskChip(
   m: TodoPageModel,
   task: TodoTask
@@ -817,6 +802,9 @@ function cardSubtaskChip(
   } = m;
   const mySubtasks = subtasksByTask.get(task.id) ?? [];
   const subtasksDone = mySubtasks.filter((st) => st.completed).length;
+  // "✓ 2/6 · Tue": a step due before the task is, coral when it is soon.
+  const stepDue = task.completed ? null : earliestStepDue(mySubtasks, task.dueOn ?? null);
+  const stepDays = stepDue ? daysUntilDue(stepDue) : null;
   return mySubtasks.length ? (
     <button
       type="button"
@@ -833,10 +821,18 @@ function cardSubtaskChip(
         <polyline points="20 6 9 17 4 12" />
       </svg>
       {subtasksDone}/{mySubtasks.length}
+      {stepDue ? (
+        <span
+          className={`task-subtask-chip-due${stepDays != null && stepDays <= 1 ? " is-soon" : ""}`}
+          title={t("fieldDue")}
+        >
+          {" · "}
+          {formatDueOnShort(stepDue, m.lang, t)}
+        </span>
+      ) : null}
     </button>
   ) : task.completed ? null : (
-    // No steps yet: a ghost, in the add row's slot for them. It opens
-    // the expanded card, where the first step is written.
+    // No subtasks yet: open details to add the first one.
     <button
       type="button"
       className="task-chip is-icon task-chip-subtasks is-ghost"
@@ -852,62 +848,13 @@ function cardSubtaskChip(
   );
 }
 
-/** The chip of the task's note. */
-function cardNotesChip(
-  m: TodoPageModel,
-  task: TodoTask
-) {
-  const {
-    openNotesTaskId,
-    t,
-    toggleNotes,
-  } = m;
-  return (
-    <button
-      type="button"
-      className={`task-chip is-icon task-chip-notes${
-        task.notesHtml ? " is-set" : " is-ghost"
-      }${openNotesTaskId === task.id ? " is-on" : ""}`}
-      title={t("fieldNotes")}
-      aria-label={t("fieldNotes")}
-      onClick={(e) => {
-        e.stopPropagation();
-        toggleNotes(task);
-      }}
-    >
-      <NotesIcon />
-    </button>
-  );
-}
 
-/** The heart that makes the task a favourite. */
-function cardFavouriteButton(
-  m: TodoPageModel,
-  task: TodoTask
-) {
-  const {
-    kanbanEnabled,
-    toggleFavourite,
-  } = m;
-  return !kanbanEnabled ? (
-    <button
-      className={`fav-btn${task.isFavourite ? " active" : " is-ghost"}`}
-      title="Toggle Favourite"
-      onClick={(e) => {
-        e.stopPropagation();
-        toggleFavourite(task);
-      }}
-    >
-      <HeartIcon size={18} filled={task.isFavourite} />
-    </button>
-  ) : null;
-}
 
 /** The button that opens the task's focus window. */
 function cardFocusButton(
   m: TodoPageModel,
   task: TodoTask,
-  { isFocused }: { isFocused: boolean }
+  { isFocused, row = false }: { isFocused: boolean; row?: boolean }
 ) {
   const {
     nativeShell,
@@ -916,7 +863,10 @@ function cardFocusButton(
   return (
     nativeShell && !task.completed ? (
       <button
-        className={`focus-btn ${isFocused ? "active-focus" : "is-ghost"}`}
+        type="button"
+        className={`focus-btn${row ? " task-row-focus" : ""} ${isFocused ? "active-focus" : "is-ghost"}`}
+        aria-pressed={isFocused}
+        aria-label={m.t(isFocused ? "taskStopFocus" : "taskFocus")}
         title={isFocused ? "Exit focus mode" : "Focus on this task"}
         onClick={(e) => {
           e.stopPropagation();
@@ -929,18 +879,48 @@ function cardFocusButton(
   );
 }
 
-/**
- * An open task's controls, as the board card draws them: the corner pill
- * (menu, expand, favourite, focus) and the row under the words (person,
- * date, duration, notes, subtasks, and the list on the right). The Today
- * session draws the same two on the task in hand, so a task has the same
- * controls in the same places wherever it is.
- */
-export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" | "session" = "board") {
+/** Lists show existing information; the Today session retains its quick controls. */
+/** The people on a card's row: their chip, or, on a done task drawn as a
+    card, their faces with nothing to change. */
+function chromePeople(m: TodoPageModel, task: TodoTask, doneRow: boolean, assignees: TodoPerson[], assignOpen: boolean) {
+  if (!m.assignEnabled || !assignees.length) return null;
+  if (task.completed && !doneRow) {
+    return (
+      <span className="task-summary-value">
+        <TaskAssigneeStack people={assignees} size={22} />
+      </span>
+    );
+  }
+  return cardAssignChip(m, task, { assignOpen, assignees });
+}
+
+/** The day on a card's row: the Done pile's "Due: Oct 19", a done card's
+    day with nothing to change it with, or the open card's chip. */
+function chromeDue(m: TodoPageModel, task: TodoTask, doneRow: boolean, duePopoverOpen: boolean) {
+  if (!task.dueOn) return null;
+  if (doneRow) {
+    return <span className="task-summary-value">{m.t("fieldDue")}: {formatDueOnShort(task.dueOn, m.lang, m.t)}</span>;
+  }
+  if (task.completed) {
+    return (
+      <span className="task-summary-value">
+        <Calendar size={13} strokeWidth={2} aria-hidden />
+        {formatDueOnShort(task.dueOn, m.lang, m.t)}
+      </span>
+    );
+  }
+  return cardDueChip(m, task, { duePopoverOpen });
+}
+
+/** Where a card's chrome is drawn: the board, a waiting card in the Today
+    session, or the session's task in hand ("now"), whose steps are listed
+    under it and whose list is named in words. */
+export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" | "session" | "now" = "board", asBoard = false) {
+  /** A done task as the Done pile's row; asked for as a card, as an open one. */
+  const doneRow = task.completed && !asBoard;
   const {
     sessionIds,
     view,
-    durationPopoverTaskId,
     setDurationPopoverTaskId,
     setDurationPopoverAnchor,
     duePopoverTaskId,
@@ -953,8 +933,6 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
     t,
     isAllListsView,
     navigateToList,
-    foldPillActions,
-    openTaskOverlay,
     peopleById,
   } = m;
   /*
@@ -963,7 +941,8 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
     Two copies of the list picker took the caret from each other, and the
     blur closed both before anything could be picked.
   */
-  const here = where === "session" || !sessionIds;
+  const inSession = where !== "board";
+  const here = inSession || !sessionIds;
   const menuOpen = here && openMenuTaskId === task.id;
   const assignOpen = here && openAssignTaskId === task.id;
   const assignees = task.assigneeIds
@@ -971,12 +950,11 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
     .filter((p): p is TodoPerson => Boolean(p));
   const unlisted = isUnlistedTask(task);
   const listPickerOpen = here && openListPickerTaskId === task.id;
-  const hasDuration = task.completed
+  const hasDuration = doneRow
     ? task.timeSpentSeconds > 0
     : task.expectedDurationMinutes != null;
   const isFocused = activeFocusTaskIds.has(task.id);
   const duePopoverOpen = here && duePopoverTaskId === task.id;
-  const durationPopoverOpen = here && durationPopoverTaskId === task.id;
   const openDurationPopover = (anchor: HTMLElement) => {
     if (view === "favourites") {
       if (task.listId) navigateToList(task.listId);
@@ -987,147 +965,142 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
     setDurationPopoverAnchor(anchor);
     setDurationPopoverTaskId(task.id);
   };
-  const expandBtn = (
-    <button
-      type="button"
-      className="task-expand-btn is-inline is-ghost"
-      title={t("expandTask")}
-      aria-label={t("expandTask")}
-      onClick={(e) => {
-        e.stopPropagation();
-        openTaskOverlay(task);
-      }}
-    >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <polyline points="15 3 21 3 21 9" />
-        <polyline points="9 21 3 21 3 15" />
-        <line x1="21" y1="3" x2="14" y2="10" />
-        <line x1="3" y1="21" x2="10" y2="14" />
-      </svg>
-    </button>
-  );
-  const heartAtRest = task.isFavourite && view !== "favourites";
-  const pillShowsState = isFocused || heartAtRest;
-  const utilityPill = (
-    <div className={`task-utility-pill${pillShowsState ? " has-state" : ""}`}>
-      {cardMenu(m, task, { menuOpen, unlisted, hasDuration, openDurationPopover })}
-      {expandBtn}
-      {cardFavouriteButton(m, task)}
-      {cardFocusButton(m, task, { isFocused })}
-    </div>
-  );
-  const metaRow = (
-    <div className="task-meta-row">
-      <div className="task-meta-chips">
-        {cardAssignChip(m, task, { assignOpen, assignees })}
-        {cardDueChip(m, task, { duePopoverOpen })}
-        {/* On a slim tile the two unset ones live in the menu. */}
-        {foldPillActions && !hasDuration
-          ? null
-          : cardDurationChip(m, task, { hasDuration, durationPopoverOpen, openDurationPopover })}
-        {foldPillActions && !task.notesHtml ? null : cardNotesChip(m, task)}
-        {cardSubtaskChip(m, task)}
-        <span className="task-meta-spacer" />
-        <div className="task-chip-actions">
-          <TaskGithubLink task={task} t={m.t} />
-          {cardOriginPicker(m, task, { unlisted, showListOrigin: isAllListsView, listPickerOpen })}
-        </div>
+  /* The board card and the Today session's cards are the same: the details
+     row under the name, and on the session's cards the row's Focus and ⋮
+     in the corner, as a board row has them beside its name. */
+  {
+    // The task in hand lists its steps under it: no count of them here.
+    const subtaskCount = where === "now" ? 0 : m.subtasksByTask.get(task.id)?.length ?? 0;
+    const listName = where === "now" && task.listId
+      ? m.state.lists.find((l) => l.id === task.listId)?.name ?? null
+      : null;
+    const hasMeta = task.dueOn || hasDuration || task.notesHtml || subtaskCount ||
+      (m.assignEnabled && assignees.length) || task.isFavourite ||
+      isAllListsView || task.githubNumber || listName;
+    const controls = where !== "board" ? (
+      <div className="task-session-controls">
+        {cardFocusButton(m, task, { isFocused, row: true })}
+        {cardMenu({ ...m, foldPillActions: false }, task, { menuOpen, unlisted, hasDuration, openDurationPopover }, "row")}
       </div>
-    </div>
-  );
-  /** A menu or picker of the task's is open: its controls stay on screen. */
-  const anyOpen = menuOpen || assignOpen || durationPopoverOpen || duePopoverOpen || listPickerOpen;
-  return { utilityPill, metaRow, anyOpen };
+    ) : null;
+    return {
+      utilityPill: controls,
+      anyOpen: inSession && (menuOpen || assignOpen || duePopoverOpen || listPickerOpen),
+      metaRow: hasMeta ? (
+        <div className="task-meta-row task-summary-row">
+          {/* The people, as avatars, the due date, how long, then the notes
+             and steps: the order the add-task box asks in. */}
+          {chromePeople(m, task, doneRow, assignees, assignOpen)}
+          {chromeDue(m, task, doneRow, duePopoverOpen)}
+          {doneRow ? cardDurationMeta(m, task, {
+            hasDuration,
+            editingDur: m.editingDurationTaskId === task.id && !m.notesExpanded,
+          }).metaAlways : hasDuration ? (
+            <span className="task-summary-value">
+              <ClockIcon size={13} />
+              {formatDurationShort(task.expectedDurationMinutes!, t("minutes"), t("hoursShort"))}
+            </span>
+          ) : null}
+          {task.notesHtml && where === "now" ? (
+            // The task in hand, in the Today session: a peek on hover,
+            // and its note opens in place there (NotesChip).
+            <NotesChip
+              html={task.notesHtml}
+              open={m.openNotesTaskId === task.id && !m.notesExpanded}
+              onToggle={() => m.toggleNotes(task)}
+              t={t}
+              className="task-summary-value task-summary-notes"
+            />
+          ) : task.notesHtml ? (
+            <button
+              type="button"
+              className="task-summary-value task-summary-notes"
+              title={t("fieldNotes")}
+              onClick={(e) => {
+                e.stopPropagation();
+                m.openTaskOverlay(task, { scrollTo: "notes" });
+              }}
+            >
+              <NotesIcon />{t("fieldNotes")}
+            </button>
+          ) : null}
+          {subtaskCount ? cardSubtaskChip(m, task) : null}
+          {/* The heart alone on a card; details spell the word out. */}
+          {task.isFavourite ? (
+            <span className="task-summary-value" title={t("taskFavourite")} role="img" aria-label={t("taskFavourite")}>
+              <HeartIcon size={13} filled />
+            </span>
+          ) : null}
+          <div className="task-chip-actions">
+            <TaskGithubLink task={task} t={t} />
+            {/* Whose step it is, when the Planner says it here: a client
+                or collaborator, by name, before its list's icon. */}
+            {doneRow ? null : m.boardExtension?.renderListLabel?.(task) ?? null}
+            {/* The list's icon at the right. A done task shows it by its checkbox.
+                The task in hand names its list in words. */}
+            {listName ? (
+              <span className="task-summary-list">{listName}</span>
+            ) : isAllListsView && !doneRow
+              ? task.parentTaskId
+                ? <StepListMark m={m} step={task} />
+                : cardOriginPicker(m, task, { unlisted, showListOrigin: true, listPickerOpen })
+              : null}
+          </div>
+        </div>
+      ) : null,
+    };
+  }
+}
+/** How long the pointer rests on a cut-off card before it is brought into view. */
+const HOVER_NUDGE_MS = 250;
+const hoverNudges = new WeakMap<HTMLElement, number>();
+
+/**
+ * A card's details: its own, or, for a step on the board, its parent's,
+ * at the steps, with this step lit up for a moment.
+ */
+function openCardDetails(m: TodoPageModel, task: TodoTask) {
+  const parent = task.parentTaskId ? m.state.tasks.find((t) => t.id === task.parentTaskId) : null;
+  if (parent) { m.openTaskOverlay(parent, { scrollTo: "subtasks" }); flashSubtaskRow(task.id); }
+  else m.openTaskOverlay(task);
 }
 
-export function renderTask(m: TodoPageModel, task: TodoTask) {
-  const {
-    view,
-    justAddedTaskId,
-    editingTaskId,
-    setEditingTaskId,
-    editingTextRef,
-    editingDurationTaskId,
-    durationPopoverTaskId,
-    setDurationPopoverTaskId,
-    setDurationPopoverAnchor,
-    duePopoverTaskId,
-    openMenuTaskId,
-    setOpenMenuTaskId,
-    openListPickerTaskId,
-    openAssignTaskId,
-    setOpenAssignTaskId,
-    animHiddenTargets,
-    draggingTaskId,
-    setDraggingTaskId,
-    taskDropListId,
-    taskDragRef,
-    lang,
-    isAllListsView,
-    navigateToList,
-    isSearching,
-    showBoard,
-    foldPillActions,
-    toggleTaskCompleted,
-    editInputRef,
-    resizeEditTextarea,
-    startEditTask,
-    caretAfterEditRef,
-    commitEditTask,
-    toggleNotes,
-  } = m;
-  const editing = editingTaskId === task.id;
-  const menuOpen = openMenuTaskId === task.id;
-  const assignOpen = openAssignTaskId === task.id;
-  const unlisted = isUnlistedTask(task);
-  const showListOrigin = isAllListsView;
-  const listPickerOpen = openListPickerTaskId === task.id;
-  const editingDur = editingDurationTaskId === task.id;
-  const hasDuration = task.completed
-    ? task.timeSpentSeconds > 0
-    : task.expectedDurationMinutes != null;
-
-
-
-  const { metaAlways, metaHover } = cardDurationMeta(m, task, { editingDur, hasDuration });
-
-
-  /*
-    Favourite and focus, drawn the way notesBtn already is.
-
-    A button that carries state goes in `.always-actions` and one that
-    does not goes in `.hover-actions`, so the row is the same width
-    whether the pointer is on it or not. The two used to sit together in
-    `.always-actions` under a `hover-only` class that only hid them —
-    which still took the width the moment the pointer arrived, and
-    re-wrapped the task under it.
-  */
-  const duePopoverOpen = duePopoverTaskId === task.id;
-  /* The clock opens the same popover the add row uses, on the chip. */
-  const durationPopoverOpen = durationPopoverTaskId === task.id;
-  const openDurationPopover = (anchor: HTMLElement) => {
-    if (view === "favourites") {
-      if (task.listId) navigateToList(task.listId);
-      return;
-    }
-    setOpenMenuTaskId(null);
-    setOpenAssignTaskId(null);
-    setDurationPopoverAnchor(anchor);
-    setDurationPopoverTaskId(task.id);
-  };
-  const favBtn = cardFavouriteButton(m, task);
-  const notesBtn = (
+/** "↳ Parent task", above a step on the board: a click opens the parent. */
+export function stepParentLine(m: TodoPageModel, step: TodoTask) {
+  const parent = m.state.tasks.find((t) => t.id === step.parentTaskId);
+  if (!parent) return null;
+  return (
     <button
-      className={`notes-btn ${task.notesHtml ? "has-notes" : ""}`}
-      title="Add/Edit Notes"
+      type="button"
+      className="task-step-parent"
+      title={parent.text}
       onClick={(e) => {
         e.stopPropagation();
-        toggleNotes(task);
+        m.openTaskOverlay(parent, { scrollTo: "subtasks" });
       }}
     >
-      <NotesIcon />
+      <CornerDownRight size={12} strokeWidth={2} aria-hidden />
+      <span>{parent.text}</span>
     </button>
   );
+}
+
+/** One card, drawn. Called only from TaskCard below, which decides when. */
+function renderTaskBody(m: TodoPageModel, task: TodoTask, asBoard = false) {
+  /** Drawn as the Done pile's row: done, and not asked for as a card. */
+  const doneRow = task.completed && !asBoard;
+  const {
+    justAddedTaskId, animHiddenTargets, draggingTaskId, setDraggingTaskId,
+    taskDropListId, taskDragRef, lang, isAllListsView, isSearching,
+    showBoard, toggleTaskCompleted,
+  } = m;
+  const showListOrigin = isAllListsView;
+  const unlisted = isUnlistedTask(task);
+  const listPickerOpen = m.openListPickerTaskId === task.id;
+  const menuOpen = m.openMenuTaskId === task.id;
+  const assignOpen = m.openAssignTaskId === task.id;
+  const durationPopoverTaskId = m.durationPopoverTaskId;
+  const duePopoverTaskId = m.duePopoverTaskId;
 
   const hideForAnim = animHiddenTargets.has(
     animTargetKey(task.id, task.completed)
@@ -1141,7 +1114,18 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
       type="checkbox"
       className="task-checkbox"
       checked={task.completed}
-      onChange={(e) => toggleTaskCompleted(task, e)}
+      onChange={(e) => {
+        // A step on the board (due today, see stepsDueToday) is ticked as
+        // a step: its own cheer, and it leaves the column.
+        if (task.parentTaskId) {
+          spawnCompletionParty(e.currentTarget.closest(".task-item") ?? e.currentTarget, {
+            emoji: randomSubtaskPartyEmoji(),
+          });
+          m.toggleSubtaskDone(task);
+          return;
+        }
+        toggleTaskCompleted(task, e);
+      }}
       /*
         Space is the box's own key, and a browser gives Enter to the
         form around it — there is none here, so on a card Enter did
@@ -1155,55 +1139,18 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     />
   );
   const originPicker = cardOriginPicker(m, task, { unlisted, showListOrigin, listPickerOpen });
-  const menuWrap = cardMenu(m, task, { menuOpen, unlisted, hasDuration, openDurationPopover });
-  /*
-    The open row's utilities, in a pill of their own in the card's
-    top-right corner: the menu, expand, favourite and focus. They used to
-    share the chip row with the properties, and on a narrow card the two
-    fought for one line and the last of them fell off it. Out of the
-    flow, over the words on hover, they cost the row nothing. A button
-    carrying state — a favourite, a running focus — keeps the pill on
-    screen at rest, so the state shows.
-  */
-  /*
-    On the Favourites view every task is a favourite, so a heart on each
-    card says nothing: it is what the view is. There the pill waits for the
-    pointer, as on a task with no state. A running focus still keeps it on
-    screen, because that is news on any view.
-  */
-  const heartAtRest = task.isFavourite && view !== "favourites";
-  /* A done row keeps its hover pill: the time it took, its note, its
-     menu. An open row lays its marks out as chips instead — below. */
-  const actionsCluster = (
-    <div className="task-actions">
-      <div className="hover-actions">
-        {menuWrap}
-        {/* Folded into the menu on a slim tile — but a duration being
-            typed stays where it is typed. */}
-        {/* Folded into the menu on a slim tile, and always on a done
-            row — but a duration being typed stays where it is typed. */}
-        {(foldPillActions || task.completed) && !editingDur ? null : metaHover}
-        {!task.notesHtml && !foldPillActions && !task.completed ? notesBtn : null}
-        {!heartAtRest && (!task.completed || task.isFavourite) ? favBtn : null}
-      </div>
-      <div className="always-actions">
-        {heartAtRest ? favBtn : null}
-        {metaAlways}
-        {task.notesHtml ? notesBtn : null}
-      </div>
-    </div>
-  );
-  const chrome = task.completed ? null : taskCardChrome(m, task);
+
+  const chrome = taskCardChrome(m, task, "board", asBoard);
 
   return (
     <div
       key={task.id}
-      className={`task-item ${task.completed ? "completed-task" : ""} ${
+      className={`task-item${m.notesExpanded && m.openNotesTaskId === task.id ? " is-selected" : ""} ${task.completed ? "completed-task" : ""} ${
         showBoard && !task.completed && task.isBacklog ? "backlog-task" : ""
       } ${draggingTaskId === task.id ? "dragging" : ""}${
         draggingTaskId === task.id && taskDropListId ? " drag-over-tab" : ""
       }${
-        menuOpen || assignOpen || durationPopoverOpen || duePopoverOpen
+        menuOpen || assignOpen || durationPopoverTaskId === task.id || duePopoverTaskId === task.id
           ? " has-open-menu"
           : ""
       }${showListOrigin ? " task-item-all" : ""}${
@@ -1222,9 +1169,39 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         if (walkArrowStops(e, e.currentTarget, { wrap: true })) return;
         walkTabStops(e, e.currentTarget);
       }}
+      // A card cut off at the edge of its list comes fully into view once
+      // the pointer rests on it: its hover controls would show off-screen.
+      onPointerEnter={(e) => {
+        // Not with a button held: a drag (of the divider, a card) passing
+        // over is not a pointer resting here, and each check reads layout.
+        if (e.pointerType === "touch" || draggingTaskId || e.buttons) return;
+        const card = e.currentTarget;
+        window.clearTimeout(hoverNudges.get(card));
+        hoverNudges.set(card, window.setTimeout(() => {
+          nudgeIntoView(card);
+          // Again once that has settled: the hover chips can grow the card.
+          hoverNudges.set(card, window.setTimeout(() => nudgeIntoView(card), 400));
+        }, HOVER_NUDGE_MS));
+      }}
+      onPointerLeave={(e) => window.clearTimeout(hoverNudges.get(e.currentTarget))}
+      /* A click anywhere on the card opens its details, as on its words: not on a
+         control, menu or note, nor the click that ends a drag or a selection. */
+      onClick={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (!target?.closest) return;
+        if (target.closest(".task-text")) return; // it opens details itself
+        if (isInteractiveDragTarget(target) || isCardClickSkip(target)) return;
+        if (Date.now() - lastTaskDragEnd.at < 300) return;
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) return;
+        openCardDetails(m, task);
+      }}
       onPointerDown={(e) => {
+        window.clearTimeout(hoverNudges.get(e.currentTarget));
         if (e.button !== 0) return;
         if (task.completed) return;
+        // A step on the board stays where it is: it has no column to move to.
+        if (task.parentTaskId) return;
         // Filtering hides rows, so the order on screen is not the order of
         // the list — which is why a search used to stop a drag before it
         // began. The board knows better now: a drop there is placed in the
@@ -1266,12 +1243,13 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
     >
       {/* Whose step it is, when the Planner says (its CRM next steps). */}
       {m.boardExtension?.renderTaskHeader(task) ?? null}
+      {task.parentTaskId ? stepParentLine(m, task) : null}
       <div
         className={`task-main-row${
-          task.completed && showListOrigin ? " task-main-row-all" : ""
+          doneRow && showListOrigin ? " task-main-row-all" : ""
         }`}
       >
-        {task.completed && showListOrigin ? (
+        {doneRow && showListOrigin ? (
           <div className="task-leading">
             {checkboxEl}
             {originPicker}
@@ -1279,83 +1257,222 @@ export function renderTask(m: TodoPageModel, task: TodoTask) {
         ) : (
           checkboxEl
         )}
-        {editing ? (
-          <textarea
-            ref={editInputRef}
-            autoFocus
-            className="task-edit-input"
-            defaultValue={editingTextRef.current}
-            rows={1}
-            onChange={(e) => {
-              editingTextRef.current = e.target.value;
-              resizeEditTextarea(e.currentTarget);
-            }}
-            onBlur={commitEditTask}
-            onKeyDown={(e) => {
-              /*
-                Plain Enter saves; Shift+Enter inserts a newline. Either
-                way the caret goes back to the title it came from, so
-                the walk over the card carries on from there.
-              */
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                caretAfterEditRef.current = { taskId: task.id, step: 0 };
-                commitEditTask();
-              }
-              if (e.key === "Escape") {
-                caretAfterEditRef.current = { taskId: task.id, step: 0 };
-                setEditingTaskId(null);
-              }
-              /*
-                Tab saves and walks on. The card's own walk is held back
-                here: it would move the caret onto a control that the
-                editor closing is about to redraw, and the caret was
-                lost in the swap.
-              */
-              if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                e.preventDefault();
-                e.stopPropagation();
-                caretAfterEditRef.current = {
-                  taskId: task.id,
-                  step: e.shiftKey ? -1 : 1,
-                };
-                commitEditTask();
-              }
-            }}
-          />
-        ) : (
           <span
             className={`task-text ${task.completed ? "completed" : ""}`}
-            /*
-              The title is a stop of its own, so the keyboard alone can
-              open a task for editing: Enter or Space does what a click
-              does. A finished task's title is not edited, and stays
-              out of the walk.
-            */
-            role={task.completed ? undefined : "button"}
-            tabIndex={task.completed ? undefined : 0}
-            onClick={() => (task.completed ? undefined : startEditTask(task))}
+            /* One entry point for details, on open and completed tasks. */
+            role="button"
+            tabIndex={0}
+            aria-expanded={m.notesExpanded && m.openNotesTaskId === task.id}
+            onClick={(event) => { event.currentTarget.focus(); openCardDetails(m, task); }}
             onKeyDown={(e) => {
-              if (task.completed) return;
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault();
-              startEditTask(task);
+              openCardDetails(m, task);
             }}
           >
-            {task.text}
+            {/* A title being written in details shows here as it is typed. */}
+            {m.titleDraft?.taskId === task.id ? m.titleDraft.text : task.text}
           </span>
-        )}
         {/* When it was finished, as the mail list stamps a message:
             the hour today and yesterday, the day before that. */}
-        {task.completed && task.completedAt ? (
+        {doneRow && task.completedAt ? (
           <DoneStamp completedAt={task.completedAt} lang={lang} />
         ) : null}
-        {task.completed ? actionsCluster : null}
+        {cardFocusButton(m, task, { isFocused: m.activeFocusTaskIds.has(task.id), row: true })}
+        {/* The row's ⋮, beside Focus on hover: move, change list, delete.
+            Not on a step: moving one to a column or list means nothing. */}
+        {task.parentTaskId ? null : cardMenu({ ...m, foldPillActions: false }, task, {
+          // While the Today session is up, its own copy of the menu opens.
+          menuOpen: !m.sessionIds && m.openMenuTaskId === task.id,
+          unlisted: isUnlistedTask(task),
+          hasDuration: task.completed ? task.timeSpentSeconds > 0 : task.expectedDurationMinutes != null,
+          openDurationPopover: () => {},
+        }, "row")}
       </div>
       {/* The corner pill and the row under the words: see taskCardChrome. */}
       {chrome ? chrome.utilityPill : null}
       {chrome ? chrome.metaRow : null}
       {renderNotesEditor(m, task)}
     </div>
+  );
+}
+
+export function TaskDetailsActions({ m, task }: { m: TodoPageModel; task: TodoTask }) {
+  const isFocused = m.activeFocusTaskIds.has(task.id);
+  return (
+    <div className="task-details-actions">
+      {m.nativeShell && !task.completed ? (
+        <button
+          type="button"
+          className={`task-details-focus${isFocused ? " active-focus" : ""}`}
+          onClick={() => m.toggleTaskFocusPopout(task)}
+        >
+          <FocusIcon />{m.t(isFocused ? "taskStopFocus" : "taskFocus")}
+        </button>
+      ) : null}
+      {!m.kanbanEnabled ? (
+        <button
+          type="button"
+          className="task-details-favourite"
+          aria-pressed={task.isFavourite}
+          onClick={() => m.toggleFavourite(task)}
+        >
+          <HeartIcon size={16} filled={task.isFavourite} />{m.t("taskFavourite")}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The More menu of task details, at the right of the top bar, opposite Back. */
+export function TaskDetailsMenu({ m, task }: { m: TodoPageModel; task: TodoTask }) {
+  return cardMenu({ ...m, foldPillActions: false }, task, {
+    menuOpen: m.openMenuTaskId === task.id,
+    unlisted: isUnlistedTask(task),
+    hasDuration: task.completed ? task.timeSpentSeconds > 0 : task.expectedDurationMinutes != null,
+    openDurationPopover: () => {},
+  }, "details");
+}
+
+/*
+  Cards that are drawn only when something about them changed.
+
+  A card used to be drawn by a plain function that took the whole page
+  model, so any change on the page (a picker opened, a menu, task details)
+  drew every card again: about 170 ms for a board of 244 cards in the dev
+  app. Now each card is a memoised component. It is drawn again only when
+  its task changes or its signature does: the page-wide values every card
+  reads, and the card's own state (its menu or a picker open, dragged,
+  focused, and so on).
+
+  A card that is skipped keeps the handlers of its last drawing. So that
+  those never act on old state, a card reads the model through a stand-in
+  that always answers with the newest one (liveModel). If a card shows
+  something new from the model, add what it reads to pageSignature or
+  cardSignature, or the card will not show the change.
+*/
+
+type LiveEntry = { ref: { current: TodoPageModel }; proxy: TodoPageModel };
+/* One stand-in per page, keyed on a ref the page keeps for its whole life. */
+const liveModels = new WeakMap<object, LiveEntry>();
+
+/** The page model, as a stand-in that always reads the newest model. */
+function liveModel(m: TodoPageModel): TodoPageModel {
+  let entry = liveModels.get(m.taskDragRef);
+  if (!entry) {
+    const ref = { current: m };
+    const read = (key: string | symbol) => (ref.current as unknown as Record<string | symbol, unknown>)[key];
+    const proxy = new Proxy({} as TodoPageModel, {
+      get: (_target, key) => read(key),
+      has: (_target, key) => key in ref.current,
+      ownKeys: () => Reflect.ownKeys(ref.current),
+      getOwnPropertyDescriptor: (_target, key) =>
+        key in ref.current ? { value: read(key), enumerable: true, configurable: true } : undefined,
+    });
+    entry = { ref, proxy };
+    liveModels.set(m.taskDragRef, entry);
+  }
+  // Set while the page draws, before its cards do: a card drawn now reads
+  // this model, and a handler run later reads the newest.
+  entry.ref.current = m;
+  return entry.proxy;
+}
+
+/* The page-wide part, worked out once per drawing of the page. */
+const pageSignatures = new WeakMap<TodoPageModel, unknown[]>();
+
+/** What every card reads from the page. A change draws every card again. */
+function pageSignature(m: TodoPageModel): unknown[] {
+  let sig = pageSignatures.get(m);
+  if (!sig) {
+    sig = [
+      m.view, m.showBoard, m.isAllListsView, m.isSearching, m.assignEnabled,
+      m.kanbanEnabled, m.foldPillActions, m.nativeShell, m.planEnabled, m.lang,
+      m.lists, m.state.lists, m.state.people, m.peopleById, m.boardExtension,
+      m.sessionIds, m.moveTargets.lists.length > 0, m.draggingTaskId != null,
+      // "Today", "Yesterday" and the done stamps change at midnight.
+      new Date().toDateString(),
+    ];
+    pageSignatures.set(m, sig);
+  }
+  return sig;
+}
+
+/** What one card reads that is its own: its menus and pickers, its marks. */
+function cardSignature(m: TodoPageModel, task: TodoTask): unknown[] {
+  const id = task.id;
+  const subtasks = m.subtasksByTask.get(id) ?? [];
+  const menuOpen = m.openMenuTaskId === id;
+  const assignOpen = m.openAssignTaskId === id;
+  const dueOpen = m.duePopoverTaskId === id;
+  const durationOpen = m.durationPopoverTaskId === id;
+  const pickerOpen = m.openListPickerTaskId === id;
+  const durationEditing = m.editingDurationTaskId === id;
+  const notesOpen = m.openNotesTaskId === id;
+  const anyOpen = menuOpen || assignOpen || dueOpen || durationOpen || pickerOpen || durationEditing || notesOpen;
+  return [
+    m.justAddedTaskId === id,
+    m.animHiddenTargets.has(animTargetKey(id, task.completed)),
+    m.draggingTaskId === id,
+    m.draggingTaskId === id ? m.taskDropListId : null,
+    m.activeFocusTaskIds.has(id),
+    subtasks.length,
+    subtasks.filter((st) => st.completed).length,
+    // The step's day on the counter: a change to one redraws the card.
+    subtasks.map((st) => (st.completed ? "" : st.dueOn ?? "")).join(),
+    m.listOfTask(task),
+    m.runEdges.first.has(id),
+    m.runEdges.last.has(id),
+    menuOpen, assignOpen, dueOpen, durationOpen, pickerOpen, durationEditing, notesOpen,
+    m.titleDraft?.taskId === id ? m.titleDraft.text : null,
+    notesOpen && m.notesExpanded,
+    // The rest only matters while one of this card's own things is open.
+    ...(anyOpen
+      ? [
+          m.menuAnchorEl, m.menuShowsMoveTargets, m.moveTargets, m.assignAnchorEl,
+          m.duePopoverAnchor, m.dueCalendarWanted, m.durationPopoverAnchor,
+          m.listPickerAnchorEl, m.editingDuration, m.notesDraft, m.state.people,
+          m.menuShowsColumns, m.menuShowsParents,
+        ]
+      : []),
+  ];
+}
+
+function sameValues(a: unknown[], b: unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (!Object.is(a[i], b[i])) return false;
+  return true;
+}
+
+type TaskCardProps = { m: TodoPageModel; task: TodoTask; page: unknown[]; own: unknown[] };
+
+/**
+ * Cards drawn as the board's columns draw them, done ones too: a done task
+ * is otherwise drawn as the Done pile's row (the box with the list's mark
+ * under it, "Due: Oct 19", the time it was done). The Calendar's list of a
+ * day says so, as it shows done and open tasks together.
+ */
+export const CardAsBoardContext = React.createContext(false);
+
+const TaskCard = React.memo(
+  function TaskCard({ m, task }: TaskCardProps) {
+    // Tests count drawings here (mounted-card-draws); nothing else sets it.
+    (globalThis as { __todoCardDrawn?: (id: string) => void }).__todoCardDrawn?.(task.id);
+    const asBoard = React.useContext(CardAsBoardContext);
+    return renderTaskBody(m, task, asBoard);
+  },
+  (a, b) => a.task === b.task && a.m === b.m && sameValues(a.page, b.page) && sameValues(a.own, b.own)
+);
+
+/** A task's card. Drawn again only when it changed: see TaskCard. */
+export function renderTask(m: TodoPageModel, task: TodoTask) {
+  return (
+    <TaskCard
+      key={task.id}
+      m={liveModel(m)}
+      task={task}
+      page={pageSignature(m)}
+      own={cardSignature(m, task)}
+    />
   );
 }

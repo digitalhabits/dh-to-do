@@ -130,6 +130,13 @@ export function useAddTaskComposer({
   /** The draft as the box last started it. Not changed since: see `open`. */
   const [startDraft, setStartDraft] = React.useState<TaskDraft>(() => makeDraft(initialDraft));
   const [draft, onDraftChange] = React.useState<TaskDraft>(startDraft);
+  /* A box on a list's tab adds to that list. On All it starts on the
+     list it last added a task to, kept per device, or on no list; there
+     the × puts the task on no list and forgets the list. */
+  const onAll = defaultList == null;
+  const [rememberedId, setRememberedId] = React.useState<string | null>(() =>
+    onAll ? readLastAddList() : null
+  );
   const startAgain = React.useCallback(() => {
     const fresh = makeDraft(initialDraft);
     setStartDraft(fresh);
@@ -173,7 +180,24 @@ export function useAddTaskComposer({
   const pickedList = draft.listId
     ? (lists.find((list) => list.id === draft.listId) ?? null)
     : null;
-  const targetList = pickedList ?? defaultList;
+  // Every add box on All shows the same list: one remembering it tells the rest.
+  React.useEffect(() => {
+    if (!onAll) return;
+    const onChange = () => setRememberedId(readLastAddList());
+    window.addEventListener(LAST_ADD_LIST_EVENT, onChange);
+    return () => window.removeEventListener(LAST_ADD_LIST_EVENT, onChange);
+  }, [onAll]);
+  const rememberedList = rememberedId
+    ? (lists.find((list) => list.id === rememberedId) ?? null)
+    : null;
+  const targetList = pickedList ?? defaultList ?? (onAll ? rememberedList : null);
+
+  /** On All, the × and "No list" in the menu: no list, and none kept. */
+  const clearList = () => {
+    patch({ listId: null });
+    setRememberedId(null);
+    writeLastAddList(null);
+  };
   const targetIconId = resolveListIconId(targetList?.emoji);
 
   /**
@@ -280,7 +304,12 @@ export function useAddTaskComposer({
       return;
     }
     setNotesWait(false);
-    const base: TaskDraft = { ...draft, notes };
+    // The list the chip shows is the list the task goes on.
+    const base: TaskDraft = { ...draft, notes, listId: targetList?.id ?? null };
+    if (onAll && targetList) {
+      setRememberedId(targetList.id);
+      writeLastAddList(targetList.id);
+    }
     const pending = pendingSubtask.trim();
     const final: TaskDraft = pending
       ? {
@@ -421,6 +450,8 @@ export function useAddTaskComposer({
     assignees,
     pickedList,
     targetList,
+    onAll,
+    clearList,
     targetIconId,
     dismiss,
     closeAssign,
@@ -437,3 +468,25 @@ export function useAddTaskComposer({
 }
 
 export type AddTaskComposerModel = ReturnType<typeof useAddTaskComposer>;
+
+/** The list a box on All last added a task to, kept per device. */
+const LAST_ADD_LIST_KEY = "redd-plan-todo-add-list";
+const LAST_ADD_LIST_EVENT = "todo-add-list-changed";
+
+function readLastAddList(): string | null {
+  try {
+    return typeof window === "undefined" ? null : localStorage.getItem(LAST_ADD_LIST_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastAddList(id: string | null) {
+  try {
+    if (id) localStorage.setItem(LAST_ADD_LIST_KEY, id);
+    else localStorage.removeItem(LAST_ADD_LIST_KEY);
+  } catch {
+    /* private mode */
+  }
+  window.dispatchEvent(new Event(LAST_ADD_LIST_EVENT));
+}

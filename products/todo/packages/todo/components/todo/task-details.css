@@ -1,0 +1,873 @@
+/* Task details share the app shell; its measured width also accounts for zoom
+   and embedding. Keep the list mounted so Back preserves its scroll position. */
+.todo-shell.task-details-open { --task-details-width: min(44%, 520px); }
+.todo-shell.task-details-open:not(.task-details-replace) #normal-mode { margin-right: var(--task-details-width); }
+/* content-visibility lets the browser skip laying out the hidden list, which
+   made opening details slow on a big board; it keeps the list's scroll place.
+   visibility stays for engines without it. */
+.todo-shell.task-details-replace #normal-mode { visibility: hidden; content-visibility: hidden; pointer-events: none; }
+.todo-shell .notes-overlay.task-details-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--task-details-width);
+  padding: 0;
+  z-index: 2000;
+  background: var(--modal-bg);
+  border-left: 1px solid var(--border-color-medium);
+}
+.todo-shell.task-details-replace .task-details-panel { width: 100%; border-left: 0; }
+/* Settings starts under the top bar, so the panel's own bar showed above
+   it. Hide the panel while Settings is open, as the top bar's buttons are.
+   It stays mounted, so the task and its notes are kept for Back. */
+.todo-shell:has(#settings-modal:not(.hidden)) .task-details-panel { visibility: hidden; pointer-events: none; }
+.todo-shell .task-details-panel .task-overlay-card {
+  --overlay-gutter: 39px;
+  --overlay-side: 22px;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+  box-shadow: none;
+}
+.todo-shell .task-details-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.todo-shell .task-details-back,
+.todo-shell .task-details-actions button,
+.todo-shell .task-details-open-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  width: auto;
+  height: auto;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 1;
+  pointer-events: auto;
+}
+.todo-shell .task-details-back:hover,
+.todo-shell .task-details-actions button:hover { background: var(--hover-bg); }
+.todo-shell .task-details-panel .notes-overlay-head { padding: 22px var(--overlay-side); }
+/* .task-overlay-card in each name: the desktop app loads todo.css after
+   this file, and its full-screen sizes must not win here. */
+.todo-shell .task-details-panel .task-overlay-card .notes-overlay-title,
+.todo-shell .task-details-panel .task-overlay-card .notes-overlay-title-input { font-size: 25px; line-height: 1.3; }
+/* A 24px box, easy to hit, centred on the title's letters, 15px from it. */
+.todo-shell .task-details-panel .task-overlay-card .task-overlay-gutter { padding-top: 5.5px; }
+.todo-shell .task-details-panel .task-overlay-card .notes-overlay-head .task-checkbox { width: 24px; height: 24px; border-radius: 6px; }
+.todo-shell .task-details-panel .task-overlay-top { padding: 0 var(--overlay-side) 22px; gap: 20px; }
+.todo-shell .task-details-panel .task-overlay-notes-band { padding: 20px var(--overlay-side); border-top: 0; }
+.todo-shell .task-details-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.todo-shell .task-details-actions .task-details-focus { background: var(--focus-btn-bg); color: var(--focus-btn-text); }
+/* Its own hover: the panel's button hover is a faint grey, and the dark
+   text on it could not be read in dark mode. */
+.todo-shell .task-details-actions .task-details-focus:hover { background: var(--focus-btn-bg-hover); }
+/* While focusing it wears the coral of the task row's focus button, so the
+   two read as one. */
+.todo-shell .task-details-actions .task-details-focus.active-focus {
+  background: var(--redd-coral-soft);
+  color: var(--redd-coral);
+  box-shadow: inset 0 0 0 1px var(--redd-coral-soft);
+}
+.todo-shell .task-details-actions .task-details-focus.active-focus:hover { box-shadow: inset 0 0 0 1px var(--redd-coral); }
+.todo-shell .task-details-actions button[aria-pressed="true"] { background: var(--active-bg); }
+.todo-shell .task-details-panel .task-overlay-chips { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.todo-shell .task-details-field { display: grid; grid-template-columns: 95px minmax(0, 1fr); gap: 10px; align-items: center; }
+.todo-shell .task-details-field-label { color: var(--text-tertiary); font-size: 13px; }
+.todo-shell .task-details-field > :last-child { min-width: 0; }
+/* Where the row starts, under the name or beside it: see "Under a card's
+   name" below. */
+.todo-shell .task-summary-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; padding-left: 12px; }
+/* The date chip has 10px padding inside its right edge. Take some of the
+   row gap back so the item after it does not sit too far away. */
+.todo-shell .task-summary-row .task-chip-due.is-set { margin-right: -6px; }
+.todo-shell .task-summary-value { display: inline-flex; align-items: center; gap: 5px; color: var(--text-tertiary); font-size: 12px; }
+.todo-shell .task-summary-value svg { width: 13px; height: 13px; }
+/* Keep the original round control inside the row. Its small slot stays put
+   so revealing it does not move or cover the task's title. */
+.todo-shell .task-item .task-main-row .task-row-focus {
+  display: inline-flex;
+  position: static;
+  flex: 0 0 26px;
+  min-width: 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-left: 6px;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.todo-shell .task-item:hover .task-main-row .task-row-focus,
+.todo-shell .task-item:focus-within .task-main-row .task-row-focus { opacity: 1; pointer-events: auto; }
+.todo-shell .task-details-panel .task-details-subtasks-heading {
+  margin: 0 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.todo-shell .task-details-panel .task-subtask-focus {
+  /* An icon only, round, as the Focus button on a task row. */
+  opacity: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--focus-btn-bg);
+  color: var(--focus-btn-text);
+}
+.todo-shell .task-details-panel .task-subtask-row:hover .task-subtask-focus,
+.todo-shell .task-details-panel .task-subtask-row:focus-within .task-subtask-focus { opacity: 1; }
+/* In focus it is coral, as the task's own button is, and stays shown. */
+.todo-shell .task-details-panel .task-subtask-focus.is-focusing { opacity: 1; background: var(--redd-coral-soft); color: var(--redd-coral); }
+.todo-shell .task-item.is-selected { outline: 2px solid var(--border-color-strong); outline-offset: -2px; }
+.todo-shell .task-details-panel .task-subtask-row { flex-wrap: wrap; }
+.todo-shell .task-details-panel .task-subtask-actions { flex-wrap: wrap; }
+.todo-shell .task-details-panel .task-subtask-row > .task-subtask-actions { margin-left: auto; }
+.todo-shell .task-details-panel .task-overlay-done-band { flex-wrap: wrap; }
+.todo-shell.mac-window.task-details-replace .task-details-panel { padding-top: 30px; }
+/* Taking the whole app, details are a column down its middle, at most
+   720px: the sides grow, so a band's colour still runs edge to edge. The
+   bar's buttons have 10px inside them, so their words line up with it. */
+.todo-shell.task-details-replace .task-details-panel .task-overlay-card { --overlay-side: max(22px, calc((100% - 720px) / 2)); }
+.todo-shell.task-details-replace .task-details-navigation { padding-inline: max(16px, calc((100% - 720px) / 2 - 10px)); }
+@media (pointer: coarse) {
+  .todo-shell .task-details-back,
+  .todo-shell .task-details-actions button,
+  .todo-shell .task-details-panel .task-subtask-focus { min-width: 44px; min-height: 44px; }
+}
+@media (hover: none) {
+  .todo-shell .task-item .task-main-row .task-row-focus { opacity: 1; pointer-events: auto; }
+  .todo-shell .task-details-panel .task-subtask-focus { opacity: 1; }
+}
+.todo-shell.mac-window.task-details-replace .dialog-title-strip { display: block; z-index: 2001; }
+/* A list with no icon shows its full name, not two letters: two lists can
+   start with the same letters. A long name is cut off; the tooltip has it all. */
+.todo-shell .task-list-origin.has-name { font-size: 12px; font-weight: 400; letter-spacing: 0; max-width: 12ch; padding: 0 4px; }
+.todo-shell .task-list-origin-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* More, in the top bar opposite Back: a big, soft, round-cornered button
+   with the dots lying flat. It applies to the whole task. */
+.todo-shell .task-details-navigation .task-details-more {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.todo-shell .task-details-navigation .task-details-more:hover,
+.todo-shell .task-details-navigation .task-menu-wrap.has-open-menu .task-details-more {
+  background: var(--border-color);
+  color: var(--text-primary);
+}
+.todo-shell .task-details-navigation .task-details-more svg { transform: rotate(90deg); }
+/* The More menu of task details: roomier rows, a softer card, the
+   icons in teal, Delete in red behind a line of its own. */
+.todo-shell .task-menu.task-details-menu {
+  min-width: 220px;
+  padding: 6px;
+  border-color: var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(27, 61, 74, 0.16);
+}
+.todo-shell .task-details-menu .task-menu-item {
+  gap: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+.todo-shell .task-details-menu .task-menu-item svg {
+  width: 17px;
+  height: 17px;
+  color: var(--redd-teal);
+}
+/* On the row the caret is on, filled in the app's green, the green icon
+   vanished: there it takes the row's light text colour. */
+.todo-shell .task-details-menu .task-menu-item:is(:focus-visible, [data-focus-walked]:focus).board-sort-item :is(.task-list-picker-icon, svg) {
+  color: inherit;
+}
+.todo-shell .task-details-menu .task-menu-item.delete-task-item {
+  position: relative;
+  margin-top: 9px;
+  color: var(--danger);
+}
+.todo-shell .task-details-menu .task-menu-item.delete-task-item svg { color: currentColor; }
+/* "Show more details" is about the task, not something done to it: it
+   goes under the line, above Delete, and the line moves up to it. */
+.todo-shell .task-details-menu .task-menu-item.task-info-item { position: relative; margin-top: 9px; }
+.todo-shell .task-details-menu .task-menu-item.task-info-item::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: -5px;
+  border-top: 1px solid var(--border-color);
+}
+.todo-shell .task-details-menu .task-info-item + .delete-task-item { margin-top: 0; }
+.todo-shell .task-details-menu .task-info-item + .delete-task-item::before { display: none; }
+.todo-shell .task-details-menu .task-menu-item.delete-task-item::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: -5px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ---- Details layout: list in the top bar, fields as plain rows ---- */
+
+/* Back on the left; the list and More on the right. They never compete:
+   a long list name is cut off first. */
+.todo-shell .task-details-navigation { flex-wrap: nowrap; }
+.todo-shell .task-details-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-left: auto;
+}
+.todo-shell .task-details-bar-end .task-overlay-list-wrap { min-width: 0; }
+/* The list as a ghost button: just its name, a tint on hover. */
+.todo-shell .task-details-list-btn {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.todo-shell .task-details-list-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Just the list's icon, a square like More beside it. */
+.todo-shell .task-details-list-btn.is-icon { justify-content: center; width: 36px; padding: 0; color: var(--text-secondary); }
+.todo-shell .task-details-list-btn.is-icon:hover { color: var(--text-primary); }
+.todo-shell .task-details-list-btn:hover:not(:disabled),
+.todo-shell .task-details-list-btn[aria-expanded="true"] { background: var(--hover-bg); }
+/* A task on no list says so, in the error colour. */
+.todo-shell .task-details-list-btn.is-unlisted { color: var(--danger); font-weight: 600; }
+.todo-shell .task-details-list-btn:disabled { cursor: default; }
+
+/* Focus, then the fields as rows with a line under each. */
+.todo-shell .task-details-panel .task-overlay-top { gap: 0; }
+.todo-shell .task-details-panel .task-details-actions { margin-bottom: 14px; }
+.todo-shell .task-details-panel .task-overlay-chips { gap: 0; }
+.todo-shell .task-details-panel .task-details-field,
+.todo-shell .task-details-panel .task-overlay-subtasks {
+  min-height: 52px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+/* A value is as wide as it is, not the whole row. */
+.todo-shell .task-details-panel .task-details-field > :last-child { justify-self: start; }
+
+/* Values are plain text: no pill until the pointer is on them. */
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip,
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value {
+  height: 36px;
+  margin-left: -10px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value { padding: 0 6px 0 0; }
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due { height: 36px; padding: 0 4px 0 10px; }
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip:hover:not(:disabled),
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip[aria-expanded="true"],
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value:hover,
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value:has([aria-expanded="true"]) {
+  border-color: transparent;
+  background: var(--hover-bg);
+  box-shadow: none;
+}
+.todo-shell .task-details-panel .task-overlay-faces { margin-left: -3px; }
+
+/* Subtasks as one more row: the label on the left, the list beside it. */
+.todo-shell .task-details-panel .task-overlay-subtasks {
+  display: grid;
+  grid-template-columns: 95px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 14px 0;
+}
+.todo-shell .task-details-panel .task-overlay-subtasks .task-details-subtasks-heading {
+  margin: 0;
+  padding-top: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+/* The duration picker in task details: presets as grey pills, three to a
+   row, then a line and a "Custom" box. */
+.todo-shell .duration-popover.is-pills { width: 17.5rem; padding: 14px; box-shadow: 0 12px 32px rgba(27, 61, 74, 0.16); border-color: var(--border-color); }
+.todo-shell .duration-popover.is-pills .duration-popover-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.todo-shell .duration-popover.is-pills .duration-popover-preset {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hover-bg);
+}
+.todo-shell .duration-popover.is-pills .duration-popover-preset:hover { background: var(--border-color); }
+.todo-shell .duration-popover.is-pills .duration-popover-preset.is-current { background: var(--focus-btn-bg); color: var(--focus-btn-text); }
+.todo-shell .duration-popover.is-pills .duration-popover-field { margin-top: 14px; padding-top: 14px; }
+.todo-shell .duration-popover.is-pills .duration-popover-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color-medium);
+  border-radius: 8px;
+  background: var(--overlay-cream, transparent);
+  font-size: 14px;
+}
+.todo-shell .duration-popover.is-pills .duration-popover-input:focus { border-color: var(--redd-teal); }
+
+/* The duration box: what the words were read as, on the right, muted. */
+.todo-shell .duration-popover.is-pills .duration-popover-field { position: relative; align-items: center; }
+.todo-shell .duration-popover.is-pills .duration-popover-read {
+  position: absolute;
+  right: 12px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Enter on words it cannot read: a red box and a hint under it. */
+.todo-shell .duration-popover.is-pills .duration-popover-field.is-unread .duration-popover-input { border-color: var(--danger); }
+.todo-shell .duration-popover-try { margin: 8px 0 0; color: var(--danger); font-size: 13px; }
+/* A set duration: in full, bold, with a × that clears it. */
+.todo-shell .task-overlay-duration-value { display: inline-flex; align-items: center; gap: 2px; }
+.todo-shell .task-overlay-duration-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.todo-shell .task-overlay-duration-clear:hover { background: var(--hover-bg); color: var(--text-primary); }
+
+/* Labels lead, values follow: a label is bold in the text colour; a value
+   is regular weight, the same size, and an empty one is muted. */
+.todo-shell .task-details-panel .task-details-field-label,
+.todo-shell .task-details-panel .task-overlay-subtasks .task-details-subtasks-heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip,
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value .task-overlay-due {
+  font-size: 14px;
+  font-weight: 400;
+}
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip:not(.is-ghost) { color: var(--text-primary); }
+.todo-shell .task-details-panel .task-overlay-duration:not(.is-ghost) { font-weight: 400; }
+.todo-shell .task-details-panel .task-overlay-duration.is-ghost,
+.todo-shell .task-details-panel .task-overlay-due.is-empty,
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip.is-ghost { color: var(--text-tertiary); }
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip svg,
+.todo-shell .task-details-panel .task-overlay-due.is-empty svg { color: var(--text-tertiary); }
+
+/* One column for the icons, where Assign's sits: each icon is 16px and
+   starts 1px into the value column, with 8px before its words. The due
+   chip has no border, so it starts 1px further in to match the others.
+   The add-subtask plus sits at the same place. */
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip > svg:first-child,
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due > svg:first-child {
+  width: 16px;
+  height: 16px;
+}
+.todo-shell .task-details-panel .task-details-field .task-overlay-chip,
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due { gap: 8px; }
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value { margin-left: -9px; }
+.todo-shell .task-details-panel .task-subtask-check.task-subtask-check-ghost {
+  justify-content: flex-start;
+  padding-left: 1px;
+  border-width: 0;
+}
+/* The notes band starts right under Subtasks: no line of its own there. */
+.todo-shell .task-details-panel .task-overlay-subtasks { border-bottom: 0; }
+/* The add-subtask words start where "Add duration" does: a 16px plus
+   1px in, then 8px. */
+.todo-shell .task-details-panel .task-subtask-add-row { gap: 8px; }
+.todo-shell .task-details-panel .task-subtask-check.task-subtask-check-ghost { width: 17px; }
+/* The box's own 4px inside its left edge pushed its words past the others. */
+.todo-shell .task-details-panel .task-subtask-add-row .task-subtask-add { padding-left: 0; }
+
+/* Today is plain text here, as any other date; only an overdue one is red. */
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value.is-today .task-overlay-due,
+.todo-shell .task-details-panel .task-overlay-chips .task-overlay-due-value.is-today .task-overlay-due svg {
+  color: var(--text-primary);
+}
+/* The duration's × as close to its words as the date's is. */
+.todo-shell .task-details-panel .task-overlay-duration:not(.is-ghost) { padding-right: 4px; }
+
+/* The × that clears a date or a duration waits for the pointer on its row,
+   or the keyboard in it. Hidden, not faded: WebKit can leave a faded
+   control painted. It keeps its place, so nothing moves when it shows. */
+.todo-shell .task-details-panel .task-details-field .task-overlay-due-clear,
+.todo-shell .task-details-panel .task-details-field .task-overlay-duration-clear { visibility: hidden; }
+.todo-shell .task-details-panel .task-details-field:hover .task-overlay-due-clear,
+.todo-shell .task-details-panel .task-details-field:focus-within .task-overlay-due-clear,
+.todo-shell .task-details-panel .task-details-field:hover .task-overlay-duration-clear,
+.todo-shell .task-details-panel .task-details-field:focus-within .task-overlay-duration-clear { visibility: visible; }
+@media (hover: none) {
+  .todo-shell .task-details-panel .task-details-field .task-overlay-due-clear,
+  .todo-shell .task-details-panel .task-details-field .task-overlay-duration-clear { visibility: visible; }
+}
+
+/* The duration picker: no title, a × in the top corner, the presets
+   beside it (room is kept for the ×), and the box and a Set button side by
+   side at the foot. */
+.todo-shell .duration-popover.is-pills { width: 19rem; }
+.todo-shell .duration-popover.is-pills .duration-popover-presets { padding-right: 30px; }
+.todo-shell .duration-popover-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.todo-shell .duration-popover-close:hover { background: var(--hover-bg); color: var(--text-primary); }
+.todo-shell .duration-popover.is-pills .duration-popover-field { gap: 8px; }
+.todo-shell .duration-popover-box { position: relative; display: flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+/* Room on the right only while there is a read value to show there. */
+.todo-shell .duration-popover-box:has(.duration-popover-read) .duration-popover-input { padding-right: 7.5em; }
+.todo-shell .duration-popover.is-pills .duration-popover-read { top: 50%; transform: translateY(-50%); }
+.todo-shell .duration-popover-set {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--focus-btn-bg);
+  color: var(--focus-btn-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.todo-shell .duration-popover-set:hover:not(:disabled) { background: var(--focus-btn-bg-hover); }
+.todo-shell .duration-popover-set:disabled { opacity: 0.5; cursor: default; }
+.todo-shell .duration-popover.is-pills .duration-popover-input { height: 38px; box-sizing: border-box; }
+
+/* Notes is labelled as the fields above are: bold, in the text colour. */
+.todo-shell .task-details-panel .task-overlay-band-label {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* The Notes mark on a card opens details at the notes. */
+.todo-shell .task-summary-notes {
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.todo-shell .task-summary-notes:hover { background: var(--hover-bg); color: var(--text-primary); }
+
+/* The line between the list and details: drag it to change their width
+   (DetailsResizer). A thin strip over the panel's left border, with a teal
+   line while it is pointed at, dragged or has the keyboard. */
+.todo-shell .task-details-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 10;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.todo-shell .task-details-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.todo-shell .task-details-resizer:hover::after,
+.todo-shell .task-details-resizer:focus-visible::after,
+.todo-shell.is-resizing-details .task-details-resizer::after { background: var(--redd-teal); }
+.todo-shell .task-details-resizer:focus-visible { outline: none; }
+/* Details fill the app: there is no line to drag. */
+.todo-shell.task-details-replace .task-details-resizer { display: none; }
+/* While dragging: the arrow stays, and no words are picked up on the way. */
+.todo-shell.is-resizing-details,
+.todo-shell.is-resizing-details * { cursor: col-resize !important; user-select: none; }
+/* While the divider moves, the board follows it exactly: no column or
+   section eases to its new size, so crossing a breakpoint (columns to one)
+   is a cut, not a flash of things sliding. */
+.todo-shell.is-resizing-details *,
+.todo-shell.is-resizing-details *::before,
+.todo-shell.is-resizing-details *::after { transition: none !important; animation: none !important; }
+
+/* Room for subtasks in a narrow panel.
+   The words take what the controls leave, and wrap in themselves, so the
+   controls stay on the first line; an older rule started them at 144px,
+   which pushed the controls onto a line of their own that kept its height
+   even while they were hidden. The add row's controls take no room until
+   a subtask is being written. Below 560px the "Subtasks" label stands
+   above the list, which then has the panel's whole width. */
+.todo-shell .task-details-panel { container: task-details / inline-size; }
+.todo-shell .task-details-panel .task-subtask-row .task-subtask-text { flex: 1 1 0; min-width: 6em; }
+.todo-shell .task-details-panel .task-subtask-add-row .task-subtask-add { flex: 1 1 0; min-width: 6em; }
+.todo-shell .task-details-panel .task-subtask-add-row:not(.is-drafting):not(:focus-within) .task-subtask-actions { display: none; }
+.todo-shell .task-details-panel .task-subtask-add-row { flex-wrap: wrap; }
+@container task-details (max-width: 560px) {
+  /* Only once there is a subtask, or the first is being written: with
+     none, the label and "Add subtask..." stay side by side. */
+  .todo-shell .task-details-panel .task-overlay-subtasks:has(.task-subtask-row[data-subtask-id], .task-subtask-add-row:focus-within, .task-subtask-add-row.is-drafting) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}
+
+
+/* "Add subtask..." starts where a subtask's words do, 30px in: the
+   subtask's gap after its circle is 4px less (its box keeps its padding,
+   for the edit highlight), and the add row's gap after its plus 5px more. */
+.todo-shell .task-details-panel .task-subtask-row { column-gap: 6px; }
+.todo-shell .task-details-panel .task-subtask-add-row { column-gap: 13px; }
+
+/* A task row's ⋮, right of its Focus button: waits for the pointer, as
+   Focus does, and stays while its menu is open. */
+.todo-shell .task-item .task-main-row .task-menu-wrap { flex: 0 0 auto; margin-left: 2px; }
+/* Focus and ⋮ are 26px, a line of the name 20px: they hang 3px over the
+   row at top and bottom, so the row is the name's height and the card's
+   top gap is what it was before they came into the row. */
+.todo-shell .task-item .task-main-row .task-row-focus,
+.todo-shell .task-item .task-main-row .task-row-more { margin-top: -3px; margin-bottom: -3px; }
+.todo-shell .task-item .task-main-row .task-row-more {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  opacity: 0;
+  pointer-events: none;
+}
+.todo-shell .task-item:hover .task-main-row .task-row-more,
+.todo-shell .task-item:focus-within .task-main-row .task-row-more,
+.todo-shell .task-item .task-main-row .task-menu-wrap.has-open-menu .task-row-more { opacity: 1; pointer-events: auto; }
+.todo-shell .task-item .task-main-row .task-row-more:hover,
+.todo-shell .task-item .task-main-row .task-menu-wrap.has-open-menu .task-row-more { background: var(--hover-bg); color: var(--text-primary); }
+@media (hover: none) {
+  .todo-shell .task-item .task-main-row .task-row-more { opacity: 1; pointer-events: auto; }
+}
+
+/* The list's order with Board View off (SortControl): right-aligned above
+   its tasks. As on a board column, it shows only when the pointer is on
+   the list. On a touch screen there is no hover, so it is always shown. */
+.todo-shell .list-sort-bar { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.todo-shell .task-area.list-column:hover .list-sort-bar .board-sort-btn { opacity: 1; }
+@media (hover: none) {
+  .todo-shell .list-sort-bar .board-sort-btn { opacity: 1; }
+}
+/* The list's own top room sat above its order control; with the control
+   there, it takes that place. */
+.todo-shell .task-area.list-column:has(> .tasks-container > .list-sort-bar) { padding-top: 12px; }
+
+/* With Board View off, Today reads as on the board's Today column: plain,
+   bold as today is. A date gone by stays red. */
+.todo-shell .task-area.list-column .task-chip-due.is-due-today.is-set { color: var(--text-primary); }
+
+/* "Move to column..." names the task's column at the right, quietly. */
+.todo-shell .task-menu-item .task-menu-item-aside { margin-left: auto; padding-left: 16px; color: var(--text-tertiary); font-size: 13px; }
+
+/* A done task lines up as an open one does: the mark is the checkbox's
+   size and place, and the name does not move. The line that says when is
+   under the name. The band's foot and the room under it are an open
+   head's 22px. */
+.todo-shell .task-details-panel .task-overlay-done-band { align-items: flex-start; padding-bottom: 22px; }
+.todo-shell .task-details-panel .task-overlay-card .task-overlay-done-band .task-overlay-gutter { padding-top: 5.5px; }
+.todo-shell .task-details-panel .task-overlay-done-mark { width: 24px; height: 24px; border-radius: 6px; }
+.todo-shell .task-details-panel .task-overlay-done-mark svg { width: 15px; height: 15px; }
+.todo-shell .task-details-panel .task-overlay-done-when { margin: 4px 0 0; }
+.todo-shell .task-details-panel .task-overlay-card.is-done .task-overlay-top { padding-top: 22px; }
+/* Favourite has a quiet fill on or off, so its edge lines up with the
+   labels under it as Focus's does. */
+.todo-shell .task-details-actions .task-details-favourite { background: var(--hover-bg); }
+.todo-shell .task-details-actions .task-details-favourite:hover { background: var(--border-color); }
+
+/* Focus and Favourite are the first thing in the scrolling area, and its
+   edge cut the top of a focus ring off. 5px of the room under the title
+   moves inside the area, so the ring fits and nothing shifts. */
+.todo-shell .task-details-panel .task-overlay-card:not(.is-done) .notes-overlay-head { padding-bottom: 17px; }
+.todo-shell .task-details-panel .task-overlay-card:not(.is-done) .task-overlay-top { padding-top: 5px; }
+.todo-shell .task-details-panel .task-overlay-card.is-done .task-overlay-top { padding-top: 22px; }
+
+/* Settings > Task card density: each option shows a card in miniature. */
+.todo-shell #settings-modal .board-people-scope-btn { align-items: center; }
+.todo-shell .card-density-glyph { flex-shrink: 0; }
+/* The chosen density is plain in either theme: a teal tint and edge, the
+   other option quieter. (The card colour it had matched the dark panel.) */
+.todo-shell #settings-modal [role="radiogroup"] .board-people-scope-btn { color: var(--text-tertiary); }
+.todo-shell #settings-modal [role="radiogroup"] .board-people-scope-btn:hover { color: var(--text-primary); }
+.todo-shell #settings-modal [role="radiogroup"] .board-people-scope-btn.active {
+  background: color-mix(in srgb, var(--redd-teal) 22%, transparent);
+  border-color: color-mix(in srgb, var(--redd-teal) 55%, transparent);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+/* Under a card's name (the default, Loose), its details start where the
+   name does: past the checkbox (18px) and its 12px. Each detail that is a
+   chip gives back the room inside its own edge, on both sides, so the first
+   icon is under the name's first letter and every gap in the row is the
+   same, whatever the order. With Compact cards the details sit beside the
+   name, 12px after it. */
+.todo-shell .task-item .task-summary-row { padding-left: 30px; }
+.todo-shell.todo-cards-one-line .task-item .task-summary-row { padding-left: 12px; }
+.todo-shell .task-summary-row > .task-chip-wrap > .task-chip-due { margin-inline: -7px; }
+.todo-shell .task-summary-row > .task-subtask-chip { margin-inline: -8px; }
+/* "✓ 2/6 · Tue": the first step's day, when it comes before the task's;
+   coral when it is today, tomorrow or past. */
+.todo-shell .task-subtask-chip-due { font-weight: 500; }
+.todo-shell .task-subtask-chip-due.is-soon { color: var(--redd-coral); font-weight: 600; }
+.todo-shell .task-summary-row > .task-chip-wrap > .task-chip-assign { margin-inline: -3px; }
+
+/* A step's row in details (design "20c/20d"): a grid of the circle, the
+   words and, on the right of the first line, who it is for; under the
+   words a second line with its day, time and notes, only when set. Focus
+   and ⋮ float over the right end on hover, on the row's hover colour, so
+   the words wrap as at rest. The grip stays in the gutter (absolute). */
+.todo-shell .task-details-panel .task-subtask-row[data-subtask-id] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  row-gap: 0;
+}
+.todo-shell .task-details-panel .task-subtask-row[data-subtask-id] > .task-subtask-check { grid-column: 1; grid-row: 1; }
+.todo-shell .task-details-panel .task-subtask-row[data-subtask-id] > .task-subtask-text { grid-column: 2; grid-row: 1; min-width: 0; }
+.todo-shell .task-details-panel .task-subtask-row[data-subtask-id] > .task-subtask-who { grid-column: 3; grid-row: 1; display: inline-flex; min-width: 26px; justify-content: flex-end; margin-top: 1px; }
+.todo-shell .task-details-panel .task-subtask-row[data-subtask-id] > .task-subtask-meta {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  padding-bottom: 3px;
+}
+.todo-shell .task-subtask-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.todo-shell .task-subtask-meta-item:hover,
+.todo-shell .task-subtask-meta-item.is-active { background: var(--hover-bg); color: var(--text-primary); }
+.todo-shell .task-subtask-meta-item.task-subtask-due.is-soon { color: var(--redd-coral); font-weight: 600; }
+.todo-shell .task-details-panel .task-subtask-row[data-subtask-id] > .task-subtask-float {
+  position: absolute;
+  top: 3px;
+  right: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 6px;
+  border-radius: 8px;
+}
+/* The panel's colour with the hover's over it: the row's own look, and
+   solid, so it covers the words' end. */
+.todo-shell .task-details-panel .task-subtask-row[data-subtask-id]:is(:hover, :focus-within) > .task-subtask-float {
+  background: linear-gradient(var(--hover-bg), var(--hover-bg)), var(--modal-bg);
+}
+
+/* The row that adds a step: who it is for stands in the avatars' column,
+   at the right, as on the rows above. */
+.todo-shell .task-details-panel .task-subtask-add-row .task-subtask-who { display: inline-flex; min-width: 26px; justify-content: flex-end; }
+
+/* Steps due today or before, at the top of the Today column, as cards of
+   their own (stepsDueToday). Above the name, the task each is a step of:
+   "↳ Parent", where the name starts, small and quiet; a click opens it. */
+.todo-shell .board-column-steps { display: flex; flex-direction: column; }
+.todo-shell .task-step-parent {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: -2px 0 4px;
+  padding: 0 0 0 30px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.todo-shell .task-step-parent span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-shell .task-step-parent:hover { color: var(--text-primary); }
+.todo-shell.todo-cards-one-line .task-step-parent { padding-left: 30px; }
+
+/* The room kept for cards not drawn yet (GrowingCards): its full height,
+   not squeezed by the column's flex box, so the scrollbar is true. */
+.todo-shell .cards-not-drawn { flex: 0 0 auto; pointer-events: none; }
+
+/* "Notes ▾" in the Today session (NotesChip): a peek on hover, open in
+   place on a click, tinted while open. */
+.todo-shell .notes-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  margin-left: -8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.todo-shell .notes-chip:hover { background: var(--hover-bg); color: var(--text-primary); }
+.todo-shell .notes-chip.is-open { background: var(--hover-bg); color: var(--text-primary); font-weight: 600; }
+.todo-shell .today-session-subtask-meta .notes-chip { margin-left: 0; }
+/* The peek: the note's words, nothing moved under it. Named in full: the
+   menu portal's own rule (padding, fill) otherwise wins in the desktop app,
+   which loads this file first. The pointer may rest on it, and a click
+   opens the note in place. */
+.todo-shell.todo-menu-portal-root .todo-menu-portal.notes-peek {
+  max-width: min(26rem, 90vw);
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--modal-bg, var(--task-bg));
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  box-shadow: 0 12px 32px rgba(27, 61, 74, 0.18);
+}
+.todo-shell .notes-peek-body { padding: 14px 18px 12px; cursor: pointer; }
+.todo-shell .notes-peek-body p { margin: 0 0 8px; }
+.todo-shell .notes-peek-body .notes-peek-hint { margin: 4px 0 0; color: var(--text-tertiary); font-size: 12.5px; }
+/* "Show more details": who made the task and when, read and not changed,
+   so one quiet line of words over the fields, not a field of its own. */
+.todo-shell .task-details-info { margin: 0 0 4px; color: var(--text-tertiary); font-size: 13px; line-height: 1.4; }
+
+/* The bar's full-screen button (TaskDetailsBar), a ghost square like More. */
+.todo-shell .task-details-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.todo-shell .task-details-expand:hover { background: var(--hover-bg); color: var(--text-primary); }
+
+/* Full screen: a centred document over the whole window, a little wider
+   than the column a narrow window gets. The bar runs edge to edge. */
+.todo-shell.task-details-full .task-details-panel .task-overlay-card { --overlay-side: max(22px, calc((100% - 860px) / 2)); }
+.todo-shell.task-details-full .task-details-navigation { padding-inline: 24px; }
+.todo-shell.task-details-full .task-details-panel .task-overlay-card .notes-overlay-title,
+.todo-shell.task-details-full .task-details-panel .task-overlay-card .notes-overlay-title-input { font-size: 34px; line-height: 1.2; }
+/* Focus, and who made the task beside it. */
+.todo-shell .task-details-lead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-bottom: 18px; }
+.todo-shell .task-details-panel .task-details-lead .task-details-actions { margin-bottom: 0; }
+.todo-shell .task-details-lead .task-details-info { margin: 0; }
+/* The fields go across, label over value, between two lines. */
+.todo-shell.task-details-full .task-details-panel .task-overlay-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0 24px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.todo-shell.task-details-full .task-details-panel .task-details-field {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-items: start;
+  min-height: 0;
+  padding: 4px 0;
+  border-bottom: 0;
+}
+.todo-shell.task-details-full .task-details-panel .task-details-field-label,
+.todo-shell.task-details-full .task-details-panel .task-overlay-subtasks .task-details-subtasks-heading { color: var(--accent-primary); }
+/* "Subtasks" over its list, as "Notes" stands over the notes. */
+.todo-shell.task-details-full .task-details-panel .task-overlay-subtasks {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 18px;
+  border-bottom: 0;
+}
+.todo-shell.task-details-full .task-details-panel .task-overlay-subtasks .task-details-subtasks-heading { padding-top: 0; font-weight: 600; }
+
+/* The step whose card opened these details, lit up for a moment
+   (flashSubtaskRow). */
+@keyframes task-subtask-flash {
+  0%, 35% { background-color: color-mix(in srgb, var(--accent-primary) 16%, transparent); }
+  100% { background-color: transparent; }
+}
+.todo-shell .task-details-panel .task-subtask-row.is-flash {
+  border-radius: 8px;
+  animation: task-subtask-flash 1.8s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .todo-shell .task-details-panel .task-subtask-row.is-flash { animation-duration: 2.4s; animation-timing-function: steps(1, end); }
+}

@@ -10,6 +10,7 @@ import { TODO_APP_VERSION } from "@/lib/todo/version";
 import { isDemoApp, seedDemoBoard } from "./demo/seed";
 import { showUsagePingSwitchInDev, startUsagePing } from "./usage-ping";
 import { WelcomeScreen } from "./WelcomeScreen";
+import { WindowControls } from "./WindowControls";
 
 import "react-quill-new/dist/quill.snow.css";
 import "react-quill-new/dist/quill.bubble.css";
@@ -54,10 +55,11 @@ if (isFocusWindow) {
   // Lets standalone.css drop the opaque page background: the panel is a
   // transparent window with its own rounded bar.
   document.documentElement.classList.add("focus-window");
-  // Windows draws the panel's rounded corners and shadow (focus.rs), so
-  // standalone.css drops the bar's own.
-  if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("platform-windows");
 }
+// On Windows: the focus panel's rounded corners and shadow are drawn by
+// Windows (focus.rs), so standalone.css drops the bar's own; and the main
+// window has no system title bar, so WindowControls draws its buttons.
+if (/^Win/.test(navigator.platform)) document.documentElement.classList.add("platform-windows");
 
 /**
  * The demo app (`pnpm app:dev:demo`) fills its own board before the page
@@ -83,6 +85,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <>
         <TodoPage initialState={null} appVersion={TODO_APP_VERSION} />
         {demo ? null : <WelcomeScreen alwaysShow={import.meta.env.DEV} />}
+        <WindowControls />
         <Toaster position="bottom-center" richColors closeButton />
       </>
     )}

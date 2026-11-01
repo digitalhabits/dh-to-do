@@ -59,8 +59,9 @@ export function TaskOverlayDue({
           setAnchor((open) => (open ? null : el));
         }}
       >
-        <Calendar size={14} strokeWidth={2} aria-hidden />
-        <span>{task.dueOn ? formatDueOn(task.dueOn, lang, t) : t("fieldDue")}</span>
+        {/* The icon asks for a date; once there is one, the date says it. */}
+        {task.dueOn ? null : <Calendar size={14} strokeWidth={2} aria-hidden />}
+        <span>{task.dueOn ? formatDueOn(task.dueOn, lang, t) : t("addDueDate")}</span>
       </button>
       {task.dueOn ? (
         <button

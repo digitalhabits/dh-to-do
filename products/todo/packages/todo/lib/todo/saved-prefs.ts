@@ -27,6 +27,7 @@ export const ASSIGN_ENABLED_KEY = "redd-plan-todo-assign-enabled";
 export const DEFAULT_COLUMN_ORDER: TodoBoardColumn[] = ["backlog", "week", "today"];
 export const TILE_OPEN_COLUMN_KEY = "redd-plan-todo-tile-open-column";
 export const CURRENT_GROUP_KEY = "redd-plan-todo-current-group";
+/** No longer written: focus mode starts off each time. Read only to remove it. */
 export const FOCUS_MODE_KEY = "redd-plan-todo-focus-mode";
 /** Set once the board has held a task. After that, no "Add a task below". */
 export const HAD_TASK_KEY = "redd-plan-todo-had-task";

@@ -45,7 +45,7 @@ function readMinutes(text: string): number | null {
 }
 
 /**
- * Minutes, said short: "45m", "1h", "1.5h", "1h 15m".
+ * Minutes, said short: "45m", "1h", "1h 30m", "1h 15m".
  * `minuteUnit` and `hourUnit` are the language's letters ("m" / "h").
  */
 export function formatDurationShort(
@@ -57,12 +57,22 @@ export function formatDurationShort(
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   if (rest === 0) return `${hours}${hourUnit}`;
-  if (rest === 30) return `${hours}.5${hourUnit}`;
   return `${hours}${hourUnit} ${rest}${minuteUnit}`;
 }
 
 /**
- * The time spent on a done task, said as a duration is ("45m", "1.5h",
+ * Minutes, said in full for task details: "45 min", "1 h", "1 h 30 min".
+ * `hourUnit` is the language's letter ("h" / "t"); "min" is the same in both.
+ */
+export function formatDurationLong(minutes: number, hourUnit: string): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} ${hourUnit}` : `${hours} ${hourUnit} ${rest} min`;
+}
+
+/**
+ * The time spent on a done task, said as a duration is ("45m", "1h 30m",
  * "1h 15m"), and "<1m" under a minute.
  */
 export function formatSpentTime(

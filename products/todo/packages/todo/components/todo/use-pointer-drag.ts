@@ -8,7 +8,7 @@ import { planTaskDrop, positionFromNeighbours } from "@/lib/todo/board-drop";
 import { placeInColumn } from "@/lib/todo/board-order";
 import { describeError } from "@/lib/todo/errors";
 import { fillText } from "@/lib/todo/i18n";
-import type { TodoView } from "@/lib/todo/list-scope";
+import { TODO_EVERYTHING_GROUP_ID, type TodoView } from "@/lib/todo/list-scope";
 import {
   TODO_ALL_LIST_ID,
   boardColumnOf,
@@ -155,6 +155,20 @@ export function useDragState() {
     suppressGroupClickUntil,
     suppressPersonClickUntil,
   };
+}
+
+/**
+ * When the last carried card was put down. The click that ends a drag is
+ * not a click on the card (see the card's onClick in todo-task-card).
+ */
+export const lastTaskDragEnd = { at: 0 };
+
+/** What on a card is not the card, for a click that opens its details. */
+export function isCardClickSkip(target: HTMLElement): boolean {
+  return Boolean(target.closest(
+    "label, [role=menu], [role=dialog], [role=listbox], .task-list-picker," +
+      " .notes-editor-wrapper, .calendar-task-popover"
+  ));
 }
 
 export function isInteractiveDragTarget(target: EventTarget | null): boolean {
@@ -496,7 +510,11 @@ export function usePointerDrag({
         tabDropGroupIdRef.current = dropGroupId;
         setTabDropGroupId(dropGroupId);
       }
-      if (dropGroupId) {
+      // In Everything a tab can join another group, but not move among the
+      // tabs: its neighbours there can be another group's, and a position
+      // counts within its own group.
+      const { currentGroupId, groupsEnabled } = liveRef.current;
+      if (dropGroupId || (groupsEnabled && currentGroupId === TODO_EVERYTHING_GROUP_ID)) {
         setListPreviewIds(null);
         return;
       }
@@ -666,6 +684,7 @@ export function usePointerDrag({
       personDragRef.current = null;
       const finish = finishDragRef.current;
       if (taskDrag?.started) {
+        lastTaskDragEnd.at = Date.now();
         finish.finishTaskDrag(taskDrag.taskId);
       } else if (taskDrag) {
         boardDragHoverRef.current = null;

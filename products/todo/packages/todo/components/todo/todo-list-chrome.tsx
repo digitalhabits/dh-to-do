@@ -13,12 +13,7 @@ import * as React from "react";
 import { isInteractiveDragTarget } from "@/components/todo/use-pointer-drag";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { ListIcon, resolveListIconId } from "@/lib/todo/list-icons";
-import {
-  TODO_EVERYTHING_GROUP_ID,
-  groupOfTab,
-  groupTabId,
-  isEverythingGroup,
-} from "@/lib/todo/list-scope";
+import { TODO_EVERYTHING_GROUP_ID, isEverythingGroup } from "@/lib/todo/list-scope";
 import { persistPref } from "@/lib/todo/saved-prefs";
 import { hexToRgba, resolveTabColorHex } from "@/lib/todo/tab-colours";
 import {
@@ -117,44 +112,6 @@ export function renderEverythingGroupTab(m: TodoPageModel) {
       <span className="group-divider" aria-hidden="true" />
     </React.Fragment>
   );
-}
-
-/**
- * Everything's tab row: All (every list's tasks), then a tab per group that
- * shows the tasks of that group's lists. A group's tab says "All Sales", not
- * "Sales": beside the group tabs above, the bare name read as the group
- * itself, not as every list in it.
- */
-export function renderEverythingTabs(m: TodoPageModel) {
-  const { view, setView, currentListId, setCurrentListId, t, groupsSorted } = m;
-  const openGroupId = groupOfTab(currentListId);
-  const choose = (listId: string) => {
-    setView("lists");
-    setCurrentListId(listId);
-    persistPref(TODO_CURRENT_LIST_KEY, listId);
-  };
-  const tab = (key: string, label: string, active: boolean, listId: string) => (
-    <div
-      key={key}
-      className={`tab ${key === TODO_ALL_LIST_ID ? "tab-all " : ""}${view === "lists" && active ? "active" : ""}`}
-      onClick={() => choose(listId)}
-    >
-      <span className="tab-label">
-        <span className="tab-name">{label}</span>
-      </span>
-    </div>
-  );
-  return [
-    tab(TODO_ALL_LIST_ID, t("boardAll"), openGroupId === null, TODO_ALL_LIST_ID),
-    ...groupsSorted.map((group) =>
-      tab(
-        group.id,
-        t("allOfGroup").replace("{name}", group.name),
-        openGroupId === group.id,
-        groupTabId(group.id)
-      )
-    ),
-  ];
 }
 
 export function renderAllListTab(m: TodoPageModel) {

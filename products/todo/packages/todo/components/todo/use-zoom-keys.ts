@@ -13,7 +13,7 @@ const ZOOM_PILL: React.CSSProperties = {
   color: "hsl(211 35% 18%)",
   border: "1px solid hsl(33 16% 86%)",
   borderRadius: "999px",
-  boxShadow: "0 4px 14px rgba(30, 45, 62, 0.10)",
+  boxShadow: "0 4px 14px rgba(27, 61, 74, 0.10)",
   padding: "6px 14px",
   width: "auto",
   minWidth: 0,

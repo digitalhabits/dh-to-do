@@ -1,3 +1,4 @@
+import { openTaskDetails, closeTaskDetails, typeInto } from "./page-walk.mjs";
 /**
  * Board View: the columns, each column's order, carrying a card to another
  * column, to another place in its column and to another list's tab,
@@ -20,6 +21,7 @@ import {
   click,
   drag,
   press,
+  pressCmd,
   settle,
   stubBoxes,
   stubPointAt,
@@ -252,17 +254,20 @@ export async function walkBoard(page) {
   // The Today session, on the column as it stands.
   click(column("today").querySelector(".board-start-btn"));
   check("Start opens the Today session", await until(() => Boolean($(".today-session"))));
-  // The task in hand carries the board card's controls, in the board's places.
+  // The task in hand: its details row under its name, its list by name,
+  // Focus and ⋮ in its corner, as a task waiting has them, and Pause,
+  // Skip and the clock at its foot.
   const now = $(".today-session-now");
-  check("the task in hand has the board's corner pill", Boolean(now?.querySelector(":scope > .task-utility-pill .task-expand-btn")));
-  check("and its row of chips under Skip and the clock", Boolean(now?.querySelector(":scope > .today-session-now-actions ~ .task-meta-row .task-meta-chips")));
+  check("the task in hand has the board row's ⋮ in its corner", Boolean(now?.querySelector(":scope > .task-session-controls .task-row-more")) && !now?.querySelector(".task-utility-pill"));
+  check("its details under its name, and Pause, Skip and the clock at its foot", Boolean(now?.querySelector(":scope > .today-session-now-head + .task-summary-row")) && Boolean(now?.querySelector(":scope > .task-summary-row ~ .today-session-now-footer")));
+  check("it names its list in words", Boolean(now?.querySelector(".task-summary-list")?.textContent));
   check(
-    "a task waiting has the same pill and chips",
-    Boolean($(".today-session-queue .today-session-task.task-item > .task-utility-pill") && $(".today-session-queue .today-session-task.task-item > .task-meta-row .task-meta-chips"))
+    "a task waiting has the board row's ⋮ and details",
+    Boolean($(".today-session-queue .today-session-task.task-item > .task-session-controls") && $(".today-session-queue .today-session-task.task-item > .task-summary-row"))
   );
-  // The list chip opens its picker in the session. The board card behind
-  // drew a second picker, and the two closed each other at once.
-  click(now?.querySelector(".task-list-origin"));
+  // A waiting task's list chip opens its picker in the session. The board
+  // card behind drew a second picker, and the two closed each other at once.
+  click($(".today-session-queue .task-list-origin"));
   check("the list chip in the session opens its picker", await until(() => $$(".task-list-picker").length === 1), $$(".task-list-picker").length);
   document.body.click();
   await until(() => !$(".task-list-picker"));
@@ -309,7 +314,8 @@ export async function walkBoard(page) {
       .map((row) => row.person_id)
       .sort()
       .join();
-  const chip = () => cardOf("Paint the gate")?.querySelector(".task-chip-assign");
+  await openTaskDetails("Paint the gate");
+  const chip = () => $('.task-details-panel [aria-label="Assigned to"]');
   const menuItem = (name) => $$(".assign-menu-portal .assign-menu-item").find((el) => el.textContent.includes(name));
   click(chip());
   check("the chip opens the people menu", await until(() => Boolean(menuItem("Abe"))));
@@ -318,8 +324,14 @@ export async function walkBoard(page) {
   check("and the menu stays up for another", Boolean($(".assign-menu-portal")));
   $(".assign-menu-portal").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   check("Escape puts the menu away", await until(() => !$(".assign-menu-portal")));
-  check("and gives the caret back to the chip", document.activeElement?.classList.contains("task-chip-assign"));
+  check("and gives the caret back to the chip", document.activeElement === chip());
+  // Cmd+Z takes the person back off; the walk then puts them on again.
+  pressCmd(window, "z");
+  check("Cmd+Z takes a person put on back off", await until(() => people("Paint the gate") === zoe.id), people("Paint the gate"));
   click(chip());
+  await until(() => Boolean(menuItem("Abe")));
+  click(menuItem("Abe"));
+  await until(() => people("Paint the gate") === [abe.id, zoe.id].sort().join());
   await until(() => Boolean(menuItem("Zoe")));
   click(menuItem("Zoe"));
   check("taking off a person who holds a step asks first", await until(() => Boolean($(".delete-confirm-btn"))));
@@ -336,11 +348,12 @@ export async function walkBoard(page) {
   click($(".people-editor-done"));
   check("Done puts it away", await until(() => !$(".people-editor")));
 
-  // The length chip of a card opens the length popover.
-  click(cardOf("Paint the gate").querySelector(".task-chip-duration"));
-  check("the length chip opens its popover", await until(() => Boolean($(".duration-popover"))));
-  press(window, "Escape");
-  await until(() => !$(".duration-popover"));
+  click($('.task-details-panel [aria-label="Duration"]'));
+  check("duration can be edited in details", await until(() => Boolean($(".duration-popover.is-pills .duration-popover-input"))));
+  typeInto($(".duration-popover-input"), "35");
+  press($(".duration-popover-input"), "Enter");
+  check("duration is saved", await until(() => row("Paint the gate")?.expected_duration_minutes === 35));
+  await closeTaskDetails();
   view.unmount();
   undoLayout();
 

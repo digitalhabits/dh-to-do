@@ -37,11 +37,14 @@ export function inPreviewOrder<T extends { id: string }>(
 
 /**
  * Everything: a fixed first group, there with two groups or more. It holds
- * every list, and its tab row lists the groups: All, then a tab per group
- * that shows that group's tasks. It has no × and does not move.
+ * every list, and its tab row is the plain one: All, then every list, group
+ * by group. It has no × and does not move.
+ *
+ * Its row used to be All, then "All Sales", "All Product": a tab per group.
+ * Beside the group tabs above it, that read as a second way to pick a group,
+ * and the lists themselves were nowhere (2026-10-23).
  */
 export const TODO_EVERYTHING_GROUP_ID = "__everything__";
-const GROUP_TAB_PREFIX = "group:";
 
 export const EVERYTHING_GROUP: TodoGroup = {
   id: TODO_EVERYTHING_GROUP_ID,
@@ -57,16 +60,6 @@ export function isEverythingGroup(group: TodoGroup | null | undefined): boolean 
 /** Whether Everything is offered: groups on, and two of them or more. */
 export function hasEverythingGroup(groupsEnabled: boolean, groupsSorted: TodoGroup[]): boolean {
   return groupsEnabled && groupsSorted.length >= 2;
-}
-
-/** The tab in Everything's row that stands for one group. */
-export function groupTabId(groupId: string): string {
-  return GROUP_TAB_PREFIX + groupId;
-}
-
-/** The group a tab of Everything's row stands for, or null for All or a list. */
-export function groupOfTab(listId: string | null): string | null {
-  return listId?.startsWith(GROUP_TAB_PREFIX) ? listId.slice(GROUP_TAB_PREFIX.length) : null;
 }
 
 /** The open group: the one chosen, or the first. None with groups off. */
@@ -85,18 +78,23 @@ export function activeGroupOf(
 
 /**
  * The lists the board shows: the open group's, in a drag's order during
- * one. In Everything, every list, or one group's when its tab is open.
+ * one. In Everything, every list, group by group in the groups' order, then
+ * the lists in no group. A list's position counts within its group, so the
+ * lists in position order alone would mix the groups up.
  */
 export function listsInScope(
   listsSorted: TodoList[],
   groupsEnabled: boolean,
   activeGroup: TodoGroup | null,
   previewIds: string[] | null,
-  currentListId: string | null = null
+  groupsSorted: TodoGroup[] = []
 ): TodoList[] {
   if (isEverythingGroup(activeGroup)) {
-    const groupId = groupOfTab(currentListId);
-    return groupId ? listsSorted.filter((l) => l.groupId === groupId) : listsSorted;
+    const known = new Set(groupsSorted.map((g) => g.id));
+    return [
+      ...groupsSorted.flatMap((g) => listsSorted.filter((l) => l.groupId === g.id)),
+      ...listsSorted.filter((l) => !l.groupId || !known.has(l.groupId)),
+    ];
   }
   const scoped =
     groupsEnabled && activeGroup

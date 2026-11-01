@@ -25,18 +25,13 @@ import {
 import {
   renderAllListTab,
   renderEverythingGroupTab,
-  renderEverythingTabs,
   renderGroupTab,
   renderListTab,
 } from "@/components/todo/todo-list-chrome";
 import { hasEverythingGroup, isEverythingGroup } from "@/lib/todo/list-scope";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
-import { shortPersonName } from "@/lib/todo/people";
-import {
-  FOCUS_MODE_KEY,
-  persistPref,
-} from "@/lib/todo/saved-prefs";
 import { toggleId } from "@/lib/todo/task-helpers";
+import { firstNameOf } from "@/lib/todo/people";
 
 export function renderTitleBar(m: TodoPageModel) {
   const {
@@ -63,11 +58,7 @@ export function renderTitleBar(m: TodoPageModel) {
           title={focusMode ? t("exitFocusMode") : t("focusMode")}
           aria-pressed={focusMode}
           onClick={() => {
-            setFocusMode((v) => {
-              const next = !v;
-              persistPref(FOCUS_MODE_KEY, next ? "1" : "0");
-              return next;
-            });
+            setFocusMode((v) => !v);
           }}
         >
           <FocusModeIcon on={focusMode} />
@@ -159,29 +150,24 @@ export function renderTabsRow(m: TodoPageModel) {
     activeGroup,
     openCreateListModal,
   } = m;
-  // In Everything the row lists the groups, and a list is made in a group.
-  if (isEverythingGroup(activeGroup) && view === "lists" && !focusMode) {
-    return (
-      <HoverRow className="tabs-container">
-        <div className="tabs" ref={tabsRowRef}>
-          {renderEverythingTabs(m)}
-        </div>
-      </HoverRow>
-    );
-  }
+  // Everything has the plain row: All, then every list, group by group.
+  // A list is made in a group, so the + is in each group, not here.
+  const canAddList = !isEverythingGroup(activeGroup);
   return (
     view === "lists" && !focusMode ? (
       <HoverRow className="tabs-container">
         <div className="tabs" ref={tabsRowRef}>
           {lists.length > 1 ? renderAllListTab(m) : null}
           {lists.map((list) => renderListTab(m, list))}
-          <button
-            className="add-tab-btn-subtle"
-            title="Add new tab"
-            onClick={openCreateListModal}
-          >
-            <Plus size={16} strokeWidth={2} aria-hidden />
-          </button>
+          {canAddList ? (
+            <button
+              className="add-tab-btn-subtle"
+              title="Add new tab"
+              onClick={openCreateListModal}
+            >
+              <Plus size={16} strokeWidth={2} aria-hidden />
+            </button>
+          ) : null}
         </div>
       </HoverRow>
     ) : null
@@ -216,7 +202,13 @@ export function renderListSearch(m: TodoPageModel) {
     hasMe,
     scope,
     myOpenCount,
+    boardTasks,
   } = m;
+  /* Every face, the reader's too: picking them with someone else shows
+     the two together (see tasksInScope). */
+  const facePeople = assigneeFilterPeople;
+  /** Faces picked under Everyone: its half then says whose. */
+  const picked = scope === "everyone" && assigneeFilterIds.length > 0;
   return (
     <div
       id="list-search"
@@ -232,8 +224,10 @@ export function renderListSearch(m: TodoPageModel) {
     >
       <div className="list-search-row">
         {hasMe ? (
-          /* Mine or everyone: a two-way switch, and the person pills
-             only on "everyone". The everyday view stays quiet. */
+          /* Mine or everyone (the design's "18d"): a two-way switch, and
+             the faces only on "everyone", the reader's among them. With a
+             face picked, the Everyone half says whose and how many, and
+             a click on it shows everyone again. */
           <div
             className="board-people-scope"
             role="group"
@@ -252,14 +246,22 @@ export function renderListSearch(m: TodoPageModel) {
               type="button"
               className={`board-people-scope-btn${scope === "everyone" ? " active" : ""}`}
               aria-pressed={scope === "everyone"}
-              onClick={() => choosePeopleScope("everyone")}
+              onClick={() =>
+                picked ? setAssigneeFilterIds([]) : choosePeopleScope("everyone")
+              }
             >
-              {t("filterEveryone")}
-              <span className="board-people-scope-count">{openTasks.length}</span>
+              {picked
+                ? assigneeFilterIds.length === 1
+                  ? firstNameOf(assigneeFilterPeople.find((p) => p.id === assigneeFilterIds[0])?.name ?? "")
+                  : t("filterPeopleCount").replace("{n}", String(assigneeFilterIds.length))
+                : t("filterEveryone")}
+              <span className="board-people-scope-count">
+                {picked ? boardTasks.length : openTasks.length}
+              </span>
             </button>
           </div>
         ) : null}
-        {assigneeFilterPeople.length > 0 && (!hasMe || scope === "everyone") ? (
+        {facePeople.length > 0 && (!hasMe || scope === "everyone") ? (
           <div
             className={`board-assignee-filter${hasMe ? " after-scope" : ""}`}
             role="group"
@@ -277,14 +279,17 @@ export function renderListSearch(m: TodoPageModel) {
                 {t("filterEveryone")}
               </button>
             )}
-            {assigneeFilterPeople.map((person) => (
+            {facePeople.map((person) => (
               <button
                 key={person.id}
                 type="button"
-                className={`board-assignee-filter-btn${
+                className={`board-assignee-filter-btn is-person${
                   assigneeFilterIds.includes(person.id) ? " active" : ""
+                }${
+                  assigneeFilterIds.length > 0 && !assigneeFilterIds.includes(person.id) ? " is-dimmed" : ""
                 }${draggingPersonId === person.id ? " dragging" : ""}`}
                 title={person.name}
+                aria-label={person.name}
                 aria-pressed={assigneeFilterIds.includes(person.id)}
                 data-person-id={person.id}
                 onPointerDown={(e) => {
@@ -302,6 +307,8 @@ export function renderListSearch(m: TodoPageModel) {
                   // A drag ends over a chip and would otherwise also
                   // turn its filter on.
                   if (Date.now() < suppressPersonClickUntil.current) return;
+                  // Each face is a toggle: on, off, and any number at once.
+                  // With none on, the board is everyone's again.
                   setAssigneeFilterIds((ids) => toggleId(ids, person.id));
                 }}
               >
@@ -309,9 +316,9 @@ export function renderListSearch(m: TodoPageModel) {
                   name={person.name}
                   colour={person.colour}
                   photoUrl={person.photoUrl}
-                  size={22}
+                  size={26}
                 />
-                <span>{shortPersonName(person.name)}</span>
+                {/* The face alone: the name is its tooltip. */}
               </button>
             ))}
           </div>

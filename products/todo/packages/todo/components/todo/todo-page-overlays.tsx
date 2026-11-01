@@ -19,7 +19,7 @@ import { TodoPeopleEditor } from "@/components/todo/TodoPeopleEditor";
 import { TodoSelect } from "@/components/todo/TodoSelect";
 import { TodoSettingsModal } from "@/components/todo/TodoSettingsModal";
 import { renderNotesEditor } from "@/components/todo/todo-task-overlay";
-import { taskCardChrome } from "@/components/todo/todo-task-card";
+import { taskCardChrome, stepParentLine } from "@/components/todo/todo-task-card";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { queueWithAdded, sessionTasksFromBoard } from "@/lib/todo/session-queue";
 import { COLOR_SWATCHES } from "@/lib/todo/tab-colours";
@@ -317,6 +317,7 @@ export function renderConfirmDialog(m: TodoPageModel) {
   return (
     confirmModal ? (
       <div
+        id="confirm-modal"
         className="modal-overlay"
         onClick={(e) => {
           if (e.target === e.currentTarget) setConfirmModal(null);
@@ -354,6 +355,8 @@ export function renderSettings(m: TodoPageModel) {
     somedayEnabled,
     assignEnabled,
     focusTimerAlways,
+    compactCards,
+    changeCompactCards,
     settingsOpen,
     setSettingsOpen,
     kanbanEnabled,
@@ -397,6 +400,8 @@ export function renderSettings(m: TodoPageModel) {
         onAssignEnabledChange={changeAssignEnabled}
         focusTimerAlways={focusTimerAlways}
         onFocusTimerAlwaysChange={changeFocusTimerAlways}
+        compactCards={compactCards}
+        onCompactCardsChange={changeCompactCards}
         groupsEnabled={groupsEnabled}
         onGroupsEnabledChange={handleGroupsEnabledChange}
         planEnabled={planEnabled}
@@ -436,6 +441,7 @@ export function renderTodaySession(m: TodoPageModel) {
     reorderSessionTasks,
     addSessionTask,
     boardColumns,
+    todaySteps,
     toggleNotes,
     subtasksByTask,
     toggleSubtaskDone,
@@ -447,9 +453,12 @@ export function renderTodaySession(m: TodoPageModel) {
     skipped task moves on with it. Not when the next task has a window of
     its own already: two windows would show one task.
   */
+  const sessionTasks = sessionIds
+    ? sessionTasksFromBoard(sessionIds, boardColumns.today, state.tasks, todaySteps)
+    : [];
   const skip = (task: TodoTask) => {
     skipSessionTask(task);
-    const next = boardColumns.today.find((other) => !other.completed && other.id !== task.id);
+    const next = sessionTasks.find((other) => !other.completed && other.id !== task.id);
     if (!next || !activeFocusTaskIds.has(task.id) || activeFocusTaskIds.has(next.id)) return;
     focusChannelRef.current?.postMessage({
       type: FOCUS_SWITCH_REQUEST_MESSAGE,
@@ -460,21 +469,31 @@ export function renderTodaySession(m: TodoPageModel) {
   return (
     sessionIds ? (
       <TodayFocusSession
-        tasks={sessionTasksFromBoard(sessionIds, boardColumns.today, state.tasks)}
+        tasks={sessionTasks}
         t={t}
+        lang={m.lang}
         timerAlways={focusTimerAlways}
         subtasksOf={(taskId) => subtasksByTask.get(taskId) ?? []}
-        renderChrome={(task) => taskCardChrome(m, task, "session")}
+        renderChrome={(task, now) => ({
+          ...taskCardChrome(m, task, now ? "now" : "session"),
+          // A step says whose step it is, as on the board; a task, nothing.
+          parentLine: stepParentLine(m, task),
+        })}
         handlers={{
           onComplete: (task) => {
-            void mutateTask(task.id, { completed: true });
+            // A step is ticked as a step, as on the board.
+            if (task.parentTaskId) toggleSubtaskDone(task);
+            else void mutateTask(task.id, { completed: true });
             // A task that came into Today during the session is in the
             // queue too, so it shows with the finished ones.
             setSessionIds((ids) => (ids?.includes(task.id) ? ids : queueWithAdded(ids, task.id)));
           },
           onUncomplete: uncompleteSessionTask,
           onToggleNotes: toggleNotes,
-          renderNotes: (task: TodoTask) => renderNotesEditor(m, task),
+          onOpenDetails: (task: TodoTask) => m.openTaskOverlay(task),
+          // Opened from "Notes ▾" in the session, which also closes it.
+          renderNotes: (task: TodoTask) => renderNotesEditor(m, task, { chevron: true }),
+          isNotesOpen: (task: TodoTask) => m.openNotesTaskId === task.id && !m.notesExpanded,
           onSetDuration: (task, minutes) =>
             void mutateTask(task.id, { expectedDurationMinutes: minutes }),
           onSkip: skip,

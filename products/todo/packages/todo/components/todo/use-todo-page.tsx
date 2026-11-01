@@ -14,12 +14,14 @@
  */
 
 import * as React from "react";
+
 import { toast } from "sonner";
 
 import { useTodoOffline } from "@/lib/offline/use-todo-offline";
 import { listenOpenSettings } from "@/lib/native-shell";
 import { useWriteTracking } from "@/components/todo/use-write-tracking";
 import { useZoomKeys } from "@/components/todo/use-zoom-keys";
+import { useCompactCards } from "@/components/todo/use-compact-cards";
 import { useUndoKey, useUndoState } from "@/components/todo/use-undo";
 // Installs the guard that keeps a dialog open when a drag ends outside it.
 import "@/lib/todo/press-origin";
@@ -31,7 +33,9 @@ import {
 } from "@/components/todo/use-search";
 import { useColumnSorts } from "@/components/todo/use-column-sorts";
 import { usePeopleFilter, usePeopleScopeState } from "@/components/todo/use-people-scope";
+import { useTodaySteps } from "@/components/todo/use-today-steps";
 import { useBoardLayout, useColumnDrag, useShellSize } from "@/components/todo/use-board-layout";
+import { useWidenForBoardAfterSettings } from "@/components/todo/board-window-fit";
 import { useIntegrationStatus, useSync, useSyncState } from "@/components/todo/use-sync";
 import { usePointerDrag, useDragState } from "@/components/todo/use-pointer-drag";
 import {
@@ -77,7 +81,6 @@ import {
   activeGroupOf,
   byPositionOrder,
   favKey,
-  groupOfTab,
   inPreviewOrder,
   listScopeOf,
   moveTargetLists,
@@ -127,6 +130,8 @@ export type TodoPageProps = {
   embedComposer?: { listId: string; placeholder: string; onAdded: (taskId: string) => void };
   /** The Calendar View only, and nothing that leads off it: the Planner's Calendar tab. */
   calendarOnly?: boolean;
+  /** Over the To-Do's theme setting: the Planner's Calendar tab gives the Planner's. */
+  colorMode?: "light" | "dark";
 };
 
 export function useTodoPage({
@@ -138,6 +143,7 @@ export function useTodoPage({
   embedTaskIds,
   embedComposer,
   calendarOnly = false,
+  colorMode,
 }: TodoPageProps) {
   const refreshRef = React.useRef<() => Promise<void>>(async () => {});
   const {
@@ -325,6 +331,7 @@ export function useTodoPage({
    */
   const [assignEnabled, setAssignEnabled] = React.useState(false);
   const [focusTimerAlways, setFocusTimerAlways] = React.useState(true);
+  const { compactCards, changeCompactCards } = useCompactCards();
   const [editingTaskId, setEditingTaskId] = React.useState<string | null>(null);
   /**
    * The words in the title box that is open. A ref, not state: as state,
@@ -548,7 +555,6 @@ export function useTodoPage({
     setGroupsEnabled,
     setCurrentGroupId,
     setCurrentListId,
-    setFocusMode,
     setView,
     viewRestoredRef,
   });
@@ -570,12 +576,17 @@ export function useTodoPage({
   /** The store app, or the planner's To-Do tab. Fixed for this page. */
   const standalone = React.useMemo(() => isStandaloneTodo(), []);
 
-  const { shellRef, shellWidth, shellHeight, shellWidthClasses } =
-    useShellSize({ setBoardStacked });
+  const { shellRef, shellWidth, shellHeight, shellWidthClasses, detailsWidth, setDetailsWidth } =
+    useShellSize({
+      setBoardStacked,
+      detailsOpen: notesExpanded,
+      // Board View's columns, or a list: a width each (details-width.ts).
+      beside: kanbanEnabled && view === "lists" ? "board" : "list",
+    });
 
 
   const t = React.useMemo(() => makeT(lang), [lang]);
-  const effectiveDark = theme === "dark" || (theme === "system" && systemDark);
+  const effectiveDark = colorMode ? colorMode === "dark" : theme === "dark" || (theme === "system" && systemDark);
 
   const { refresh } = useBoardReads({
     state,
@@ -585,12 +596,13 @@ export function useTodoPage({
     mutationSeqRef,
     boardLoadedRef,
     refreshRef,
-    editingTaskId,
+    editingTaskId: notesExpanded ? openNotesTaskId : editingTaskId,
     editingDurationTaskId,
     t,
   });
 
   useIntegrationStatus({ settingsOpen, api, setRemindersConnected, setBcConnected });
+  useWidenForBoardAfterSettings({ settingsOpen, kanbanEnabled, shellRef });
 
   const { selectBcProject, selectBcList, selectRemindersList, selectGithubRepo } = useListDialogLinks({
     listDialog,
@@ -683,8 +695,8 @@ export function useTodoPage({
   const activeGroup = activeGroupOf(groupsEnabled, groupsSorted, currentGroupId);
 
   const lists = React.useMemo(
-    () => listsInScope(listsSorted, groupsEnabled, activeGroup, listPreviewIds, currentListId),
-    [listsSorted, listPreviewIds, groupsEnabled, activeGroup, currentListId]
+    () => listsInScope(listsSorted, groupsEnabled, activeGroup, listPreviewIds, groupsSorted),
+    [listsSorted, listPreviewIds, groupsEnabled, activeGroup, groupsSorted]
   );
   /** Where a task can move: every list, the open group's first. */
   const moveTargets = React.useMemo(() => {
@@ -702,9 +714,8 @@ export function useTodoPage({
   remindersConnectedRef.current = remindersConnected;
 
   // All is virtual and only exists with 2+ lists. With one list, select it.
-  // A group's tab in Everything stays itself, even with one list in it.
   React.useEffect(() => {
-    if (lists.length > 1 || groupOfTab(currentListId)) return;
+    if (lists.length > 1) return;
     if (lists.length === 1) {
       const onlyId = lists[0].id;
       if (currentListId !== onlyId) {
@@ -767,10 +778,8 @@ export function useTodoPage({
   */
   const byOrder = byPosition;
 
-  /* Parents only, whatever the view: a subtask lives inside its parent's
-     expanded card, never as a card of the board. */
-  /* On All, the lists the extension asks to leave out (the Planner's
-     client steps, while its switch is off) are left out. */
+  /* Parents only: a step is in its parent's card (and Today's when due, useTodaySteps).
+     On All, the lists the extension asks to leave out (the Planner's client steps, while off) go. */
   const hiddenOnAll = boardExtension?.hiddenListIdsOnAll;
   const parentTasks = React.useMemo(() => {
     const hidden = isAllListsView && hiddenOnAll?.length ? new Set(hiddenOnAll) : null;
@@ -832,6 +841,7 @@ export function useTodoPage({
     assigneeFilterIds,
   });
 
+  const todaySteps = useTodaySteps({ isSearching, boardTasks, tasks: state.tasks, openTasks, somedayEnabled, scope, mePersonIds, assigneeFilterIds, makerKeys });
   /** Board columns stay up while searching in lists; favourites stays a flat list. */
   const showBoard =
     kanbanEnabled &&
@@ -1032,7 +1042,7 @@ export function useTodoPage({
     tasksRef,
     openTasks,
     doneTasks,
-    boardColumns,
+    boardColumns, todaySteps,
     showBoard,
     isSearching,
     somedayEnabled,
@@ -1125,39 +1135,21 @@ export function useTodoPage({
   }
 
 
-  /*
-    Escape takes the note back to the row rather than closing it.
-
-    The draft is the same either way, so nothing typed is lost by leaving —
-    and a reader who hit Escape meant "not full screen any more", not
-    "throw this away".
-  */
-  /**
-   * Between the small note and the full-window one, in either direction.
-   *
-   * Switching swaps one editor for the other, and the new one loads the
-   * draft — so the leaving editor's document has to be carried into the
-   * draft first, or whatever only it held is gone. That is how a picture
-   * that had finished uploading vanished on collapse: the tick carried the
-   * live document, and the collapse button did not.
-   *
-   * And not at all while a picture is still on its way up: the upload
-   * belongs to the editor that is about to be torn down, and there is
-   * nowhere for its sgid to land once that editor is gone.
-   */
+  // The shared editor saves on leaving or switching tasks and guards uploads.
   const { toggleNotes, saveNotes, openTaskOverlay } = useNotesCard({
     notesCard,
     mutateTask,
+    storedNotesOf: (taskId) => state.tasks.find((task) => task.id === taskId)?.notesHtml,
     t,
   });
+  /* Start, with a task's details open: they are put away first (their
+     note saved), or the session would open behind them. A picture still
+     uploading keeps them open, and says so. */
+  const startTodaySessionFromBoard = () => {
+    if (notesExpanded && openNotesTaskId && !saveNotes(openNotesTaskId, false)) return;
+    startTodaySession();
+  };
 
-  /**
-   * One task's notes, over the whole window.
-   *
-   * The box under a row is a few lines tall, which is right for a few lines
-   * and cramped for a paragraph. This is the same editor on the same draft,
-   * so expanding saves nothing and collapsing loses nothing.
-   */
   /**
    * The card of a task, over the Calendar, beside the task there.
    *
@@ -1196,7 +1188,7 @@ export function useTodoPage({
     setNewSubtaskNotes,
     newSubtaskNotesOpen,
     setNewSubtaskNotesOpen,
-    newSubtaskDuration,
+    newSubtaskDuration, newSubtaskDue, setNewSubtaskDue,
     setNewSubtaskDuration,
     newSubtaskDurEditing,
     setNewSubtaskDurEditing,
@@ -1208,6 +1200,7 @@ export function useTodoPage({
     subtaskListRef,
     subtaskHoldRef,
     startSubtaskDrag,
+    reorderSubtasks, addSubtask,
   } = useSubtasks({
     state,
     setState,
@@ -1242,6 +1235,7 @@ export function useTodoPage({
     assignAnchorEl,
     setOpenAssignTaskId,
     setAssignAnchorEl,
+    registerUndo,
   });
 
   const { exportData, importData } = useBackup({
@@ -1308,6 +1302,8 @@ export function useTodoPage({
     assignEnabled,
     setAssignEnabled,
     focusTimerAlways,
+    compactCards,
+    changeCompactCards,
     setFocusTimerAlways,
     editingTaskId,
     setEditingTaskId,
@@ -1328,8 +1324,7 @@ export function useTodoPage({
     tasksRef,
     confirmModal,
     setConfirmModal,
-    settingsOpen,
-    setSettingsOpen,
+    settingsOpen, setSettingsOpen,
     undoState,
     setUndoState,
     lastUndoRef,
@@ -1362,7 +1357,10 @@ export function useTodoPage({
     setZoom,
     standalone,
     shellRef,
+    shellWidth,
     shellWidthClasses,
+    detailsWidth,
+    setDetailsWidth,
     t,
     effectiveDark,
     selectBcProject,
@@ -1389,7 +1387,7 @@ export function useTodoPage({
     otherListSearchHits,
     openTasks,
     assigneeFilterPeople,
-    mePersonIds,
+    mePersonIds, makerKeys,
     hasMe,
     scope,
     boardTasks,
@@ -1398,6 +1396,7 @@ export function useTodoPage({
     showBoard,
     boardWidth,
     columnSorts,
+    sortColumn,
     pickColumnSort,
     columnSortMenu,
     setColumnSortMenu,
@@ -1422,8 +1421,8 @@ export function useTodoPage({
     onRailActivate,
     boardColumnLabel,
     startColumnDrag,
-    mutateTask,
-    startTodaySession,
+    mutateTask, todaySteps,
+    startTodaySession: startTodaySessionFromBoard,
     uncompleteSessionTask,
     skipSessionTask,
     reorderSessionTasks,
@@ -1456,7 +1455,7 @@ export function useTodoPage({
     saveNotes,
     openTaskOverlay,
     ...calendarCardActions,
-    subtasksByTask,
+    subtasksByTask, addSubtask,
     toggleSubtaskDone,
     subtaskNotesId,
     setSubtaskNotesId,
@@ -1472,7 +1471,7 @@ export function useTodoPage({
     setNewSubtaskNotes,
     newSubtaskNotesOpen,
     setNewSubtaskNotesOpen,
-    newSubtaskDuration,
+    newSubtaskDuration, newSubtaskDue, setNewSubtaskDue,
     setNewSubtaskDuration,
     newSubtaskDurEditing,
     setNewSubtaskDurEditing,
@@ -1484,6 +1483,7 @@ export function useTodoPage({
     subtaskListRef,
     subtaskHoldRef,
     startSubtaskDrag,
+    reorderSubtasks,
     peopleById,
     searchPeopleCandidates,
     addBoardPerson,

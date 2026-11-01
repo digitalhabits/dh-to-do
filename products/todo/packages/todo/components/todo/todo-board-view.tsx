@@ -10,23 +10,16 @@
 
 import * as React from "react";
 
-import {
-  ArrowDownUp,
-  ArrowUp,
-  Check,
-  ChevronLeft,
-  History,
-} from "lucide-react";
+import { ChevronLeft, History } from "lucide-react";
 
 import { AddTaskComposer } from "@/components/todo/AddTaskComposer";
-import { MenuKeys } from "@/components/todo/MenuKeys";
-import { MenuPortal } from "@/components/todo/MenuPortal";
+import { SortControl } from "@/components/todo/sort-control";
 import { renderTask } from "@/components/todo/todo-task-card";
+import { GrowingCards } from "@/components/todo/growing-cards";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
-import { COLUMN_SORTS, SORT_LABEL_KEY } from "@/lib/todo/column-sort";
 import { todayDueOn } from "@/lib/todo/task-draft";
-import { type TodoBoardColumn } from "@/lib/todo/types";
+import type { TodoBoardColumn } from "@/lib/todo/types";
 
 /**
  * A column's name as drawn. The headers are set in capitals, but an
@@ -142,7 +135,7 @@ export function renderBoardPills(
           ) : null}
         </div>
       ) : null}
-      {boardColumns.today.some((task) => !task.completed) ? (
+      {(m.todaySteps.length > 0 || boardColumns.today.some((task) => !task.completed)) ? (
         <button
           type="button"
           className="board-start-btn board-pills-start"
@@ -173,12 +166,6 @@ export function renderBoardColumn(
     t,
     lists,
     addTargetList,
-    columnSorts,
-    pickColumnSort,
-    columnSortMenu,
-    setColumnSortMenu,
-    columnSortAnchor,
-    setColumnSortAnchor,
     boardColumns,
     storeSomedayExpanded,
     openStackSection,
@@ -262,109 +249,10 @@ export function renderBoardColumn(
             {boardColumns[column].length}
           </span>
           {/* The order, on hover: a glyph, and the order's name when it
-              is not the default. One click opens the choice. */}
-          {asRail || folded ? null : (
-            <span
-              className={`board-sort-wrap${
-                columnSortMenu === column ? " is-open" : ""
-              }`}
-            >
-              <button
-                type="button"
-                className="board-sort-btn"
-                title={t("sortBy")}
-                aria-label={`${t("sortBy")}: ${t(
-                  SORT_LABEL_KEY[columnSorts[column].sort]
-                )}`}
-                aria-haspopup="menu"
-                aria-expanded={columnSortMenu === column}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (columnSortMenu === column) {
-                    setColumnSortMenu(null);
-                    setColumnSortAnchor(null);
-                  } else {
-                    setColumnSortAnchor(event.currentTarget);
-                    setColumnSortMenu(column);
-                  }
-                }}
-              >
-                {/* The direction, as an arrow that turns; ⇅ where there
-                    is none (manual). */}
-                {columnSorts[column].sort === "manual" ? (
-                  <ArrowDownUp size={13} strokeWidth={2} aria-hidden />
-                ) : (
-                  <ArrowUp
-                    size={13}
-                    strokeWidth={2}
-                    aria-hidden
-                    className={`board-sort-arrow${
-                      columnSorts[column].desc ? " is-desc" : ""
-                    }`}
-                  />
-                )}
-                <span className="board-sort-label">
-                  {t(SORT_LABEL_KEY[columnSorts[column].sort])}
-                </span>
-              </button>
-              <MenuPortal
-                open={columnSortMenu === column}
-                anchorEl={columnSortMenu === column ? columnSortAnchor : null}
-                className="task-menu board-sort-menu"
-                align="right"
-                role="menu"
-                ariaLabel={t("sortBy")}
-              >
-                <MenuKeys
-                  onClose={(reason) => {
-                    const glyph = columnSortAnchor;
-                    setColumnSortMenu(null);
-                    setColumnSortAnchor(null);
-                    if (reason === "escape") glyph?.focus();
-                  }}
-                >
-                {/* The active row carries its arrow: pick it again and
-                    the order runs the other way. */}
-                {COLUMN_SORTS.filter(
-                  (sort) => assignEnabled || sort !== "assignee"
-                ).map((sort) => {
-                  const active = columnSorts[column].sort === sort;
-                  return (
-                    <button
-                      key={sort}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={active}
-                      className={`task-menu-item board-sort-item${
-                        active ? " is-current" : ""
-                      }`}
-                      onClick={() => {
-                        pickColumnSort(column, sort);
-                        setColumnSortMenu(null);
-                        setColumnSortAnchor(null);
-                      }}
-                    >
-                      <span className="board-sort-check" aria-hidden>
-                        {active ? <Check size={14} strokeWidth={2.5} /> : null}
-                      </span>
-                      {t(SORT_LABEL_KEY[sort])}
-                      {active && sort !== "manual" ? (
-                        <ArrowUp
-                          size={13}
-                          strokeWidth={2}
-                          aria-hidden
-                          className={`board-sort-arrow board-sort-item-arrow${
-                            columnSorts[column].desc ? " is-desc" : ""
-                          }`}
-                        />
-                      ) : null}
-                    </button>
-                  );
-                })}
-                </MenuKeys>
-              </MenuPortal>
-            </span>
+              is not the default. One click opens the choice. Not shown
+              with fewer than two cards: there is nothing to order. */}
+          {asRail || folded || boardColumns[column].length < 2 ? null : (
+            <SortControl m={m} target={column} />
           )}
           {column === "someday" ? (
             <button
@@ -378,7 +266,7 @@ export function renderBoardColumn(
             </button>
           ) : null}
           {column === "today" &&
-          boardColumns.today.some((task) => !task.completed) ? (
+          (m.todaySteps.length > 0 || boardColumns.today.some((task) => !task.completed)) ? (
             <button
               type="button"
               className="board-start-btn"
@@ -389,8 +277,21 @@ export function renderBoardColumn(
             </button>
           ) : null}
         </header>
-        <div className="board-column-tasks">
-          {folded ? null : boardColumns[column].map((task) => renderTask(m, task))}
+        {/* Steps due today or before, of tasks not in Today: their own
+            group above the column's cards, out of the list that drags and
+            the Today session read. */}
+        {column === "today" && !folded ? (() => {
+          const steps = m.todaySteps;
+          return steps.length ? (
+            <div className="board-column-steps" aria-label={t("subtasks")}>
+              {steps.map((step) => renderTask(m, step))}
+            </div>
+          ) : null;
+        })() : null}
+        {/* Folded, the cards stay, hidden: unfolding (or the board going
+            across again) then shows them without drawing them again. */}
+        <div className="board-column-tasks" style={folded ? { display: "none" } : undefined}>
+          <GrowingCards m={m} tasks={boardColumns[column]} />
         </div>
         {folded ? null : (
         <div className="board-column-add">

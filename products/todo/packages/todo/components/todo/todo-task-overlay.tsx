@@ -10,19 +10,30 @@
 
 import * as React from "react";
 
-import { Plus, User } from "lucide-react";
+import { Calendar, Clock, CornerLeftUp, Pencil, Plus, User } from "lucide-react";
 
+import { TaskDetailsActions } from "@/components/todo/todo-task-card";
+import { TaskDetailsBar } from "@/components/todo/task-details-bar";
+import { TaskDetailsInfo } from "@/components/todo/task-details-info";
 import { TaskAssignMenu, TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
 import { TaskOverlayChips, TaskOverlayHead } from "@/components/todo/task-overlay-chips";
 import { TrixNotesEditor } from "@/components/todo/TrixNotesEditor";
-import { ClockIcon, FocusIcon, NotesIcon } from "@/components/todo/task-icons";
+import { DurationPopover } from "@/components/todo/DurationPopover";
+import { DuePopover } from "@/components/todo/DuePopover";
+import { ClockIcon, FocusIcon, MenuDotsIcon, MoveToBottomIcon, MoveToTopIcon, NotesIcon, TrashIcon } from "@/components/todo/task-icons";
+import { MenuPortal } from "@/components/todo/MenuPortal";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
+import type { TodoLang } from "@/lib/todo/i18n";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
-import { minutesFromTyped } from "@/lib/todo/duration-input";
+import { formatDurationShort } from "@/lib/todo/duration";
+import { DETAILS_MIN, DETAILS_STEP, LIST_MIN, clampDetailsWidth } from "@/lib/todo/details-width";
+import { boardLayoutKey } from "@/components/todo/use-board-layout";
 import { popCheck } from "@/lib/todo/list-flip";
 import { spawnCompletionParty, randomSubtaskPartyEmoji } from "@/lib/todo/task-celebration";
-import { notesHtmlIsEmpty } from "@/lib/todo/task-draft";
+import { daysUntilDue, formatDueOnShort, notesHtmlIsEmpty } from "@/lib/todo/task-draft";
 import { toggleId } from "@/lib/todo/task-helpers";
+import { EMPTY_TASK_DRAFT } from "@/lib/todo/task-draft";
+import { boardColumnOf } from "@/lib/todo/types";
 import { type TodoPerson, type TodoTask } from "@/lib/todo/types";
 
 /** The assign menu's key for the subtask still being written, which has no id yet. */
@@ -33,7 +44,9 @@ const NEW_SUBTASK_ASSIGN_ID = "__new-subtask__";
  * The notes editor the board opens under a row. The Today session shows the
  * same one, so notes are written in one place and one way.
  */
-export function renderNotesEditor(m: TodoPageModel, task: TodoTask) {
+/** `chevron`: opened from a "Notes ▾" chip, which also puts it away, so
+    the note has no ✓ of its own. */
+export function renderNotesEditor(m: TodoPageModel, task: TodoTask, { chevron = false }: { chevron?: boolean } = {}) {
   const {
     openNotesTaskId,
     notesExpanded,
@@ -45,25 +58,11 @@ export function renderNotesEditor(m: TodoPageModel, task: TodoTask) {
     saveNotes,
   } = m;
   if (openNotesTaskId !== task.id) return null;
-  /*
-    One editor at a time.
+  // Details own the only live editor; the list stays compact.
+  if (notesExpanded) return null;
 
-    With the full-window note open, this one kept running underneath it:
-    two live documents over one draft, and one slot for the save to read
-    from. Which copy a save saw depended on which editor mounted last —
-    the kind of difference between the expanded and the small note that
-    has no business existing. The overlay covers this box anyway; when it
-    closes, this editor comes back and loads the draft the overlay wrote.
-  */
-  if (notesExpanded) {
-    return (
-      <div className="notes-container open" style={{ display: "block" }}>
-        <div className="notes-editor-wrapper active" />
-      </div>
-    );
-  }
   return (
-    <div className="notes-container open" style={{ display: "block" }}>
+    <div className={`notes-container open${chevron ? " is-chevron" : ""}`} style={{ display: "block" }}>
       <div className="notes-editor-wrapper active">
         {/* The notes button opens this box to be written in, so the
             caret starts here rather than after a second click. */}
@@ -78,15 +77,17 @@ export function renderNotesEditor(m: TodoPageModel, task: TodoTask) {
           onDone={() => saveNotes(task.id)}
           autoFocus
         />
-        <button
-          className="notes-done-btn"
-          title="Done editing"
-          onClick={() => saveNotes(task.id)}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </button>
+        {chevron ? null : (
+          <button
+            className="notes-done-btn"
+            title="Done editing"
+            onClick={() => saveNotes(task.id)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -97,14 +98,510 @@ export function renderNotesEditor(m: TodoPageModel, task: TodoTask) {
  * changing, in the same type. Enter or a click elsewhere saves; Escape
  * puts the words back. Empty words are not saved.
  */
-function OverlayTitle({ text, onSave }: { text: string; onSave: (text: string) => void }) {
-  const [draft, setDraft] = React.useState<string | null>(null);
+/**
+ * A subtask's ⋮ menu: Move to top and Move to bottom (an open subtask not
+ * already there), Convert to task (an open one), and Delete.
+ *
+ * Convert makes a new task from the subtask, in its parent's list and
+ * column, then deletes the subtask. It does not clear the parent: in
+ * Basecamp a subtask is a "step" of its parent to-do, and a task still
+ * linked to a step would confuse the next sync. Made and deleted through
+ * the app's own actions, both changes sync as any other.
+ */
+function SubtaskMenu({
+  m,
+  parent,
+  subtask,
+  openIds,
+  adds = [],
+}: {
+  m: TodoPageModel;
+  parent: TodoTask;
+  subtask: TodoTask;
+  /** The parent's open subtasks, in the order shown. */
+  openIds: string[];
+  /** What the step has not got yet, offered at the top: each opens its
+      picker, or the notes, from the ⋮. */
+  adds?: { label: string; icon: React.ReactNode; run: (anchor: HTMLElement) => void }[];
+}) {
+  const { t } = m;
+  const [anchor, setAnchor] = React.useState<HTMLElement | null>(null);
+  const close = React.useCallback(() => setAnchor(null), []);
+  /* A click anywhere else, or Escape, puts it away. MenuPortal keeps its
+     own clicks to itself. */
+  React.useEffect(() => {
+    if (!anchor) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!anchor.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      close();
+      anchor.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [anchor, close]);
+
+  const at = openIds.indexOf(subtask.id);
+  const canMoveUp = !subtask.completed && at > 0;
+  const canMoveDown = !subtask.completed && at >= 0 && at < openIds.length - 1;
+  /* The order the move leaves: open subtasks only, as the ticked ones keep
+     their own place below them. */
+  const moveTo = (edge: "top" | "bottom") => {
+    const rest = openIds.filter((id) => id !== subtask.id);
+    const order = edge === "top" ? [subtask.id, ...rest] : [...rest, subtask.id];
+    m.reorderSubtasks(parent.id, order, subtask.id);
+  };
+  const convert = async () => {
+    const id = await m.addTask(boardColumnOf(parent, m.somedayEnabled), {
+      ...EMPTY_TASK_DRAFT,
+      text: subtask.text,
+      duration: subtask.expectedDurationMinutes == null ? "" : String(subtask.expectedDurationMinutes),
+      assigneeIds: subtask.assigneeIds,
+      dueOn: subtask.dueOn ?? null,
+      notes: subtask.notesHtml ?? "",
+      listId: parent.listId,
+    });
+    // Only once the task is made: a failed add keeps the subtask.
+    if (id) await m.removeTask(subtask.id, { undo: false });
+  };
+  const item = (label: string, icon: React.ReactNode, run: () => void, danger = false) => (
+    <button
+      type="button"
+      role="menuitem"
+      className={`task-menu-item${danger ? " delete-task-item" : ""}`}
+      onClick={() => {
+        close();
+        run();
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+  return (
+    <>
+      <button
+        type="button"
+        className="task-subtask-action task-subtask-more"
+        title={t("subtaskOptions")}
+        aria-label={t("subtaskOptions")}
+        aria-haspopup="menu"
+        aria-expanded={anchor != null}
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
+      >
+        <MenuDotsIcon />
+      </button>
+      <MenuPortal
+        open={anchor != null}
+        anchorEl={anchor}
+        align="right"
+        className="task-menu task-details-menu"
+        role="menu"
+        ariaLabel={t("subtaskOptions")}
+      >
+        {adds.map((add) => (
+          <React.Fragment key={add.label}>
+            {item(add.label, add.icon, () => anchor && add.run(anchor))}
+          </React.Fragment>
+        ))}
+        {canMoveUp ? item(t("moveToTop"), <MoveToTopIcon />, () => moveTo("top")) : null}
+        {canMoveDown ? item(t("moveToBottom"), <MoveToBottomIcon />, () => moveTo("bottom")) : null}
+        {subtask.completed ? null : item(t("convertToTask"), <CornerLeftUp size={16} strokeWidth={2} aria-hidden />, () => void convert())}
+        {item(t("delete"), <TrashIcon />, () => void m.removeTask(subtask.id), true)}
+      </MenuPortal>
+    </>
+  );
+}
+
+/**
+ * The rest of a step's row (design "20c/20d"), in the row's grid: a
+ * second line with its day, time and notes, each only when set and each
+ * a button to change it; who it is for on the right of the first line
+ * (a ghost on hover when nobody); and Focus and ⋮, which float over the
+ * right end on hover so the words wrap as at rest. What is not set yet is
+ * added from the ⋮.
+ */
+function SubtaskTail({
+  m,
+  parent,
+  subtask,
+  openIds,
+}: {
+  m: TodoPageModel;
+  parent: TodoTask;
+  subtask: TodoTask;
+  openIds: string[];
+}) {
+  const {
+    t, lang, mutateTask, assignEnabled, nativeShell, activeFocusTaskIds, toggleTaskFocusPopout,
+    subtaskNotesId, setSubtaskNotesId, setSubtaskNotesDraft, saveSubtaskNotes,
+    openAssignTaskId, setOpenAssignTaskId, assignAnchorEl, setAssignAnchorEl, closeAssignMenu,
+    toggleTaskAssignee, peopleById, state, setPeopleEditorOpen,
+  } = m;
+  const [picker, setPicker] = React.useState<{ kind: "due" | "duration"; anchor: HTMLElement } | null>(null);
+  const close = React.useCallback(() => setPicker(null), []);
+  const dueOn = subtask.dueOn ?? null;
+  const minutes = subtask.expectedDurationMinutes ?? null;
+  const days = dueOn ? daysUntilDue(dueOn) : null;
+  const toggleNotes = () => {
+    if (subtaskNotesId === subtask.id) {
+      saveSubtaskNotes(subtask);
+    } else {
+      setSubtaskNotesId(subtask.id);
+      setSubtaskNotesDraft(subtask.notesHtml ?? "");
+    }
+  };
+  const people = subtask.assigneeIds
+    .map((pid) => peopleById.get(pid))
+    .filter((p): p is TodoPerson => Boolean(p));
+  const adds = [
+    ...(dueOn ? [] : [{ label: t("addDueDate"), icon: <Calendar size={16} strokeWidth={2} aria-hidden />, run: (anchor: HTMLElement) => setPicker({ kind: "due", anchor }) }]),
+    ...(minutes != null ? [] : [{ label: t("addDuration"), icon: <ClockIcon />, run: (anchor: HTMLElement) => setPicker({ kind: "duration", anchor }) }]),
+    ...(subtask.notesHtml ? [] : [{ label: t("addNotes"), icon: <Pencil size={16} strokeWidth={2} aria-hidden />, run: () => toggleNotes() }]),
+  ];
+  return (
+    <>
+      {dueOn || minutes != null || subtask.notesHtml ? (
+        <div className="task-subtask-meta">
+          {dueOn ? (
+            <button
+              type="button"
+              className={`task-subtask-meta-item task-subtask-due${days != null && days <= 1 ? " is-soon" : ""}`}
+              title={t("fieldDue")}
+              onClick={(e) => setPicker({ kind: "due", anchor: e.currentTarget })}
+            >
+              <Calendar size={13} strokeWidth={2} aria-hidden />
+              {formatDueOnShort(dueOn, lang, t)}
+            </button>
+          ) : null}
+          {minutes != null ? (
+            <button
+              type="button"
+              className="task-subtask-meta-item"
+              title={t("fieldDuration")}
+              onClick={(e) => setPicker({ kind: "duration", anchor: e.currentTarget })}
+            >
+              <Clock size={13} strokeWidth={2} aria-hidden />
+              {formatDurationShort(minutes, t("minutes"), t("hoursShort"))}
+            </button>
+          ) : null}
+          {subtask.notesHtml ? (
+            <button
+              type="button"
+              className={`task-subtask-meta-item${subtaskNotesId === subtask.id ? " is-active" : ""}`}
+              onClick={toggleNotes}
+            >
+              <Pencil size={13} strokeWidth={2} aria-hidden />
+              {t("fieldNotes")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      <span className="task-subtask-float">
+        {!subtask.completed && nativeShell ? (
+          <button
+            type="button"
+            className={`task-subtask-action task-subtask-focus${activeFocusTaskIds.has(subtask.id) ? " is-focusing" : ""}`}
+            title={activeFocusTaskIds.has(subtask.id) ? "Exit focus mode" : "Focus on this task"}
+            aria-label={t(activeFocusTaskIds.has(subtask.id) ? "taskStopFocus" : "taskFocus")}
+            onClick={() => toggleTaskFocusPopout(subtask)}
+          >
+            <FocusIcon />
+          </button>
+        ) : null}
+        <SubtaskMenu m={m} parent={parent} subtask={subtask} openIds={openIds} adds={adds} />
+      </span>
+      {assignEnabled ? (
+        <span className="task-subtask-who assign-menu-wrap">
+          <button
+            type="button"
+            className={`task-subtask-action${people.length ? " has-value" : ""}`}
+            title={people.map((p) => p.name).join(", ") || t("assignPerson")}
+            aria-label={t("assignPerson")}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (openAssignTaskId === subtask.id) {
+                closeAssignMenu();
+              } else {
+                setAssignAnchorEl(e.currentTarget);
+                setOpenAssignTaskId(subtask.id);
+              }
+            }}
+          >
+            {people.length ? <TaskAssigneeStack people={people} size={22} /> : <User size={14} strokeWidth={2} />}
+          </button>
+          <TaskAssignMenu
+            open={openAssignTaskId === subtask.id}
+            anchorEl={openAssignTaskId === subtask.id ? assignAnchorEl : null}
+            people={state.people}
+            assigneeIds={subtask.assigneeIds}
+            t={t}
+            onToggle={(personId) => toggleTaskAssignee(subtask.id, personId)}
+            onEditPeople={() => {
+              closeAssignMenu();
+              setPeopleEditorOpen(true);
+            }}
+            onClose={closeAssignMenu}
+          />
+        </span>
+      ) : null}
+      <DuePopover
+        open={picker?.kind === "due"}
+        anchorEl={picker?.kind === "due" ? picker.anchor : null}
+        value={dueOn}
+        lang={lang}
+        t={t}
+        onClose={close}
+        onPick={(next) => {
+          close();
+          if (next !== dueOn) void mutateTask(subtask.id, { dueOn: next });
+        }}
+      />
+      <DurationPopover
+        open={picker?.kind === "duration"}
+        anchorEl={picker?.kind === "duration" ? picker.anchor : null}
+        minutes={minutes}
+        removeRow
+        t={t}
+        onClose={close}
+        onPick={(next) => {
+          close();
+          if (next !== minutes) void mutateTask(subtask.id, { expectedDurationMinutes: next });
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * A subtask's time: the clock, and the value once there is one. A click
+ * opens the same picker as the task's own duration.
+ */
+function SubtaskDurationButton({
+  minutes,
+  onPick,
+  t,
+}: {
+  minutes: number | null;
+  onPick: (minutes: number | null) => void;
+  t: (key: string) => string;
+}) {
+  const [anchor, setAnchor] = React.useState<HTMLElement | null>(null);
+  const close = React.useCallback(() => setAnchor(null), []);
+  return (
+    <>
+      <button
+        type="button"
+        className={`task-subtask-action task-subtask-dur${minutes != null ? " has-value" : ""}`}
+        title={t("estimateTime")}
+        aria-label={t("fieldDuration")}
+        aria-haspopup="dialog"
+        aria-expanded={anchor != null}
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
+      >
+        <ClockIcon />
+        {minutes != null ? (
+          <span>{formatDurationShort(minutes, t("minutes"), t("hoursShort"))}</span>
+        ) : null}
+      </button>
+      <DurationPopover
+        open={anchor != null}
+        anchorEl={anchor}
+        minutes={minutes}
+        removeRow
+        t={t}
+        onClose={close}
+        onPick={(next) => {
+          setAnchor(null);
+          onPick(next);
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * A subtask's due date: the calendar, and the day once there is one, in
+ * coral when it is today, tomorrow or past. A click opens the same picker
+ * as the task's own date.
+ */
+function SubtaskDueButton({
+  dueOn,
+  onPick,
+  lang,
+  t,
+}: {
+  dueOn: string | null;
+  onPick: (dueOn: string | null) => void;
+  lang: TodoLang;
+  t: (key: string) => string;
+}) {
+  const [anchor, setAnchor] = React.useState<HTMLElement | null>(null);
+  const close = React.useCallback(() => setAnchor(null), []);
+  const days = dueOn ? daysUntilDue(dueOn) : null;
+  return (
+    <>
+      <button
+        type="button"
+        className={`task-subtask-action task-subtask-due${dueOn ? " has-value" : ""}${
+          days != null && days <= 1 ? " is-soon" : ""
+        }`}
+        title={t("fieldDue")}
+        aria-label={dueOn ? `${t("fieldDue")}: ${formatDueOnShort(dueOn, lang, t)}` : t("fieldDue")}
+        aria-haspopup="dialog"
+        aria-expanded={anchor != null}
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
+      >
+        <Calendar size={14} strokeWidth={2} aria-hidden />
+        {dueOn ? <span>{formatDueOnShort(dueOn, lang, t)}</span> : null}
+      </button>
+      <DuePopover
+        open={anchor != null}
+        anchorEl={anchor}
+        value={dueOn}
+        lang={lang}
+        t={t}
+        onClose={close}
+        onPick={(next) => {
+          setAnchor(null);
+          onPick(next);
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * The line between the list and task details, beside the list only: drag
+ * it, or press the arrow keys on it, to make details wider or narrower.
+ * A double-click goes back to the standard width. While dragging, only the
+ * width on the shell moves; the board lays itself out again on release.
+ */
+function DetailsResizer({ m }: { m: TodoPageModel }) {
+  const { t, detailsWidth, setDetailsWidth, shellWidth } = m;
+  /* The width as last set, before the page has drawn it: a held arrow key
+     repeats faster than that, and each press must move on from the last. */
+  const widthRef = React.useRef(detailsWidth);
+  widthRef.current = detailsWidth;
+  if (detailsWidth == null || shellWidth == null) return null;
+  const set = (width: number | null) => {
+    const next = width == null ? null : clampDetailsWidth(width, shellWidth);
+    widthRef.current = next;
+    setDetailsWidth(next);
+  };
+  const by = (step: number) => set((widthRef.current ?? detailsWidth) + step);
+  return (
+    <div
+      className="task-details-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={t("detailsResize")}
+      title={t("detailsResizeHint")}
+      aria-valuenow={detailsWidth}
+      aria-valuemin={DETAILS_MIN}
+      aria-valuemax={Math.max(DETAILS_MIN, shellWidth - LIST_MIN)}
+      tabIndex={0}
+      onDoubleClick={() => set(null)}
+      onKeyDown={(e) => {
+        // The line moves the way the arrow points: left makes details wider.
+        if (e.key === "ArrowLeft") by(DETAILS_STEP);
+        else if (e.key === "ArrowRight") by(-DETAILS_STEP);
+        else return;
+        e.preventDefault();
+      }}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        const shell = e.currentTarget.closest<HTMLElement>(".todo-shell");
+        if (!shell) return;
+        e.preventDefault();
+        const handle = e.currentTarget;
+        handle.setPointerCapture(e.pointerId);
+        // The shell may be zoomed: the pointer moves in screen pixels,
+        // the width is in the shell's own.
+        const scale = shell.getBoundingClientRect().width / shell.offsetWidth || 1;
+        const startX = e.clientX;
+        let width = detailsWidth;
+        let layout = boardLayoutKey(shellWidth - width);
+        shell.classList.add("is-resizing-details");
+        const onMove = (ev: PointerEvent) => {
+          width = clampDetailsWidth(detailsWidth + (startX - ev.clientX) / scale, shellWidth);
+          shell.style.setProperty("--task-details-width", `${width}px`);
+          // The board lays itself out again as the line goes, but only
+          // when its room crosses a breakpoint (columns to one, and so on):
+          // between them the width alone moves, which is cheap.
+          const next = boardLayoutKey(shellWidth - width);
+          if (next !== layout) {
+            layout = next;
+            setDetailsWidth(width, false);
+          }
+        };
+        const onUp = () => {
+          handle.removeEventListener("pointermove", onMove);
+          handle.removeEventListener("pointerup", onUp);
+          handle.removeEventListener("pointercancel", onUp);
+          shell.classList.remove("is-resizing-details");
+          setDetailsWidth(width);
+        };
+        handle.addEventListener("pointermove", onMove);
+        handle.addEventListener("pointerup", onUp);
+        handle.addEventListener("pointercancel", onUp);
+      }}
+    />
+  );
+}
+
+function OverlayTitle({
+  text,
+  onSave,
+  onDraft,
+}: {
+  text: string;
+  onSave: (text: string) => void;
+  /** The words as typed, for the card; null when the box closes. */
+  onDraft?: (draft: string | null) => void;
+}) {
+  const [draft, setDraftState] = React.useState<string | null>(null);
+  /* The card shows the words as typed, but the page hears of them only
+     when typing pauses: told on every key, the whole page drew again and
+     the box's growing then laid out all of it, ~20ms a letter on a big
+     board. Closing tells it at once. */
+  const draftTimer = React.useRef<number | undefined>(undefined);
+  const setDraft = (next: string | null) => {
+    setDraftState(next);
+    window.clearTimeout(draftTimer.current);
+    if (next === null) onDraft?.(null);
+    else draftTimer.current = window.setTimeout(() => onDraft?.(next), 150);
+  };
+  React.useEffect(() => () => window.clearTimeout(draftTimer.current), []);
+  // A box closed by the task going away leaves no words on its card.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useEffect(() => () => onDraft?.(null), []);
   const boxRef = React.useRef<HTMLTextAreaElement | null>(null);
+  /* The box is as tall as its words. Each change of its height restyles
+     the page (~8ms on a big board), so it is touched only when needed:
+     grown when the words overflow it, and measured from nothing only
+     when words are taken away (or the box has just opened). */
+  const lengthRef = React.useRef(-1);
   React.useLayoutEffect(() => {
     const box = boxRef.current;
-    if (draft === null || !box) return;
-    box.style.height = "0px";
-    box.style.height = `${box.scrollHeight}px`;
+    if (draft === null || !box) {
+      lengthRef.current = -1;
+      return;
+    }
+    if (lengthRef.current < 0 || draft.length < lengthRef.current) {
+      box.style.height = "0px";
+      box.style.height = `${box.scrollHeight}px`;
+    } else if (box.scrollHeight > box.clientHeight) {
+      box.style.height = `${box.scrollHeight}px`;
+    }
+    lengthRef.current = draft.length;
   }, [draft]);
   React.useEffect(() => {
     const box = boxRef.current;
@@ -159,7 +656,11 @@ function OverlayTitle({ text, onSave }: { text: string; onSave: (text: string) =
   );
 }
 
-export function renderNotesOverlay(m: TodoPageModel) {
+/**
+ * Task details. `canExpand`: whether they can widen over the whole window
+ * (false where they take it anyway: a narrow window, the Today session).
+ */
+export function renderNotesOverlay(m: TodoPageModel, { canExpand = false }: { canExpand?: boolean } = {}) {
   const {
     state,
     assignEnabled,
@@ -177,23 +678,16 @@ export function renderNotesOverlay(m: TodoPageModel) {
     notesReadCurrent,
     notesDraft,
     setNotesDraft,
-    nativeShell,
-    activeFocusTaskIds,
     t,
-    toggleTaskFocusPopout,
     mutateTask,
-    removeTask,
     resizeEditTextarea,
     uploaderForTask,
     saveNotes,
     subtasksByTask,
     toggleSubtaskDone,
     subtaskNotesId,
-    setSubtaskNotesId,
     subtaskNotesDraft,
     setSubtaskNotesDraft,
-    subtaskDurEditId,
-    setSubtaskDurEditId,
     newSubtaskText,
     setNewSubtaskText,
     newSubtaskAssigneeIds,
@@ -204,8 +698,8 @@ export function renderNotesOverlay(m: TodoPageModel) {
     setNewSubtaskNotesOpen,
     newSubtaskDuration,
     setNewSubtaskDuration,
-    newSubtaskDurEditing,
-    setNewSubtaskDurEditing,
+    newSubtaskDue,
+    setNewSubtaskDue,
     newSubtaskInputRef,
     submitNewSubtask,
     saveSubtaskNotes,
@@ -215,7 +709,6 @@ export function renderNotesOverlay(m: TodoPageModel) {
     subtaskHoldRef,
     startSubtaskDrag,
     peopleById,
-    toggleTaskAssignee,
     closeAssignMenu,
   } = m;
   if (!openNotesTaskId || !notesExpanded) return null;
@@ -248,7 +741,8 @@ export function renderNotesOverlay(m: TodoPageModel) {
         newSubtaskText.trim() ||
         newSubtaskAssigneeIds.length ||
         newSubtaskNotesOpen ||
-        newSubtaskDuration != null
+        newSubtaskDuration != null ||
+        newSubtaskDue != null
           ? " is-drafting"
           : ""
       }`}
@@ -260,7 +754,7 @@ export function renderNotesOverlay(m: TodoPageModel) {
         aria-hidden
         onClick={() => newSubtaskInputRef.current?.focus()}
       >
-        <Plus size={12} strokeWidth={2.5} />
+        <Plus size={16} strokeWidth={1.75} />
       </span>
       <input
         ref={newSubtaskInputRef}
@@ -276,55 +770,39 @@ export function renderNotesOverlay(m: TodoPageModel) {
         }}
       />
       <span className="task-subtask-actions">
-        {newSubtaskDurEditing ? (
-          <input
-            autoFocus
-            type="text"
-            inputMode="numeric"
-            className="task-subtask-dur-input"
-            defaultValue={
-              newSubtaskDuration == null ? "" : String(newSubtaskDuration)
-            }
-            placeholder="min"
-            onBlur={(e) => {
-              setNewSubtaskDurEditing(false);
-              setNewSubtaskDuration(minutesFromTyped(e.target.value));
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-              if (e.key === "Escape") setNewSubtaskDurEditing(false);
-            }}
-          />
-        ) : (
+        <SubtaskDueButton
+          dueOn={newSubtaskDue}
+          lang={m.lang}
+          t={t}
+          onPick={(next) => {
+            setNewSubtaskDue(next);
+            newSubtaskInputRef.current?.focus();
+          }}
+        />
+        <SubtaskDurationButton
+          minutes={newSubtaskDuration}
+          t={t}
+          onPick={(next) => {
+            setNewSubtaskDuration(next);
+            newSubtaskInputRef.current?.focus();
+          }}
+        />
+        {/* As in the add-task box: open, the field below is the notes,
+            and the button steps aside. */}
+        {newSubtaskNotesOpen ? null : (
           <button
             type="button"
             className={`task-subtask-action${
-              newSubtaskDuration != null ? " has-value" : ""
+              notesHtmlIsEmpty(newSubtaskNotes) ? "" : " has-value"
             }`}
-            title={t("estimateTime")}
-            onClick={() => setNewSubtaskDurEditing(true)}
+            title={t("notes")}
+            onClick={() => setNewSubtaskNotesOpen(true)}
           >
-            <ClockIcon />
-            {newSubtaskDuration != null ? (
-              <span>{newSubtaskDuration}m</span>
-            ) : null}
+            <NotesIcon />
           </button>
         )}
-        <button
-          type="button"
-          className={`task-subtask-action${
-            notesHtmlIsEmpty(newSubtaskNotes) ? "" : " has-value"
-          }${newSubtaskNotesOpen ? " is-active" : ""}`}
-          title={t("notes")}
-          onClick={() => setNewSubtaskNotesOpen((open) => !open)}
-        >
-          <NotesIcon />
-        </button>
         {assignEnabled ? (
-          <span className="assign-menu-wrap">
+          <span className="task-subtask-who assign-menu-wrap">
             <button
               type="button"
               className={`task-subtask-action${
@@ -371,17 +849,18 @@ export function renderNotesOverlay(m: TodoPageModel) {
             />
           </span>
         ) : null}
-        {/* The places of the focus button and the ×, which a
-            subtask not yet added has no use for, so its
-            controls line up with the rows above. */}
-        {nativeShell ? (
-          <span className="task-subtask-action task-subtask-slot" aria-hidden />
-        ) : null}
-        <span className="task-subtask-delete task-subtask-slot" aria-hidden />
       </span>
     </div>
     {newSubtaskNotesOpen ? (
-      <div className="task-subtask-notes">
+      <div
+        className="task-subtask-notes task-subtask-new-notes"
+        onBlur={(e) => {
+          // Left empty, the field is put away, as in the add-task box.
+          // Moving between the editor and its own toolbar is not leaving.
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          if (notesHtmlIsEmpty(newSubtaskNotes)) setNewSubtaskNotesOpen(false);
+        }}
+      >
         <TrixNotesEditor
           value={newSubtaskNotes}
           onChange={setNewSubtaskNotes}
@@ -394,37 +873,22 @@ export function renderNotesOverlay(m: TodoPageModel) {
           }}
           autoFocus
         />
-        <button
-          type="button"
-          className="notes-done-btn"
-          title="Done editing"
-          onClick={() => {
-            setNewSubtaskNotesOpen(false);
-            newSubtaskInputRef.current?.focus();
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </button>
       </div>
     ) : null}
     </>
   );
   return (
     <div
-      className="modal-overlay notes-overlay"
-      onClick={(event) => {
-        // Only the ground behind the card. A click inside it is the task.
-        if (event.target === event.currentTarget) saveNotes(task.id);
-      }}
+      className="notes-overlay task-details-panel"
     >
       <div
+        key={task.id}
         className={`notes-overlay-card task-overlay-card${task.completed ? " is-done" : ""}`}
-        role="dialog"
-        aria-modal="true"
+        role="region"
         aria-label={task.text}
       >
+        <DetailsResizer m={m} />
+        <TaskDetailsBar m={m} task={task} canExpand={canExpand} />
         <TaskOverlayHead
           m={m}
           task={task}
@@ -433,6 +897,7 @@ export function renderNotesOverlay(m: TodoPageModel) {
               key={task.id}
               text={task.text}
               onSave={(text) => void mutateTask(task.id, { text })}
+              onDraft={(draft) => m.setTitleDraft(draft === null ? null : { taskId: task.id, text: draft })}
             />
           }
         />
@@ -445,8 +910,17 @@ export function renderNotesOverlay(m: TodoPageModel) {
         {/* The task's own facts and steps, on the card's white. The notes
             follow on the page's cream, as a band of their own. */}
         <div className="task-overlay-top">
-          <TaskOverlayChips m={m} task={task} />
+          {/* Full screen, who made the task stands beside Focus, and the
+              fields below go across in columns (task-details.css). */}
+          {canExpand && m.detailsFull ? (
+            <div className="task-details-lead">
+              <TaskDetailsActions m={m} task={task} />
+              <TaskDetailsInfo m={m} task={task} />
+            </div>
+          ) : <TaskDetailsActions m={m} task={task} />}
+          <TaskOverlayChips m={m} task={task} withInfo={!(canExpand && m.detailsFull)} />
           <div className="task-overlay-subtasks" aria-label={t("subtasks")}>
+              <h3 className="task-details-subtasks-heading">{t("subtasks")}</h3>
               <div className="task-subtask-list" ref={subtaskListRef}>
                 {/* One flat list, the add row keyed in it like a row. It
                     moves down as steps are added, and React keeps it:
@@ -536,152 +1010,15 @@ export function renderNotesOverlay(m: TodoPageModel) {
                         }
                       }}
                     />
-                    {/* What a subtask carries, and what can be done to
-                        it — the card's own controls, on a smaller row.
-                        Only making subtasks of subtasks is missing, on
-                        purpose. */}
-                    <span className="task-subtask-actions">
-                      {subtaskDurEditId === subtask.id ? (
-                        <input
-                          autoFocus
-                          type="text"
-                          inputMode="numeric"
-                          className="task-subtask-dur-input"
-                          defaultValue={
-                            subtask.expectedDurationMinutes == null
-                              ? ""
-                              : String(subtask.expectedDurationMinutes)
-                          }
-                          placeholder="min"
-                          onBlur={(e) => {
-                            setSubtaskDurEditId(null);
-                            const next = minutesFromTyped(e.target.value);
-                            if (next === (subtask.expectedDurationMinutes ?? null))
-                              return;
-                            void mutateTask(subtask.id, {
-                              expectedDurationMinutes: next,
-                            });
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                            if (e.key === "Escape") setSubtaskDurEditId(null);
-                          }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className={`task-subtask-action${
-                            subtask.expectedDurationMinutes != null
-                              ? " has-value"
-                              : ""
-                          }`}
-                          title={t("estimateTime")}
-                          onClick={() => setSubtaskDurEditId(subtask.id)}
-                        >
-                          <ClockIcon />
-                          {subtask.expectedDurationMinutes != null ? (
-                            <span>{subtask.expectedDurationMinutes}m</span>
-                          ) : null}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className={`task-subtask-action${
-                          subtask.notesHtml ? " has-value" : ""
-                        }`}
-                        title={t("notes")}
-                        onClick={() => {
-                          if (subtaskNotesId === subtask.id) {
-                            saveSubtaskNotes(subtask);
-                          } else {
-                            setSubtaskNotesId(subtask.id);
-                            setSubtaskNotesDraft(subtask.notesHtml ?? "");
-                          }
-                        }}
-                      >
-                        <NotesIcon />
-                      </button>
-                      {assignEnabled ? (
-                        <span className="assign-menu-wrap">
-                          <button
-                            type="button"
-                            className={`task-subtask-action${
-                              subtask.assigneeIds.length ? " has-value" : ""
-                            }`}
-                            title={t("assignPerson")}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (openAssignTaskId === subtask.id) {
-                                closeAssignMenu();
-                              } else {
-                                setAssignAnchorEl(e.currentTarget);
-                                setOpenAssignTaskId(subtask.id);
-                              }
-                            }}
-                          >
-                            {subtask.assigneeIds.length ? (
-                              <TaskAssigneeStack
-                                people={subtask.assigneeIds
-                                  .map((pid) => peopleById.get(pid))
-                                  .filter((p): p is TodoPerson => Boolean(p))}
-                                size={18}
-                              />
-                            ) : (
-                              <User size={14} strokeWidth={2} />
-                            )}
-                          </button>
-                          <TaskAssignMenu
-                            open={openAssignTaskId === subtask.id}
-                            anchorEl={
-                              openAssignTaskId === subtask.id ? assignAnchorEl : null
-                            }
-                            people={state.people}
-                            assigneeIds={subtask.assigneeIds}
-                            t={t}
-                            onToggle={(personId) =>
-                              toggleTaskAssignee(subtask.id, personId)
-                            }
-                            onEditPeople={() => {
-                              closeAssignMenu();
-                              setPeopleEditorOpen(true);
-                            }}
-                            onClose={closeAssignMenu}
-                          />
-                        </span>
-                      ) : null}
-                      {nativeShell && !subtask.completed ? (
-                        <button
-                          type="button"
-                          className={`task-subtask-action task-subtask-focus${
-                            activeFocusTaskIds.has(subtask.id)
-                              ? " is-focusing"
-                              : ""
-                          }`}
-                          title={
-                            activeFocusTaskIds.has(subtask.id)
-                              ? "Exit focus mode"
-                              : "Focus on this task"
-                          }
-                          onClick={() => toggleTaskFocusPopout(subtask)}
-                        >
-                          <FocusIcon />
-                        </button>
-                      ) : nativeShell ? (
-                        /* A done step has no focus button. Its place is
-                           kept, so every row's controls stand in the
-                           same columns. */
-                        <span className="task-subtask-action task-subtask-slot" aria-hidden />
-                      ) : null}
-                      <button
-                        type="button"
-                        className="task-subtask-delete"
-                        title={t("deleteSubtask")}
-                        aria-label={t("deleteSubtask")}
-                        onClick={() => void removeTask(subtask.id)}
-                      >
-                        ×
-                      </button>
-                    </span>
+                    {/* What it carries, on a second line when set; who
+                        it is for on the right; Focus and ⋮ over the right
+                        end on hover (design "20c/20d"). */}
+                    <SubtaskTail
+                      m={m}
+                      parent={task}
+                      subtask={subtask}
+                      openIds={orderedSubtasks.filter((st) => !st.completed).map((st) => st.id)}
+                    />
                   </div>
                   {subtaskNotesId === subtask.id ? (
                     <div className="task-subtask-notes">

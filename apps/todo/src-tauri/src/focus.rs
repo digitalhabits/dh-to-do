@@ -89,11 +89,25 @@ const FOCUS_POPOUT_WIDTH: f64 = 320.0;
 /// Default height — matches redd-do (focus-bar is 48px; a little chrome room).
 const FOCUS_POPOUT_HEIGHT: f64 = 56.0;
 const FOCUS_POPOUT_MIN_HEIGHT: f64 = 48.0;
-/// The widest the mini panel can ever be. With no limit, a drag or a
-/// double-click (macOS zooms a window there) made it fill the screen: a
-/// one-line bar on a screen of empty yellow. Once the page has measured
-/// itself, `set_focus_popout_height` holds it to its content, inside this.
+/// The widest the mini panel is before the page has measured itself. With no
+/// limit, a drag or a double-click (macOS zooms a window there) made it fill
+/// the screen: a one-line bar on a screen of empty yellow. Once the page has
+/// measured itself, `set_focus_popout_height` holds it to its content: the
+/// name on one line, however long, up to the screen's width
+/// (`focus_widest_on`). Until 2026-10-23 that was held inside this too, and a
+/// long name could not be drawn out to its end.
 const FOCUS_POPOUT_MAX_WIDTH: f64 = 720.0;
+/// What a measured panel keeps clear of the screen's sides, in points.
+const FOCUS_POPOUT_SCREEN_MARGIN: f64 = 40.0;
+
+/// The widest a measured panel may be on this screen.
+fn focus_widest_on(monitor: Option<tauri::Monitor>) -> f64 {
+  monitor
+    .map(|m| m.size().to_logical::<f64>(m.scale_factor()).width - FOCUS_POPOUT_SCREEN_MARGIN)
+    .filter(|w| w.is_finite())
+    .unwrap_or(FOCUS_POPOUT_MAX_WIDTH)
+    .max(FOCUS_POPOUT_MAX_WIDTH)
+}
 /// The narrowest: room for the bar's buttons, drawn smaller below 260px
 /// (todo.css). Was 280, the opening width less a little: a short name's
 /// widest was below it, so the window could not be resized sideways.
@@ -628,7 +642,7 @@ pub fn exit_fullscreen_focus(
       if let Some(restored) = app.get_webview_window(&focus_popout_label(&task_id)) {
         // A size kept from before the limits stays inside them.
         let _ = restored.set_size(tauri::LogicalSize::new(
-          geometry.width.min(FOCUS_POPOUT_MAX_WIDTH),
+          geometry.width.min(focus_widest_on(restored.current_monitor().ok().flatten())),
           geometry.height.min(FOCUS_POPOUT_MAX_HEIGHT),
         ));
         let _ = restored.set_position(tauri::LogicalPosition::new(geometry.x, geometry.y));
@@ -777,10 +791,12 @@ pub fn set_focus_popout_height(
     .to_logical::<f64>(scale);
   let target = height.clamp(FOCUS_POPOUT_MIN_HEIGHT, FOCUS_POPOUT_MAX_HEIGHT);
   // The widest is what the bar holds on one line, plus air (the page
-  // measures it). A page from before sends none: then the cap.
+  // measures it), up to the screen's width. A page from before sends none:
+  // then the cap.
+  let widest = focus_widest_on(window.current_monitor().ok().flatten());
   let max_width = max_width
     .filter(|w| w.is_finite())
-    .map(|w| w.clamp(FOCUS_POPOUT_MIN_WIDTH, FOCUS_POPOUT_MAX_WIDTH))
+    .map(|w| w.clamp(FOCUS_POPOUT_MIN_WIDTH, widest))
     // A short name may still be as wide as the panel opens.
     .map(|w| w.max(FOCUS_POPOUT_WIDTH))
     .unwrap_or(FOCUS_POPOUT_MAX_WIDTH);

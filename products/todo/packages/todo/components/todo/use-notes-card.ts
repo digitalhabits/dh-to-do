@@ -12,8 +12,18 @@ import type { TodoTask, TodoTaskPatch } from "@/lib/todo/types";
  */
 export function useNotesCardState() {
   const [openNotesTaskId, setOpenNotesTaskId] = React.useState<string | null>(null);
+  /** A title being written in details, shown on the task's card as typed;
+      saved on Enter or leaving the box (OverlayTitle). */
+  const [titleDraft, setTitleDraft] = React.useState<{ taskId: string; text: string } | null>(null);
   /** The open note, over the whole window. See renderNotesOverlay. */
-  const [notesExpanded, setNotesExpanded] = React.useState(false);
+  const [notesExpanded, setNotesExpandedOnly] = React.useState(false);
+  /** Details widened over the whole window (TaskDetailsBar). Closing details ends it. */
+  const [detailsFull, setDetailsFull] = React.useState(false);
+  const setNotesExpanded = React.useCallback((open: boolean) => {
+    setNotesExpandedOnly(open);
+    if (!open) setDetailsFull(false);
+  }, []);
+  const detailsOpenerRef = React.useRef<HTMLElement | null>(null);
   /** The expanded card's own pickers, so the card's stay untouched. */
   const [overlayListOpen, setOverlayListOpen] = React.useState(false);
   const [overlayAssignAnchor, setOverlayAssignAnchor] =
@@ -70,13 +80,19 @@ export function useNotesCardState() {
    * useSubtasks.
    */
   const focusSubtaskOnOpenRef = React.useRef(false);
+  /** The part of details to scroll to the top once they are drawn. */
+  const scrollToOnOpenRef = React.useRef<DetailsPart | null>(null);
 
   return {
+    detailsOpenerRef,
     focusSubtaskOnOpenRef,
+    scrollToOnOpenRef,
     openNotesTaskId,
     setOpenNotesTaskId,
     notesExpanded,
     setNotesExpanded,
+    detailsFull,
+    setDetailsFull,
     overlayListOpen,
     setOverlayListOpen,
     overlayAssignAnchor,
@@ -91,6 +107,8 @@ export function useNotesCardState() {
     notesReadCurrent,
     notesDraft,
     setNotesDraft,
+    titleDraft,
+    setTitleDraft,
   };
 }
 
@@ -101,10 +119,13 @@ export function useNotesCardState() {
 export function useNotesCard({
   notesCard,
   mutateTask,
+  storedNotesOf,
   t,
 }: {
   notesCard: ReturnType<typeof useNotesCardState>;
   mutateTask: (id: string, patch: TodoTaskPatch) => Promise<unknown>;
+  /** The notes the board holds for a task now, to skip a save that changes nothing. */
+  storedNotesOf: (taskId: string) => string | null | undefined;
   t: (key: string) => string;
 }) {
   const {
@@ -152,21 +173,47 @@ export function useNotesCard({
   React.useEffect(() => {
     if (!notesExpanded) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if ((event.target as HTMLElement | null)?.closest?.(".assign-menu-portal, .task-menu, .task-list-picker, .due-popover, .duration-popover, .trix-lightbox, .people-editor")) return;
       // Escape in the title's box puts the box away, not the card.
       if ((event.target as HTMLElement | null)?.closest?.(".notes-overlay-title-input")) return;
       event.stopPropagation();
+      // Full screen, Escape first puts details back beside the list.
+      if (notesCard.detailsFull && document.querySelector(".task-details-full")) {
+        notesCard.setDetailsFull(false);
+        return;
+      }
       // The card is the task now, not only its notes: leaving it saves and
       // puts the reader back on the board, not into the small note box.
       if (openNotesTaskId) saveNotes(openNotesTaskId);
     };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notesExpanded]);
+  }, [notesExpanded, openNotesTaskId, notesDraft, notesCard.detailsFull]);
 
 
-  function saveNotes(taskId: string) {
+  /* Opened from a card's subtask count or its Notes mark: that part of
+     details goes to the top of the scrolling area. The notes editor loads a
+     moment later and can move the scroll as it takes the caret, so the
+     scroll is set again once it has ("trix-initialize"), for 2s. */
+  React.useEffect(() => {
+    const part = notesCard.scrollToOnOpenRef.current;
+    if (!notesExpanded || !part) return;
+    notesCard.scrollToOnOpenRef.current = null;
+    const frames: number[] = [requestAnimationFrame(() => scrollDetailsTo(part))];
+    const onEditorReady = () => frames.push(requestAnimationFrame(() => scrollDetailsTo(part)));
+    document.addEventListener("trix-initialize", onEditorReady);
+    const stop = window.setTimeout(() => document.removeEventListener("trix-initialize", onEditorReady), 2000);
+    return () => {
+      frames.forEach(cancelAnimationFrame);
+      document.removeEventListener("trix-initialize", onEditorReady);
+      window.clearTimeout(stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesExpanded, openNotesTaskId]);
+
+  function saveNotes(taskId: string, restoreFocus = true) {
     /*
       Straight from the editor, not from the draft.
 
@@ -189,24 +236,41 @@ export function useNotesCard({
     */
     if (notesUploading.current > 0 || pendingAttachments(html) > 0) {
       toast.error(t("pictureUploading"));
-      return;
+      return false;
     }
     setOpenNotesTaskId(null);
     setNotesExpanded(false);
     const isEmpty = !html || html === "<p><br></p>";
-    void mutateTask(taskId, {
-      notesHtml: isEmpty ? null : html,
-    });
+    const notesHtml = isEmpty ? null : html;
+    // Closing a task without changing its notes sends nothing: a save of
+    // the same words was a request and a redraw on every close.
+    if (notesHtml !== (storedNotesOf(taskId) ?? null)) {
+      void mutateTask(taskId, { notesHtml });
+    }
+    if (restoreFocus) requestAnimationFrame(() => notesCard.detailsOpenerRef.current?.focus({ preventScroll: true }));
+    return true;
   }
 
 
   /**
-   * The whole task, expanded: title, list, people, duration, notes and
-   * subtasks in one card over the window. The expand button on a card and
-   * the subtask chip both come here.
+   * Open task details from a title, subtask count or the Today session.
+   * Switching tasks saves the live note before loading the next document.
    */
-  function openTaskOverlay(task: TodoTask, opts?: { focusSubtask?: boolean }) {
+  function openTaskOverlay(task: TodoTask, opts?: { focusSubtask?: boolean; scrollTo?: DetailsPart }) {
+    if (openNotesTaskId && openNotesTaskId !== task.id && !saveNotes(openNotesTaskId, false)) return;
+    if (openNotesTaskId !== task.id || !notesExpanded) {
+      notesCard.detailsOpenerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    // From the subtask count, the subtasks are what the reader came for.
+    const part = opts?.scrollTo ?? (opts?.focusSubtask ? "subtasks" : null);
+    if (notesExpanded && openNotesTaskId === task.id) {
+      // Already open on this task: nothing redraws to scroll after, so the
+      // part is scrolled to now.
+      if (part) requestAnimationFrame(() => scrollDetailsTo(part));
+      return;
+    }
     notesCard.focusSubtaskOnOpenRef.current = Boolean(opts?.focusSubtask);
+    notesCard.scrollToOnOpenRef.current = part;
     if (openNotesTaskId === task.id) {
       /*
         The small note box may be open with unsaved words in it. The big
@@ -225,7 +289,54 @@ export function useNotesCard({
       setNotesDraft(task.notesHtml ?? "");
     }
     setNotesExpanded(true);
+    notesCard.setOverlayListOpen(false);
+    notesCard.setOverlayAssignAnchor(null);
+    requestAnimationFrame(() => {
+      if (!opts?.focusSubtask) document.querySelector<HTMLButtonElement>(".task-details-back")?.focus({ preventScroll: true });
+    });
   }
 
   return { toggleNotes, readOpenNote, saveNotes, openTaskOverlay };
+}
+
+/** A part of task details a card can open them on. */
+export type DetailsPart = "subtasks" | "notes";
+
+/** Scroll the details so `part` starts at the top of their scrolling area. */
+export function scrollDetailsTo(part: DetailsPart) {
+  const box = document.querySelector<HTMLElement>(".task-details-panel .task-overlay-fields");
+  const target = box?.querySelector<HTMLElement>(
+    part === "notes" ? ".task-overlay-notes-band" : ".task-overlay-subtasks"
+  );
+  if (!box || !target) return;
+  // The app may be zoomed (Settings > Zoom level, a CSS zoom). WebKit gives
+  // the rects on screen, zoomed, and the scroll in the box's own pixels:
+  // the screen distance is divided by the zoom. Where both are on screen
+  // the two heights agree and this is 1.
+  const scale = box.getBoundingClientRect().height / box.offsetHeight || 1;
+  box.scrollTop += (target.getBoundingClientRect().top - box.getBoundingClientRect().top) / scale;
+}
+
+/**
+ * Light up one subtask's row in task details for a moment: the step whose
+ * card on the board opened its parent's details, so the eye finds it. The
+ * details draw a frame or two after the click, so this waits for the row
+ * (about a second at most). The colour is task-details.css's.
+ */
+export function flashSubtaskRow(subtaskId: string) {
+  let frames = 0;
+  const look = () => {
+    const row = document.querySelector<HTMLElement>(
+      `.task-details-panel .task-subtask-row[data-subtask-id="${CSS.escape(subtaskId)}"]`
+    );
+    if (!row) {
+      if (++frames < 60) requestAnimationFrame(look);
+      return;
+    }
+    row.classList.remove("is-flash");
+    void row.offsetWidth; // start the animation again on a second click
+    row.classList.add("is-flash");
+    row.addEventListener("animationend", () => row.classList.remove("is-flash"), { once: true });
+  };
+  requestAnimationFrame(look);
 }

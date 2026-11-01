@@ -17,7 +17,9 @@ import { DoneBox, DoneSummary } from "@/components/todo/done-summary";
 import { DoneChevron, HeartIcon } from "@/components/todo/task-icons";
 import { renderBoardColumn, renderBoardPills } from "@/components/todo/todo-board-view";
 import { renderSyncControls } from "@/components/todo/todo-list-chrome";
+import { SortControl } from "@/components/todo/sort-control";
 import { renderTask } from "@/components/todo/todo-task-card";
+import { GrowingCards } from "@/components/todo/growing-cards";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";
 import { dayOrderWrites } from "@/lib/todo/board-drop";
@@ -95,40 +97,38 @@ export function renderTaskList(m: TodoPageModel) {
                 </>
               );
             })()
-          ) : boardAccordion ? (
+          ) : (
+            /* One keyed list of columns, the same shape stacked or across,
+               so crossing the breakpoint (the divider, a narrower window)
+               moves the columns and keeps their cards: two shapes made
+               React draw every card again. */
             (() => {
-              // Someday goes last: the maybe-work sits under the
-              // real columns. A remembered section that is not on
-              // this board any more falls back to Today.
-              const sections: TodoBoardColumn[] = [
-                ...visibleColumnOrder,
-                ...(somedayEnabled ? (["someday"] as const) : []),
-              ];
-              const open = sections.includes(openStackColumn)
-                ? openStackColumn
-                : "today";
-              return sections.map((column) =>
-                renderBoardColumn(m, column, false, column !== open)
+              const cols: [TodoBoardColumn, boolean][] = [];
+              if (boardAccordion) {
+                // Someday goes last: the maybe-work sits under the real
+                // columns. A remembered section that is not on this board
+                // any more falls back to Today.
+                const sections: TodoBoardColumn[] = [
+                  ...visibleColumnOrder,
+                  ...(somedayEnabled ? (["someday"] as const) : []),
+                ];
+                const open = sections.includes(openStackColumn) ? openStackColumn : "today";
+                for (const column of sections) cols.push([column, column !== open]);
+              } else {
+                /* Someday leads a wide board and follows a stacked one.
+                   Across, it is the rail on the left, before the work
+                   proper. Down, first means at the top — the maybe-work
+                   above everything being done today, which is not what
+                   a rail on the left says at all. */
+                if (somedayEnabled && !boardStacked) cols.push(["someday", !somedayExpanded]);
+                for (const column of boardOpenColumns) cols.push([column, false]);
+                if (showTodayRail) cols.push(["today", true]);
+                if (somedayEnabled && boardStacked) cols.push(["someday", !somedayExpanded]);
+              }
+              return cols.map(([column, folded]) =>
+                renderBoardColumn(m, column, boardAccordion ? false : folded, boardAccordion ? folded : undefined)
               );
             })()
-          ) : (
-            <>
-              {/* Someday leads a wide board and follows a stacked one.
-                  Across, it is the rail on the left, before the work
-                  proper. Down, first means at the top — the maybe-work
-                  above everything being done today, which is not what
-                  a rail on the left says at all. */}
-              {somedayEnabled && !boardStacked
-                ? renderBoardColumn(m, "someday", !somedayExpanded)
-                : null}
-              {boardOpenColumns.map((column) =>
-                renderBoardColumn(m, column, false)
-              )}
-              {showTodayRail ? renderBoardColumn(m, "today", true) : null}
-              {somedayEnabled && boardStacked
-                ? renderBoardColumn(m, "someday", !somedayExpanded)
-                : null}
-            </>
           )}
         </div>
       ) : view === "favourites" && openTasks.length === 0 ? (
@@ -138,7 +138,17 @@ export function renderTaskList(m: TodoPageModel) {
           <p className="favourites-empty-hint">{t("noFavouritesHint")}</p>
         </div>
       ) : (
-        (view === "lists" ? flatListTasks : openTasks).map((task) => renderTask(m, task))
+        <>
+          {/* With Board View off, the list has its own order, as a board
+              column does. With fewer than two tasks there is nothing to
+              order, so the control is not shown. */}
+          {view === "lists" && flatListTasks.length > 1 ? (
+            <div className="list-sort-bar">
+              <SortControl m={m} target="list" />
+            </div>
+          ) : null}
+          <GrowingCards m={m} tasks={view === "lists" ? m.sortColumn("list", flatListTasks) : openTasks} />
+        </>
       )}
     </div>
   );
@@ -207,7 +217,6 @@ export function renderAddTask(m: TodoPageModel) {
 export function renderDonePile(m: TodoPageModel) {
   const {
     view,
-    focusMode,
     doneCollapsed,
     setDoneCollapsed,
     remindersConnected,
@@ -221,7 +230,7 @@ export function renderDonePile(m: TodoPageModel) {
     filteredDoneTasks,
     clearDone,
   } = m;
-  if (focusMode) return null;
+  // Shown in focus mode too: it hides the tabs and the footer, not the work done.
   const syncBasecamp = isAllListsView
     ? lists.some((l) => Boolean(l.basecampListId))
     : Boolean(activeList?.basecampListId);

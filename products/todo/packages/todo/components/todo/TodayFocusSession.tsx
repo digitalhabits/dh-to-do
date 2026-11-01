@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Pause, Play } from "lucide-react";
+import { ArrowRight, Calendar, Clock, Pause, Play } from "lucide-react";
 
-import { FocusIcon, NotesIcon } from "@/components/todo/task-icons";
+import { FocusIcon } from "@/components/todo/task-icons";
 import { TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
 import { beginNativeWindowDragOnMove } from "@/lib/todo/native-bridge";
@@ -16,17 +16,36 @@ import {
   spawnTaskGhost,
   waitForElement,
 } from "@/lib/todo/task-celebration";
-import type { makeT } from "@/lib/todo/i18n";
+import type { makeT, TodoLang } from "@/lib/todo/i18n";
+import { NotesChip } from "@/components/todo/notes-chip";
+import { formatDurationShort } from "@/lib/todo/duration";
+import { daysUntilDue, formatDueOnShort } from "@/lib/todo/task-draft";
 import type { TodoPerson, TodoTask } from "@/lib/todo/types";
+
+/** How long the task in hand shows its tick before the next task takes the card. */
+const NOW_TICK_HOLD_MS = 450;
 
 /** How often the running task's time is written back, as in the focus panel. */
 const PERSIST_INTERVAL_MS = 30000;
 
+/** What on a session card is a control of its own: a press there neither
+    drags the card nor opens its details. Trix, not Quill, and a bare
+    `[contenteditable]`: Trix does not spell the attribute "true", so a
+    selection inside a note read as the start of a drag. Menus and
+    pickers, as an open one's padding is not the card. */
+const CARD_CONTROLS =
+  "input, button, a, textarea, select, label, [contenteditable]," +
+  " trix-editor, .trix-notes-bubble, .assign-menu, [role=menu], [role=dialog], [role=listbox]";
+
 export type TodaySessionHandlers = {
   /** Open or close the board's notes editor for this task. */
   onToggleNotes: (task: TodoTask) => void;
+  /** Open the task's details, as a click on a board card's name does. */
+  onOpenDetails: (task: TodoTask) => void;
   /** The board's notes editor for this task, or null when it is shut. */
   renderNotes: (task: TodoTask) => React.ReactNode;
+  /** Whether a task's (or step's) note is open in place. */
+  isNotesOpen: (task: TodoTask) => boolean;
   /** Minutes the task is expected to take, or null to clear it. */
   onSetDuration: (task: TodoTask, minutes: number | null) => void;
   /** Mark the running task done. The board keeps the record. */
@@ -69,6 +88,7 @@ export type TodaySessionHandlers = {
 export function TodayFocusSession({
   tasks,
   t,
+  lang,
   handlers,
   timerAlways = true,
   subtasksOf,
@@ -83,8 +103,17 @@ export function TodayFocusSession({
    * under the words (taskCardChrome), so the task in hand has them in the
    * same places as on the board.
    */
-  renderChrome: (task: TodoTask) => { utilityPill: React.ReactNode; metaRow: React.ReactNode; anyOpen: boolean };
+  /** A card's chrome; `now` for the task in hand (see taskCardChrome). */
+  renderChrome: (task: TodoTask, now?: boolean) => {
+    utilityPill: React.ReactNode;
+    metaRow: React.ReactNode;
+    anyOpen: boolean;
+    /** "↳ Parent" above a step's name; null for a task. */
+    parentLine?: React.ReactNode;
+  };
   t: ReturnType<typeof makeT>;
+  /** For a step's day on its second line. */
+  lang: TodoLang;
   handlers: TodaySessionHandlers;
   /** Off: the timer shows only for a task with a duration. */
   timerAlways?: boolean;
@@ -99,7 +128,11 @@ export function TodayFocusSession({
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
   const [previewIds, setPreviewIds] = React.useState<string[] | null>(null);
   const queueRef = React.useRef<HTMLDivElement | null>(null);
+  /** When the last drag of a card ended: the click it ends with is not a click on the card. */
+  const dragEndedAt = React.useRef(0);
   const addRef = React.useRef<HTMLInputElement | null>(null);
+  /** The task in hand is between its tick and the next task: one tick only. */
+  const completingRef = React.useRef(false);
   const [draft, setDraft] = React.useState("");
   /** Whether the ticked-off subtasks of the task in hand are shown. */
   const [showDoneSubtasks, setShowDoneSubtasks] = React.useState(false);
@@ -155,15 +188,12 @@ export function TodayFocusSession({
     task: TodoTask,
     row: HTMLElement | null,
     /*
-      Whether the copy comes to rest on the row it flies to, or fades on the
-      way down.
+      Whether a copy of the row flies down and comes to rest on its done row.
 
       A waiting row and a done row are the same row, so the copy of one lands
       on the other and the two are never both on screen. The card of the task
-      in hand is several times the height of a done row, and the flight
-      carries a copy without resizing it — deliberately, because stretching a
-      card stretches the words in it. So that one fades instead: it leaves
-      towards Done rather than landing on it.
+      in hand is several times the height of a done row, so it does not fly:
+      it ticks in place (see below).
     */
     land: boolean
   ) {
@@ -175,6 +205,31 @@ export function TodayFocusSession({
       anchorSelector: ".today-session-check",
       textSelector: ".today-session-task-text",
     });
+    if (!land) {
+      /*
+        The task in hand: no copy flies from it. The copy is drawn outside
+        the session, so it lost the card's look, and it sat over the next
+        task while its fade was left painted in the Mac app's web view
+        (see webkit opacity). Here the box ticks and the cheer plays in
+        place, and after a moment the next task takes the card.
+      */
+      if (completingRef.current) return;
+      completingRef.current = true;
+      const check = row.querySelector<HTMLElement>(".today-session-now-check");
+      check?.classList.add("is-checked");
+      row.classList.add("is-completing");
+      try {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, NOW_TICK_HOLD_MS));
+        handlersRef.current.onComplete(task);
+      } finally {
+        // React keeps these elements for the next task, and does not know
+        // about the classes added here.
+        check?.classList.remove("is-checked");
+        row.classList.remove("is-completing");
+        completingRef.current = false;
+      }
+      return;
+    }
     const { startRect, wrap, ghost } = spawnTaskGhost(row);
     handlersRef.current.onComplete(task);
 
@@ -313,7 +368,8 @@ export function TodayFocusSession({
   const { text: timerText, overtime } = running
     ? formatFocusTime(
         (pausedAt ?? now) - sessionStart,
-        running.expectedDurationMinutes
+        running.expectedDurationMinutes,
+        { compact: true }
       )
     : { text: "", overtime: false };
 
@@ -323,20 +379,23 @@ export function TodayFocusSession({
    * where it will land, and the queue keeps that order when the pointer
    * lifts. The board is not touched — the order belongs to the session.
    */
+  /**
+   * A click on a card, anywhere but on one of its controls, opens the
+   * task's details, as its name does on the board. Not the click that ends
+   * a drag, nor one that ends a selection of the words, nor while the name
+   * is being changed.
+   */
+  function openFromCard(event: React.MouseEvent, task: TodoTask) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(CARD_CONTROLS) || dragEndedAt.current > Date.now() - 300) return;
+    if (editingId === task.id || !window.getSelection()?.isCollapsed) return;
+    handlersRef.current.onOpenDetails(task);
+  }
+
   function startRowDrag(event: React.PointerEvent, task: TodoTask) {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement | null;
-    if (
-      target?.closest(
-        /* Trix, not Quill, and a bare `[contenteditable]`: Trix does not
-           spell the attribute "true", so a selection inside a note read as
-           the start of a drag. */
-        "input, button, a, textarea, select, [contenteditable]," +
-          " trix-editor, .trix-notes-bubble, .assign-menu"
-      )
-    ) {
-      return;
-    }
+    if (target?.closest(CARD_CONTROLS)) return;
     // Stops the browser starting a text selection at the press. The rows
     // hold no focus and no caret, so there is nothing else this takes away.
     event.preventDefault();
@@ -387,6 +446,7 @@ export function TodayFocusSession({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       setDraggingId(null);
+      if (started) dragEndedAt.current = Date.now();
       setPreviewIds((order) => {
         if (started && order && order.length === openIds.length) {
           handlersRef.current.onReorder(
@@ -424,7 +484,7 @@ export function TodayFocusSession({
     handlersRef.current.onAddTask(text, null);
   }
 
-  const runningChrome = running ? renderChrome(running) : null;
+  const runningChrome = running ? renderChrome(running, true) : null;
 
   return (
     <div
@@ -480,12 +540,16 @@ export function TodayFocusSession({
             runningChrome?.anyOpen ? " has-open-menu" : ""
           }`}
           ref={celebrationRef}
+          onClick={running ? (event) => openFromCard(event, running) : undefined}
         >
           {allDone ? (
             <p className="today-session-cheer">{t("sessionAllDone")}</p>
           ) : null}
           {running ? (
             <>
+              {/* Focus and ⋮ in the corner, on hover, as on the cards waiting. */}
+              {runningChrome?.utilityPill}
+              {runningChrome?.parentLine}
               {/* The task in hand, ticked off where every other task on the
                   card is ticked off: a box on its left, in line with the
                   boxes of the ones waiting. It was a Done button under the
@@ -524,36 +588,56 @@ export function TodayFocusSession({
                 ) : (
                   <h2
                     className="today-session-now-title"
-                    onClick={() => startEdit(running)}
+                    // A click opens the task's details, as anywhere on the
+                    // card (openFromCard); a double-click changes its name.
+                    onDoubleClick={() => startEdit(running)}
                   >
                     {running.text}
                   </h2>
                 )}
               </div>
-              {/* The board card's corner pill, where the board has it. */}
-              {runningChrome?.utilityPill}
-              <div className="today-session-now-actions">
-                {open.length > 1 ? (
-                  <button
-                    type="button"
-                    className="today-session-skip"
-                    onClick={() => handlersRef.current.onSkip(running)}
-                  >
-                    {t("sessionSkip")} <span aria-hidden="true">→</span>
-                  </button>
-                ) : null}
+              {/* What it carries: the day, who, and the list, by name. */}
+              {runningChrome?.metaRow}
+              {/* Its note, opened from Notes in the row above: above the
+                  steps, next to what opened it. */}
+              {handlersRef.current.renderNotes(running)}
+              <SessionSubtasks
+                subtasks={subtasksOf(running.id)}
+                t={t}
+                lang={lang}
+                showDone={showDoneSubtasks}
+                onShowDone={setShowDoneSubtasks}
+                onToggle={(subtask) => handlersRef.current.onToggleSubtask(subtask)}
+                focus={handlersRef.current.subtaskFocus}
+                peopleOf={handlersRef.current.peopleOf}
+                onToggleNotes={(subtask) => handlersRef.current.onToggleNotes(subtask)}
+                renderNotes={(subtask) => handlersRef.current.renderNotes(subtask)}
+                isNotesOpen={(subtask) => handlersRef.current.isNotesOpen(subtask)}
+              />
+              {/* Under a rule at the foot: Pause, Skip, and the clock. */}
+              <div className="today-session-now-actions today-session-now-footer">
                 <button
                   type="button"
                   className="today-session-pause"
                   onClick={togglePaused}
                 >
                   {pausedAt === null ? (
-                    <Pause size={13} strokeWidth={2.5} aria-hidden />
+                    <Pause size={14} strokeWidth={2.5} aria-hidden />
                   ) : (
-                    <Play size={13} strokeWidth={2.5} aria-hidden />
+                    <Play size={14} strokeWidth={2.5} aria-hidden />
                   )}
                   {pausedAt === null ? t("sessionPause") : t("sessionStart")}
                 </button>
+                {open.length > 1 ? (
+                  <button
+                    type="button"
+                    className="today-session-skip"
+                    onClick={() => handlersRef.current.onSkip(running)}
+                  >
+                    <ArrowRight size={14} strokeWidth={2.5} aria-hidden />
+                    {t("sessionSkip")}
+                  </button>
+                ) : null}
                 {focusTimerShown(timerAlways, running.expectedDurationMinutes) ? (
                   <span
                     className={`today-session-timer${overtime ? " overtime" : ""}`}
@@ -562,20 +646,6 @@ export function TodayFocusSession({
                   </span>
                 ) : null}
               </div>
-              {/* The board card's chips (who, when, which list) come under
-                  Skip and the clock, and only while the pointer is on the
-                  card: at rest the task in hand is its name and its time. */}
-              {runningChrome?.metaRow}
-              <SessionSubtasks
-                subtasks={subtasksOf(running.id)}
-                t={t}
-                showDone={showDoneSubtasks}
-                onShowDone={setShowDoneSubtasks}
-                onToggle={(subtask) => handlersRef.current.onToggleSubtask(subtask)}
-                focus={handlersRef.current.subtaskFocus}
-                peopleOf={handlersRef.current.peopleOf}
-              />
-              {handlersRef.current.renderNotes(running)}
             </>
           ) : null}
         </div>
@@ -620,8 +690,10 @@ export function TodayFocusSession({
                 }${chrome.anyOpen ? " has-open-menu" : ""}`}
                 data-task-id={task.id}
                 onPointerDown={(event) => startRowDrag(event, task)}
+                onClick={(event) => openFromCard(event, task)}
               >
                 {chrome.utilityPill}
+                {chrome.parentLine}
                 <div className="today-session-task-line">
                 <button
                   type="button"
@@ -653,30 +725,11 @@ export function TodayFocusSession({
                 ) : (
                   <span
                     className="today-session-task-text"
-                    onClick={() => startEdit(task)}
+                    onDoubleClick={() => startEdit(task)}
                   >
                     {task.text}
                   </span>
                 )}
-                {/* What the task carries, at the end of the row. The chips
-                    under it say the same on hover, so these go then. */}
-                <span className="today-session-marks">
-                  {task.notesHtml ? (
-                    <button
-                      type="button"
-                      className="notes-btn has-notes"
-                      title={t("notes")}
-                      onClick={() =>
-                        handlersRef.current.onToggleNotes(task)
-                      }
-                    >
-                      <NotesIcon />
-                    </button>
-                  ) : null}
-                  {task.expectedDurationMinutes != null ? (
-                    <SessionDuration task={task} t={t} handlers={handlersRef} />
-                  ) : null}
-                </span>
                 </div>
                 {chrome.metaRow}
               </div>
@@ -754,19 +807,28 @@ export function TodayFocusSession({
 function SessionSubtasks({
   subtasks,
   t,
+  lang,
   showDone,
   onShowDone,
   onToggle,
   focus,
   peopleOf,
+  onToggleNotes,
+  renderNotes,
+  isNotesOpen,
 }: {
   subtasks: TodoTask[];
   t: ReturnType<typeof makeT>;
+  lang: TodoLang;
   showDone: boolean;
   onShowDone: (show: boolean) => void;
   onToggle: (subtask: TodoTask) => void;
   focus?: TodaySessionHandlers["subtaskFocus"];
   peopleOf?: TodaySessionHandlers["peopleOf"];
+  /** A step's note opens under it, in the board's notes editor. */
+  onToggleNotes: (subtask: TodoTask) => void;
+  renderNotes: (subtask: TodoTask) => React.ReactNode;
+  isNotesOpen: (subtask: TodoTask) => boolean;
 }) {
   if (subtasks.length === 0) return null;
   const done = subtasks.filter((st) => st.completed);
@@ -774,8 +836,8 @@ function SessionSubtasks({
   return (
     <div className="today-session-subtasks task-subtask-list" aria-label={t("subtasks")}>
       {shown.map((subtask) => (
+        <React.Fragment key={subtask.id}>
         <div
-          key={subtask.id}
           className={`task-subtask-row${subtask.completed ? " is-done" : ""}`}
         >
           <button
@@ -799,6 +861,36 @@ function SessionSubtasks({
             ) : null}
           </button>
           <span className="task-subtask-text">{subtask.text}</span>
+          {/* Its day, time and notes on a second line, when set, as in details. */}
+          {!subtask.completed && (subtask.dueOn || subtask.expectedDurationMinutes != null || subtask.notesHtml) ? (
+            <span className="today-session-subtask-meta">
+              {subtask.dueOn ? (
+                <span
+                  className={`task-subtask-meta-item task-subtask-due${
+                    (daysUntilDue(subtask.dueOn) ?? 2) <= 1 ? " is-soon" : ""
+                  }`}
+                >
+                  <Calendar size={13} strokeWidth={2} aria-hidden />
+                  {formatDueOnShort(subtask.dueOn, lang, t)}
+                </span>
+              ) : null}
+              {subtask.expectedDurationMinutes != null ? (
+                <span className="task-subtask-meta-item">
+                  <Clock size={13} strokeWidth={2} aria-hidden />
+                  {formatDurationShort(subtask.expectedDurationMinutes, t("minutes"), t("hoursShort"))}
+                </span>
+              ) : null}
+              {subtask.notesHtml ? (
+                <NotesChip
+                  html={subtask.notesHtml}
+                  open={isNotesOpen(subtask)}
+                  onToggle={() => onToggleNotes(subtask)}
+                  t={t}
+                  className="task-subtask-meta-item is-button"
+                />
+              ) : null}
+            </span>
+          ) : null}
           {/* Who it is for, always there: on the first line, as the check is. */}
           {peopleOf && subtask.assigneeIds.length ? (
             <span className="today-session-subtask-people">
@@ -820,6 +912,9 @@ function SessionSubtasks({
             </span>
           ) : null}
         </div>
+        {/* Its note, in place, while open. */}
+        {renderNotes(subtask)}
+        </React.Fragment>
       ))}
       {done.length > 0 ? (
         <button
@@ -837,83 +932,7 @@ function SessionSubtasks({
   );
 }
 
-/**
- * The minutes a task is expected to take. A task that carries one says so at
- * all times, as a board card does. A task that carries none offers the clock
- * with the other controls, under the pointer.
- */
-function SessionDuration({
-  task,
-  t,
-  handlers,
-}: {
-  task: TodoTask;
-  t: ReturnType<typeof makeT>;
-  handlers: React.MutableRefObject<TodaySessionHandlers>;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const [draft, setDraft] = React.useState("");
 
-  function commit() {
-    const minutes = Number.parseInt(draft, 10);
-    handlers.current.onSetDuration(
-      task,
-      Number.isFinite(minutes) && minutes > 0 ? minutes : null
-    );
-    setOpen(false);
-  }
-
-  if (open) {
-    return (
-      <input
-        autoFocus
-        type="number"
-        min={0}
-        max={999}
-        className="task-duration-input"
-        style={{ width: 52 }}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") commit();
-          if (event.key === "Escape") setOpen(false);
-        }}
-      />
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className="task-meta today-session-duration"
-      title="Add duration"
-      onClick={() => {
-        setDraft(
-          task.expectedDurationMinutes
-            ? String(task.expectedDurationMinutes)
-            : ""
-        );
-        setOpen(true);
-      }}
-    >
-      {task.expectedDurationMinutes
-        ? `${task.expectedDurationMinutes}${t("minutes")}`
-        : <SessionClockIcon />}
-    </button>
-  );
-}
-
-function SessionClockIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 6v6l3.644 1.822" />
-      <path d="M16 19h6" />
-      <path d="M19 16v6" />
-      <path d="M21.92 13.267a10 10 0 1 0-8.653 8.653" />
-    </svg>
-  );
-}
 
 /** A short burst of paper over the heading. Nothing to clean up but itself. */
 function spawnConfetti(anchor: HTMLElement | null) {

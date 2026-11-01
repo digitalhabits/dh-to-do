@@ -1,3 +1,4 @@
+import { openTaskDetails, editTaskTitle, openTaskMenu, closeTaskDetails } from "./page-walk.mjs";
 /**
  * A task, by hand: tick it and take the tick back with Cmd+Z, delete it and
  * undo that, change its words, and open its card to write a note and add
@@ -97,7 +98,7 @@ export async function walkTasks(page) {
 
   // Delete from the card's menu, and take it back from the toast.
   const sweep = row("Sweep the floor");
-  click(cardOf("Sweep the floor").querySelector(".task-menu-btn"));
+  await openTaskMenu("Sweep the floor");
   const del = await until(() => Boolean($(".delete-task-item")));
   check("the card's menu opens", del);
   if (del) click($(".delete-task-item"));
@@ -113,7 +114,7 @@ export async function walkTasks(page) {
   check("the card comes back", await until(() => Boolean(cardOf("Sweep the floor"))));
 
   // Delete again, and take it back with Cmd+Z this time.
-  click(cardOf("Sweep the floor").querySelector(".task-menu-btn"));
+  await openTaskMenu("Sweep the floor");
   if (await until(() => Boolean($(".delete-task-item")))) click($(".delete-task-item"));
   await until(() => row("Sweep the floor") === null);
   await settle();
@@ -126,11 +127,11 @@ export async function walkTasks(page) {
   await until(() => Boolean(cardOf("Sweep the floor")));
 
   // Change a task's words: a click on the words, new words, Enter.
-  click(cardOf("Sort the screws").querySelector(".task-text"));
-  const editor = await until(() => Boolean($("textarea.task-edit-input")));
+  await editTaskTitle("Sort the screws");
+  const editor = await until(() => Boolean($("textarea.notes-overlay-title-input")));
   check("a click on the words opens them for editing", editor);
   if (editor) {
-    const box = $("textarea.task-edit-input");
+    const box = $("textarea.notes-overlay-title-input");
     typeInto(box, "Sort the screws by size");
     press(box, "Enter");
   }
@@ -140,12 +141,12 @@ export async function walkTasks(page) {
     JSON.stringify(board.query("SELECT text FROM todo_tasks"))
   );
   check("the card shows the new words", await until(() => Boolean(cardOf("Sort the screws by size"))));
-  check("the editor closes", !$("textarea.task-edit-input"));
+  check("the editor closes", !$("textarea.notes-overlay-title-input"));
 
   // Escape leaves the words as they were.
-  click(cardOf("Sort the screws by size").querySelector(".task-text"));
-  if (await until(() => Boolean($("textarea.task-edit-input")))) {
-    const box = $("textarea.task-edit-input");
+  await editTaskTitle("Sort the screws by size");
+  if (await until(() => Boolean($("textarea.notes-overlay-title-input")))) {
+    const box = $("textarea.notes-overlay-title-input");
     typeInto(box, "Throw the screws away");
     press(box, "Escape");
   }
@@ -157,8 +158,8 @@ export async function walkTasks(page) {
 
   // The card: a note, and a step added and ticked.
   const parent = row("Oil the hinges");
-  click(cardOf("Oil the hinges").querySelector(".task-expand-btn"));
-  check("the expand button opens the card", await until(() => Boolean($(".notes-overlay"))));
+  await openTaskDetails("Oil the hinges");
+  check("the task title opens details", await until(() => Boolean($(".notes-overlay"))));
   const note = await noteEditor(".notes-overlay-body trix-editor");
   check("the card has a notes editor", Boolean(note));
   if (note) writeNote(note, "<div>Use the light oil</div>");
@@ -224,7 +225,9 @@ export async function walkTasks(page) {
   window.Element.prototype.animate = originalAnimate;
   // The second step goes again: the checks below count one.
   const wipeRow = stepRows().find((row) => row.querySelector("textarea")?.value === "Wipe the hinge");
-  if (wipeRow) click(wipeRow.querySelector("button.task-subtask-delete"));
+  // A step's ⋮ menu holds its Delete.
+  if (wipeRow) click(wipeRow.querySelector("button.task-subtask-more"));
+  if (await until(() => Boolean($(".task-menu .delete-task-item")))) click($(".task-menu .delete-task-item"));
   check(
     "a step's delete takes it away",
     await until(() => !board.query("SELECT id FROM todo_tasks WHERE text = ?", ["Wipe the hinge"]).length && stepRows().length === 1)
@@ -233,11 +236,12 @@ export async function walkTasks(page) {
 
   // A step's note keeps its pictures in the app's own store, linked list
   // or not: Basecamp has no notes on a step.
-  const stepNotes = $$(".task-subtask-row[data-subtask-id] .task-subtask-action").find(
-    (b) => b.title === "Notes"
-  );
-  check("a step has a notes button", Boolean(stepNotes));
-  if (stepNotes) click(stepNotes);
+  // A step with no note yet adds one from its ⋮ (design "20d").
+  const stepMore = $(".task-subtask-row[data-subtask-id] .task-subtask-more");
+  if (stepMore) click(stepMore);
+  const addNotes = await until(() => $$(".task-menu-item").find((b) => b.textContent.includes("Add notes")));
+  check("a step's ⋮ offers Add notes", Boolean(addNotes));
+  if (addNotes) click($$(".task-menu-item").find((b) => b.textContent.includes("Add notes")));
   const stepNote = await noteEditor(".task-subtask-notes trix-editor");
   check("which opens the step's note", Boolean(stepNote));
   const stepGiven = stepNote ? dropPicture(stepNote, "can.png") : [];
@@ -249,57 +253,63 @@ export async function walkTasks(page) {
       : uploads.some((u) => u.url === "/api/todo/media?name=can.png"),
     JSON.stringify(uploads)
   );
-  if (stepNotes) click(stepNotes);
+  // Done puts the step's note away, saved.
+  if ($(".task-subtask-row[data-subtask-id] + .task-subtask-notes .notes-done-btn")) click($(".task-subtask-row[data-subtask-id] + .task-subtask-notes .notes-done-btn"));
 
   // Durations in the card: the task's, a step's, and a new step's.
-  // The duration is a chip under the title: a click on it opens its box.
+  // The duration is a field in details: a click on it opens the picker.
   const durationChip = [...document.querySelectorAll("button.task-overlay-chip")].find((b) =>
     /duration/i.test(b.getAttribute("aria-label") ?? "")
   );
   if (durationChip) click(durationChip);
-  await until(() => Boolean($(".task-overlay-chip-input")));
-  const cardDuration = $(".task-overlay-chip-input");
+  await until(() => Boolean($(".duration-popover-input")));
+  const cardDuration = $(".duration-popover-input");
   check("the card has a duration box", Boolean(cardDuration));
   if (cardDuration) {
-    typeInto(cardDuration, "1.5");
-    cardDuration.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+    typeInto(cardDuration, "1.5h");
+    press(cardDuration, "Enter");
   }
   check(
-    "the card's box reads the number at the front, as the add row does: 1.5 is 1 minute",
-    await until(() => row("Oil the hinges")?.expected_duration_minutes === 1),
+    "the card's box reads words as the add row's picker does: 1.5h is 90 minutes",
+    await until(() => row("Oil the hinges")?.expected_duration_minutes === 90),
     brief("Oil the hinges")
   );
-  click($(".task-subtask-row[data-subtask-id] .task-subtask-action"));
-  const stepDur = await until(() => Boolean($(".task-subtask-row[data-subtask-id] .task-subtask-dur-input")));
-  check("a step's clock opens its duration box", stepDur);
-  const stepDurBox = () => $(".task-subtask-row[data-subtask-id] .task-subtask-dur-input");
+  // A step with no time adds one from its ⋮; the picker is the task's own.
+  const pickerBox = () => $(".duration-popover.is-pills .duration-popover-input");
+  click($(".task-subtask-row[data-subtask-id] .task-subtask-more"));
+  await until(() => $$(".task-menu-item").some((b) => b.textContent.includes("Add duration")));
+  click($$(".task-menu-item").find((b) => b.textContent.includes("Add duration")));
+  const stepDur = await until(() => Boolean(pickerBox()));
+  check("a step's Add duration opens the duration picker", stepDur);
   if (stepDur) {
-    typeInto(stepDurBox(), "7.5");
-    stepDurBox().dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+    typeInto(pickerBox(), "7m");
+    press(pickerBox(), "Enter");
   }
   check(
-    "a step's box reads the number at the front too: 7.5 is 7 minutes",
+    "a step takes the duration typed in the picker",
     await until(() => step()?.expected_duration_minutes === 7),
     JSON.stringify(step())
   );
-  click($(".task-subtask-row[data-subtask-id] .task-subtask-action"));
-  if (await until(() => Boolean(stepDurBox()))) {
-    typeInto(stepDurBox(), "0");
-    stepDurBox().dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+  // Set, the time is on the step's second line: a click there changes it.
+  const stepTime = () => $$(".task-subtask-row[data-subtask-id] .task-subtask-meta-item").find((b) => b.textContent === "7m");
+  check("the step's time is on its second line", await until(() => Boolean(stepTime())));
+  click(stepTime());
+  if (await until(() => Boolean($(".duration-popover .popover-remove-row")))) {
+    click($(".duration-popover .popover-remove-row"));
   }
   check(
-    "and 0 is no duration, as in every other box",
+    "and Remove estimate clears it, as a step has no × of its own",
     await until(() => step()?.expected_duration_minutes === null),
     JSON.stringify(step())
   );
-  click($(".task-subtask-add-row .task-subtask-action"));
-  const newDur = await until(() => Boolean($(".task-subtask-add-row .task-subtask-dur-input")));
-  check("the new step's clock opens its duration box", newDur);
+  click($(".task-subtask-add-row .task-subtask-dur"));
+  const newDur = await until(() => Boolean(pickerBox()));
+  check("the new step's clock opens the duration picker", newDur);
   if (newDur) {
-    const box = $(".task-subtask-add-row .task-subtask-dur-input");
-    typeInto(box, "12 min");
-    box.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+    typeInto(pickerBox(), "12 min");
+    press(pickerBox(), "Enter");
   }
+  await until(() => !pickerBox());
   const addBox = $(".task-subtask-add");
   typeInto(addBox, "Wipe the drips");
   press(addBox, "Enter");
@@ -310,8 +320,8 @@ export async function walkTasks(page) {
   );
 
   // Collapse: the card goes, and the note goes with the save.
-  click($(".notes-collapse-btn"));
-  check("the collapse button closes the card", await until(() => !$(".notes-overlay")));
+  click($(".task-details-back"));
+  check("Back to tasks closes details", await until(() => !$(".notes-overlay")));
   check(
     "the note is saved",
     await until(() => (row("Oil the hinges")?.notes_html ?? "").includes("Use the light oil")),
@@ -328,53 +338,55 @@ export async function walkTasks(page) {
   let durRow = $("input.task-composer-input");
   durRow.focus();
   typeInto(durRow, "Fold the tarp");
-  const durChip = await until(() => Boolean($('.task-composer .composer-chip[aria-label="Add duration"]')));
-  if (durChip) click($('.task-composer .composer-chip[aria-label="Add duration"]'));
+  const durChip = await until(() => Boolean($('.task-composer .composer-chip[title="Add duration"]')));
+  if (durChip) click($('.task-composer .composer-chip[title="Add duration"]'));
   const preset = await until(() => $$(".duration-popover-preset").length > 0);
   check("the add row's clock opens the durations", preset);
-  if (preset) click($$(".duration-popover-preset")[1]);
+  if (preset) click($$(".duration-popover-preset")[2]);
   // The chip says the duration once the row has drawn it.
   check(
     "the add row's chip says the duration",
-    await until(() => $('.task-composer .composer-chip[aria-label="Add duration"]')?.textContent === "30m")
+    await until(() => $('.task-composer .composer-chip[title="Add duration"]')?.textContent === "25m")
   );
   durRow = $("input.task-composer-input");
   press(durRow, "Enter");
   check(
     "a task added with a duration keeps it",
-    await until(() => row("Fold the tarp")?.expected_duration_minutes === 30),
+    await until(() => row("Fold the tarp")?.expected_duration_minutes === 25),
     brief("Fold the tarp")
   );
 
   // The durations from the keyboard: they open on 15m, marked so WebKit
-  // shows the caret, and the arrows walk the grid and the field.
+  // shows the caret, and the arrows walk the pills (three to a row:
+  // 5m 15m 25m / 45m 1h 2h) and the field.
   durRow = $("input.task-composer-input");
   durRow.focus();
   typeInto(durRow, "Sweep the porch");
-  await until(() => Boolean($('.task-composer .composer-chip[aria-label="Add duration"]')));
-  click($('.task-composer .composer-chip[aria-label="Add duration"]'));
+  await until(() => Boolean($('.task-composer .composer-chip[title="Add duration"]')));
+  click($('.task-composer .composer-chip[title="Add duration"]'));
   const presets = () => $$(".duration-popover-preset");
   check(
     "the durations open with the caret on 15m, marked",
-    await until(() => document.activeElement === presets()[0] && presets()[0].hasAttribute("data-focus-walked"))
+    await until(() => document.activeElement === presets()[1] && presets()[1].hasAttribute("data-focus-walked"))
   );
-  press(presets()[0], "ArrowRight");
-  check("Right walks to 30m", document.activeElement === presets()[1]);
-  press(presets()[1], "ArrowDown");
-  check("Down walks a row, to 2h", document.activeElement === presets()[3]);
-  press(presets()[3], "ArrowDown");
+  press(presets()[1], "ArrowRight");
+  check("Right walks to 25m", document.activeElement === presets()[2]);
+  press(presets()[2], "ArrowDown");
+  check("Down walks a row, to 2h", document.activeElement === presets()[5]);
+  press(presets()[5], "ArrowDown");
   check("Down from the last row goes to the field", document.activeElement === $(".duration-popover-input"));
+  check("the field says what it takes", $(".duration-popover-input")?.placeholder?.startsWith("Custom"));
   press($(".duration-popover-input"), "ArrowUp");
-  check("Up from the field comes back to the grid", document.activeElement === presets()[2]);
-  click(presets()[2]);
+  check("Up from the field comes back to the pills", document.activeElement === presets()[3]);
+  click(presets()[3]);
   check(
     "the preset under the caret is the one set",
-    await until(() => $('.task-composer .composer-chip[aria-label="Add duration"]')?.textContent === "1h")
+    await until(() => $('.task-composer .composer-chip[title="Add duration"]')?.textContent === "45m")
   );
   press($("input.task-composer-input"), "Enter");
   check(
     "and the task is added with it",
-    await until(() => row("Sweep the porch")?.expected_duration_minutes === 60),
+    await until(() => row("Sweep the porch")?.expected_duration_minutes === 45),
     brief("Sweep the porch")
   );
 
@@ -411,13 +423,14 @@ export async function walkTasks(page) {
     window.dispatchEvent(new window.Event("focus"));
     await settle(400);
   };
-  click(cardOf("Sweep the floor").querySelector(".task-text"));
-  await until(() => Boolean($("textarea.task-edit-input")));
+  await editTaskTitle("Sweep the floor");
+  await until(() => Boolean($("textarea.notes-overlay-title-input")));
   await call("/api/todo/tasks", "POST", { listId: list.id, text: "Hang the rake" });
   await backAtFront();
   check("while words are being written, the board is not read again", !cardOf("Hang the rake"));
-  press($("textarea.task-edit-input"), "Escape");
-  await until(() => !$("textarea.task-edit-input"));
+  press($("textarea.notes-overlay-title-input"), "Escape");
+  await until(() => !$("textarea.notes-overlay-title-input"));
+  await closeTaskDetails();
   await backAtFront();
   check("after, it is", await until(() => Boolean(cardOf("Hang the rake"))));
 

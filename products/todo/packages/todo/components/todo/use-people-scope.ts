@@ -129,12 +129,15 @@ export function usePeopleFilter({
     if (assignedIds.size === 0) return [];
     const offered = peopleSorted.filter((person) => assignedIds.has(person.id));
     if (!personPreviewIds) return offered;
-    // Mid-drag the row follows the pointer, not the roster.
-    const byId = new Map(offered.map((person) => [person.id, person]));
-    const previewed = personPreviewIds
-      .map((id) => byId.get(id))
-      .filter((person): person is TodoPerson => Boolean(person));
-    return previewed.length === offered.length ? previewed : offered;
+    // Mid-drag the row follows the pointer, not the roster. The carry
+    // sees only the faces drawn (the reader's is left out on Everyone), so
+    // the others keep their places.
+    const at = new Map(personPreviewIds.map((id, i) => [id, i]));
+    const carried = offered
+      .filter((person) => at.has(person.id))
+      .sort((a, b) => at.get(a.id)! - at.get(b.id)!);
+    let next = 0;
+    return offered.map((person) => (at.has(person.id) ? carried[next++] : person));
   }, [assignEnabled, view, tasksForView, peopleSorted, personPreviewIds]);
 
   // Drop filter ids that are not offered on this list (or left the roster).
@@ -162,9 +165,17 @@ export function usePeopleFilter({
     [viewerKeys]
   );
 
+  /*
+    The board follows a switch of scope or face a moment later, in the
+    background: the switch shows its new state at once, and the cards
+    newly in view (hundreds, on Everyone) are drawn without holding up a
+    click. Nothing is fetched: every task is already here.
+  */
+  const shownScope = React.useDeferredValue(scope);
+  const shownIds = React.useDeferredValue(assigneeFilterIds);
   const boardTasks = React.useMemo(
-    () => tasksInScope(openTasks, scope, mePersonIds, assigneeFilterIds, makerKeys),
-    [openTasks, scope, mePersonIds, assigneeFilterIds, makerKeys]
+    () => tasksInScope(openTasks, shownScope, mePersonIds, shownIds, makerKeys),
+    [openTasks, shownScope, mePersonIds, shownIds, makerKeys]
   );
   const myOpenCount = React.useMemo(
     () => tasksInScope(openTasks, "mine", mePersonIds, [], makerKeys).length,
@@ -172,8 +183,8 @@ export function usePeopleFilter({
   );
 
   const filteredDoneTasks = React.useMemo(
-    () => tasksInScope(doneTasks, scope, mePersonIds, assigneeFilterIds, makerKeys),
-    [doneTasks, scope, mePersonIds, assigneeFilterIds, makerKeys]
+    () => tasksInScope(doneTasks, shownScope, mePersonIds, shownIds, makerKeys),
+    [doneTasks, shownScope, mePersonIds, shownIds, makerKeys]
   );
 
   return {

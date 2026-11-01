@@ -15,16 +15,17 @@ import {
   type AddTaskComposerProps,
   useAddTaskComposer,
 } from "@/components/todo/use-add-task-composer";
+import { Plus } from "lucide-react";
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
 
 /**
  * The add-task row: a title, an Add button, and a row of chips under it
- * (the design's "2c"). Assign and Due keep their labels; duration, notes
- * and subtasks are icons until they hold something. The list chip sits on
- * the right, filled with the list the tab is on.
+ * (the design's "17d"). Dashed while idle, a solid mint edge once in use.
+ * One chip style: plain while empty, tinted with a × once set. The list
+ * chip sits on the right, on the list the tab is on.
  *
- * Notes and subtasks are section toggles: the chip fills and the section
- * unfolds inside the row. Everything typed here goes onto the task in one
+ * Notes and subtasks are sections: the chip steps aside and the section
+ * opens below the chips, so a long note never pushes them away. Everything typed here goes onto the task in one
  * Add, so the row is the expanded card in miniature.
  *
  * The chips stay out of the way until the title is being typed, or until
@@ -69,6 +70,10 @@ export function AddTaskComposer(props: AddTaskComposerProps) {
       }}
     >
       <div className="composer-main">
+        {/* Idle, the row says what it is for: "+ Add task...". */}
+        {open || hasText ? null : (
+          <Plus className="composer-idle-plus" size={15} strokeWidth={2} aria-hidden />
+        )}
         <input
           ref={textRef}
           type="text"
@@ -105,6 +110,7 @@ export function AddTaskComposer(props: AddTaskComposerProps) {
       </div>
       {open ? (
         <div className="composer-chips">
+          {/* The card's order: who, when, how long, then notes and steps. */}
           {assignEnabled ? composerAssignChip(c) : null}
           {composerDueChip(c)}
           {composerDurationChip(c)}

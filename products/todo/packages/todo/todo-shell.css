@@ -28,6 +28,25 @@
   min-height: 0;
 }
 
+/* With no footer, DONE is the last row of the window. This room keeps it
+   off the window's bottom edge. Focus mode draws no footer; elsewhere the
+   footer is hidden (below). */
+.todo-shell.focus-mode #normal-mode,
+.todo-shell #normal-mode:has(.footer) {
+  box-sizing: border-box;
+  padding-bottom: 10px;
+}
+
+/* "Made with ♥ by digitalhabits.org" only on the welcome screen, which
+   lifts it above itself (welcome-screen.css). In the app it was clutter. */
+.todo-shell #normal-mode .footer {
+  display: none;
+}
+
+html.todo-welcome-open .todo-shell #normal-mode .footer {
+  display: flex;
+}
+
 /* The footer sits at the bottom of the shell, not the viewport. Needs the
    #normal-mode ancestor to outrank the ported fixed-position rule. */
 .todo-shell #normal-mode .footer {
@@ -109,7 +128,7 @@
   min-width: 0;
   width: auto;
   border: none;
-  border-radius: 10px 0 0 10px;
+  border-radius: 8px 0 0 8px;
   background: transparent;
 }
 
@@ -210,7 +229,8 @@
    TodoPage caps it to match. */
 .todo-shell .done-container {
   padding-top: 2px;
-  padding-bottom: 2px;
+  /* None under it: the footer, or focus mode's room, is space enough. */
+  padding-bottom: 0;
 }
 
 .todo-shell .done-heading-row {
@@ -406,7 +426,7 @@
      under 600px: a container query cannot style its own container, so the
      one box the query cannot reach asks for its own padding here. */
   padding: clamp(10px, 4%, 24px);
-  background: var(--app-bg-solid, #faf8f5);
+  background: var(--app-bg-solid, #f5f1ea);
   overflow: auto;
 }
 
@@ -423,10 +443,10 @@
      card's top edge (--task-pill-overhang): the card scrolls, so whatever
      sticks out above its padding is cut off. */
   padding-top: max(22px, calc(var(--task-pill-overhang, 10px) + 16px));
-  border-radius: 18px;
+  border-radius: 12px;
   /* The cream of a board column. */
-  background: #f4f1ec;
-  box-shadow: 0 24px 60px rgba(30, 45, 62, 0.12);
+  background: #efeae2;
+  box-shadow: 0 24px 60px rgba(27, 61, 74, 0.12);
   overflow: auto;
 }
 
@@ -491,7 +511,8 @@
   min-width: 0;
   overflow-wrap: break-word;
   font-size: 22px;
-  font-weight: 700;
+  /* A Georgia heading: 500, never bold (the design system). */
+  font-weight: 500;
   line-height: 1.25;
   color: var(--text-primary);
 }
@@ -730,6 +751,11 @@
   position: relative;
 }
 
+/* The task in hand, between its tick and the next task: no more presses. */
+.today-session-now.is-completing {
+  pointer-events: none;
+}
+
 .today-session-check.is-checked::after {
   content: "";
   position: absolute;
@@ -750,10 +776,12 @@
   color: var(--text-primary);
 }
 
-/* The words are clickable — they open a box over themselves. */
+/* The words open the task's details (the task in hand's whole card does,
+   see .today-session-now.is-card); the rest of a waiting card is for
+   dragging (the grab above). A double-click on the words changes them. */
 .today-session-queue .today-session-task-text,
 .today-session-now-title {
-  cursor: text;
+  cursor: pointer;
 }
 
 /*
@@ -845,26 +873,12 @@ textarea.today-session-edit.today-session-now-title {
 }
 
 /*
- * Who, when and which list: on the board a card shows them at rest. In
- * the session they wait for the pointer (or the caret, or an open menu of
- * theirs), under the words and under Skip and the clock, so at rest a
- * task is its name and its time. They open downwards rather than appear,
- * so the rows under them move and do not jump.
+ * Who, when and which list: shown as on a board card, at rest, under the
+ * words (and on the task in hand, under Skip and the clock).
  */
 .todo-shell .today-session .task-item > .task-meta-row {
   min-height: 0;
-  max-height: 0;
-  margin-top: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition: max-height 0.18s ease, margin-top 0.18s ease, opacity 0.18s ease;
-}
-
-.todo-shell .today-session .task-item:is(:hover, :focus-within, .has-open-menu) > .task-meta-row {
-  max-height: 40px;
   margin-top: 8px;
-  opacity: 1;
-  overflow: visible;
 }
 
 /* Under the tick's line, the chips start where the words do: the tick and
@@ -986,7 +1000,7 @@ textarea.today-session-edit.today-session-now-title {
   position: absolute;
   width: 8px;
   height: 12px;
-  border-radius: 2px;
+  border-radius: 4px;
   opacity: 0;
   animation: today-session-confetti 1.4s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
 }
@@ -1016,9 +1030,9 @@ textarea.today-session-edit.today-session-now-title {
   align-items: stretch;
   gap: 10px;
   padding: 16px 18px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--task-bg);
-  box-shadow: 0 10px 24px rgba(30, 45, 62, 0.1);
+  box-shadow: 0 10px 24px rgba(27, 61, 74, 0.1);
   text-align: left;
 }
 
@@ -1036,11 +1050,12 @@ textarea.today-session-edit.today-session-now-title {
   border: none;
   padding: 16px 18px;
   gap: 10px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--task-bg);
-  box-shadow: 0 10px 24px rgba(30, 45, 62, 0.1);
+  box-shadow: 0 10px 24px rgba(27, 61, 74, 0.1);
   transform: none;
-  cursor: auto;
+  /* A click on it opens its details. */
+  cursor: pointer;
 }
 
 .todo-shell[data-theme="dark"] .today-session-now.is-card.task-item,
@@ -1051,15 +1066,14 @@ textarea.today-session-edit.today-session-now-title {
 /* The chips start under the name, as on the board, in line with Skip
    below them (the same 40px in, and less on a narrow pane). */
 .todo-shell .today-session .today-session-now.task-item > .task-meta-row {
-  /* The card's own 10px gap is above it; at rest that gap would hang
-     there with nothing under it. */
-  margin-top: -10px;
+  margin-top: 0;
   padding-left: 40px;
 }
 
-.todo-shell .today-session .today-session-now.task-item:is(:hover, :focus-within, .has-open-menu) > .task-meta-row {
-  margin-top: 0;
-}
+/* A step's "↳ Parent" starts where the name does: past the tick and its
+   gap, 26 + 14 on the task in hand, 22 + 14 on a waiting row. */
+.todo-shell .today-session .today-session-now > .task-step-parent { padding-left: 40px; }
+.todo-shell .today-session .today-session-task > .task-step-parent { padding-left: 36px; }
 
 /* The box and the name, in the row the queue's own rows are built as —
    the same 14px between them, so the two boxes line up down the card. */
@@ -1075,7 +1089,7 @@ textarea.today-session-edit.today-session-now-title {
 .today-session-now-check {
   width: 26px;
   height: 26px;
-  border-radius: 7px;
+  border-radius: 6px;
 }
 
 .today-session-now .today-session-now-title {
@@ -1116,7 +1130,7 @@ textarea.today-session-edit.today-session-now-title {
     gap: 12px;
     padding: 16px 14px 24px;
     padding-top: max(16px, calc(var(--task-pill-overhang, 10px) + 12px));
-    border-radius: 14px;
+    border-radius: 12px;
   }
 
   .today-session-now.is-card {
@@ -1174,6 +1188,11 @@ textarea.today-session-edit.today-session-now-title {
     padding-left: 32px;
   }
 
+  .todo-shell .today-session .today-session-now > .task-step-parent,
+  .todo-shell .today-session .today-session-task > .task-step-parent {
+    padding-left: 32px;
+  }
+
   .today-session-add {
     padding: 12px 14px;
   }
@@ -1209,6 +1228,123 @@ textarea.today-session-edit.today-session-now-title {
   color: var(--text-primary);
 }
 
+/*
+ * The task in hand, at rest: its name, what it carries, its steps, and at
+ * the foot, under a rule, Pause, Skip and the clock.
+ */
+.todo-shell .today-session .today-session-now.task-item > .task-meta-row {
+  margin-top: 4px;
+}
+
+/* The list, by name, at the far end of the row: it gives way, with an
+   ellipsis, rather than take a line of its own. */
+.todo-shell .today-session .today-session-now.task-item > .task-meta-row .task-chip-actions {
+  flex: 1 1 0;
+  min-width: 4rem;
+  justify-content: flex-end;
+}
+/* The list, by name, at the far end of the row. */
+.todo-shell .task-summary-list {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* A step's words take the row; who it is for sits at the card's right
+   edge, under the list's name. Its Focus comes over the face on hover,
+   so nothing moves. */
+/* A step's day and time, on a second line under its words, when set. */
+.today-session-subtasks .task-subtask-row {
+  flex-wrap: wrap;
+  /* The row's gap is between the circle and the words, not the lines. */
+  row-gap: 0;
+}
+.today-session-subtask-meta {
+  order: 10;
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  /* Under the words: the circle and its gap, less the item's own 4px. */
+  padding-left: 26px;
+}
+.today-session-subtask-meta .task-subtask-meta-item {
+  cursor: default;
+}
+.today-session-subtask-meta .task-subtask-meta-item:hover {
+  background: transparent;
+  color: var(--text-tertiary);
+}
+.today-session-subtask-meta .task-subtask-meta-item.task-subtask-due.is-soon:hover {
+  color: var(--redd-coral);
+}
+/* Notes is a button: its note opens under the step. */
+.today-session-subtask-meta .task-subtask-meta-item.is-button {
+  cursor: pointer;
+}
+.today-session-subtask-meta .task-subtask-meta-item.is-button:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+.today-session-subtasks > .notes-container {
+  /* Under the step's words: the circle and its gap. */
+  margin: 4px 0 8px 38px;
+}
+
+.today-session-now.is-card .today-session-subtasks .task-subtask-row {
+  position: relative;
+}
+/* The words take the room left and wrap inside it: sized to their whole
+   length, a long step wrapped onto a line of its own (the rows wrap, for
+   the second line below), and took the circle and the face with it. */
+.today-session-now.is-card .today-session-subtasks .task-subtask-text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.today-session-now.is-card .today-session-subtask-people {
+  margin-left: auto;
+  padding-left: 16px;
+}
+.today-session-now.is-card .today-session-subtasks .task-subtask-actions {
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+.today-session-now.is-card .today-session-subtasks .task-subtask-row:is(:hover, :focus-within):has(.task-subtask-actions) .today-session-subtask-people {
+  visibility: hidden;
+}
+
+.today-session-now.is-card .today-session-now-footer {
+  margin-top: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  gap: 8px;
+}
+
+.today-session-now-footer .today-session-pause,
+.today-session-now-footer .today-session-skip {
+  gap: 7px;
+  padding: 7px 14px;
+  border: 1px solid var(--border-color-medium);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.today-session-now-footer .today-session-pause:hover,
+.today-session-now-footer .today-session-skip:hover {
+  background: var(--hover-bg);
+}
+
+.today-session-now-footer .today-session-timer {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
 /* The Done row: DONE, a rule, the period switcher, the count, the time and
    the sparkline, and Clear all at the far end. See done-summary.tsx. */
 /* The heading takes the row, so a press anywhere on it folds the pile. With
@@ -1239,7 +1375,7 @@ textarea.today-session-edit.today-session-now-title {
   display: inline-flex;
   flex-shrink: 0;
   padding: 2px;
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--border-color);
 }
 
@@ -1249,7 +1385,7 @@ textarea.today-session-edit.today-session-now-title {
   line-height: 16px;
   padding: 1px 7px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -1263,7 +1399,7 @@ textarea.today-session-edit.today-session-now-title {
   background: var(--input-surface);
   color: var(--text-primary);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(30, 45, 62, 0.08);
+  box-shadow: 0 1px 2px rgba(27, 61, 74, 0.08);
 }
 
 .todo-shell .done-overview-count {
@@ -1361,7 +1497,7 @@ textarea.today-session-edit.today-session-now-title {
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -1384,7 +1520,7 @@ textarea.today-session-edit.today-session-now-title {
   border: 1px solid var(--border-color);
   border-radius: 12px;
   background: var(--modal-bg);
-  box-shadow: 0 12px 32px rgba(30, 45, 62, 0.16);
+  box-shadow: 0 12px 32px rgba(27, 61, 74, 0.16);
   font-size: 12px;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -1422,11 +1558,86 @@ textarea.today-session-edit.today-session-now-title {
   content: "";
   width: 32px;
   height: 4px;
-  border-radius: 2px;
-  background: var(--border-color-strong, rgba(30, 45, 62, 0.2));
+  border-radius: 4px;
+  background: var(--border-color-strong, rgba(27, 61, 74, 0.2));
 }
 
 /* The Done pile is what the narrow-pile rule above measures. */
 .todo-shell .done-container {
   container-type: inline-size;
+}
+
+/* A session card's Focus and ⋮, in its corner, as a board row has them
+   beside its name: round, shown with the pointer or the caret on the card
+   or while the menu is open. */
+.todo-shell .today-session .task-session-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+.todo-shell .today-session .task-item:is(:hover, :focus-within, .has-open-menu) > .task-session-controls,
+.todo-shell .today-session .task-session-controls:has(.active-focus) {
+  opacity: 1;
+  pointer-events: auto;
+}
+.todo-shell .today-session .task-session-controls .task-row-focus,
+.todo-shell .today-session .task-session-controls .task-row-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+}
+.todo-shell .today-session .task-session-controls .task-row-more { color: var(--text-tertiary); }
+.todo-shell .today-session .task-session-controls .task-row-more:hover { background: var(--hover-bg); color: var(--text-primary); }
+@media (hover: none) {
+  .todo-shell .today-session .task-session-controls { opacity: 1; pointer-events: auto; }
+}
+/* The names keep clear of that corner. */
+.todo-shell .today-session .today-session-now-head,
+.todo-shell .today-session .today-session-task-line { padding-right: 58px; }
+/* Every task in the session is today's: the teal would say nothing, so
+   "Today" reads as any other date here, as in the board's Today column. */
+.todo-shell .today-session .task-chip-due.is-due-today.is-set { color: var(--text-primary); }
+
+/* In the Today session an open card's day and list wait for the pointer
+   (or the caret, or an open menu), so the cards say only what is to be
+   done. The day leaves the row, so no gap is left between the chips; the
+   list is at the far edge, so it is only hidden. Hidden by display and
+   visibility, not a fade: see the Mac web view's stale opacity paint. */
+.todo-shell .today-session :is(.today-session-now, .today-session-queue .today-session-task).task-item:not(:hover, :focus-within, .has-open-menu) .task-chip-wrap:has(> .task-chip-due) {
+  display: none;
+}
+.todo-shell .today-session :is(.today-session-now, .today-session-queue .today-session-task).task-item:not(:hover, :focus-within, .has-open-menu) :is(.task-summary-list, .task-list-origin-wrap) {
+  visibility: hidden;
+}
+/* One line, so the day coming back on hover does not push the list to a
+   second line and move every card under it. The chips keep their size;
+   only the list, at the end, gives way. */
+.todo-shell .today-session :is(.today-session-now, .today-session-queue .today-session-task).task-item > .task-summary-row {
+  flex-wrap: nowrap;
+}
+.todo-shell .today-session :is(.today-session-now, .today-session-queue .today-session-task).task-item > .task-summary-row > * {
+  flex-shrink: 0;
+}
+.todo-shell .today-session :is(.today-session-now, .today-session-queue .today-session-task).task-item > .task-summary-row > .task-chip-actions {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.todo-shell .today-session .today-session-queue .task-summary-row :is(.task-list-origin-wrap, .task-list-origin) {
+  min-width: 0;
+  max-width: 100%;
+}
+.todo-shell .today-session .today-session-queue .task-summary-row .task-list-origin {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }

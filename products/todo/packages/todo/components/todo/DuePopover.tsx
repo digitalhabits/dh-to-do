@@ -105,6 +105,10 @@ export function DuePopover({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open, anchorEl, onClose]);
 
+  /* Closed, nothing to build: the month grid is 42 days, each with its
+     words for a screen reader, and every card and step keeps a picker. */
+  if (!open) return null;
+
   /* The Friday ahead: the end of this week, or of next when the week is
      already past it. */
   const daysToFriday = (5 - todayDate.getDay() + 7) % 7 || 7;

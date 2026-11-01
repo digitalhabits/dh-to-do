@@ -15,7 +15,7 @@
 import * as React from "react";
 
 import { isInteractiveDragTarget } from "@/components/todo/use-pointer-drag";
-import { renderTask } from "@/components/todo/todo-task-card";
+import { CardAsBoardContext, renderTask } from "@/components/todo/todo-task-card";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { dayOrderWrites } from "@/lib/todo/board-drop";
 import type { TodoTask } from "@/lib/todo/types";
@@ -192,7 +192,8 @@ function CalendarDayList({
           className={`calendar-day-card${draggingId === task.id ? " is-carried" : ""}`}
           onPointerDown={(e) => begin(e, task)}
         >
-          {renderTask(m, task)}
+          {/* As the board's columns draw it, done or open. */}
+          <CardAsBoardContext.Provider value={true}>{renderTask(m, task)}</CardAsBoardContext.Provider>
         </div>
       ))}
     </div>

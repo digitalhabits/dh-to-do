@@ -9,9 +9,10 @@ import {
   pickedColumnSorts,
   sortColumnTasks,
   type ColumnSort,
+  type SortTarget,
 } from "@/lib/todo/column-sort";
 import { persistPref } from "@/lib/todo/saved-prefs";
-import type { TodoBoardColumn, TodoPerson, TodoTask } from "@/lib/todo/types";
+import type { TodoPerson, TodoTask } from "@/lib/todo/types";
 
 /**
  * Each board column's order: kept per device, picked from the column's
@@ -35,7 +36,7 @@ export function useColumnSorts({
     [storedColumnSorts, assignEnabled]
   );
   /** Pick an order for a column: see pickedColumnSorts. */
-  function pickColumnSort(column: TodoBoardColumn, sort: ColumnSort) {
+  function pickColumnSort(column: SortTarget, sort: ColumnSort) {
     setColumnSorts((current) => {
       const next = pickedColumnSorts(current, column, sort);
       persistPref(COLUMN_SORT_KEY, JSON.stringify(next));
@@ -44,7 +45,7 @@ export function useColumnSorts({
   }
   /** The "⇅" menu that is up, and the glyph it hangs off. */
   const [columnSortMenu, setColumnSortMenu] =
-    React.useState<TodoBoardColumn | null>(null);
+    React.useState<SortTarget | null>(null);
   const [columnSortAnchor, setColumnSortAnchor] =
     React.useState<HTMLElement | null>(null);
   React.useEffect(() => {
@@ -67,7 +68,7 @@ export function useColumnSorts({
 
   /* Each column in its own order: see sortColumnTasks. */
   const sortColumn = React.useCallback(
-    (column: TodoBoardColumn, tasks: TodoTask[]) =>
+    (column: SortTarget, tasks: TodoTask[]) =>
       sortColumnTasks(columnSorts[column], tasks, people, Boolean(taskPreviewIds)),
     [columnSorts, taskPreviewIds, people]
   );

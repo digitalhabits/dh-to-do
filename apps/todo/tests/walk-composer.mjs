@@ -59,7 +59,8 @@ export async function walkComposer() {
   // The list.
   click(chip(t("fieldList")));
   const pickerItems = () => $$(".task-list-picker-item").map((el) => el.textContent.trim()).join("|");
-  check("the list chip opens the lists", await until(() => pickerItems() === "YAYard|SHShed"), pickerItems());
+  // A list with no icon shows its name alone: no two letters in its place.
+  check("the list chip opens the lists", await until(() => pickerItems() === "Yard|Shed"), pickerItems());
   click($$(".task-list-picker-item").find((el) => el.textContent.includes("Shed")));
   check("a list picked is on the chip", await until(() => chip(t("fieldList"))?.textContent.includes("Shed")), chip(t("fieldList"))?.textContent);
 
@@ -100,4 +101,41 @@ export async function walkComposer() {
   check("the people editor was not asked for", peopleEdits === 0);
 
   view.unmount();
+
+  // On All there is no tab's list: the box starts on the list it last
+  // added to, kept per device, or says "No list".
+  localStorage.removeItem("redd-plan-todo-add-list");
+  const onAll = [];
+  const all = mountPage(AddTaskComposer, {
+    placeholder: "Add a task",
+    addLabel: "Add",
+    minutesLabel: "min",
+    onSubmit: (d) => onAll.push(d),
+    people: [zoe],
+    onEditPeople: () => {},
+    assignEnabled: true,
+    lists: [yard, shed],
+    defaultList: null,
+    lang: "en",
+    t,
+  });
+  const listChip = () => chip(t("fieldList"));
+  typeInto(title(), "Sweep the path");
+  check("on All with nothing kept, the list chip says No list, marked", await until(() => listChip()?.classList.contains("is-unlisted") && listChip().textContent.includes(t("composerNoList"))));
+  click(listChip());
+  const shedItem = () => $$(".task-list-picker-item").find((el) => el.textContent.includes("Shed"));
+  check("the lists open, No list among them", await until(() => Boolean(shedItem())), $$(".task-list-picker-item").map((el) => el.textContent.trim()).join("|"));
+  click(shedItem());
+  check("Shed is on the chip", await until(() => listChip()?.textContent.includes("Shed")), listChip()?.textContent);
+  press(title(), "Enter");
+  check("a list picked on All goes with the task", await until(() => onAll[0]?.listId === "l-shed"), JSON.stringify(onAll[0]));
+  check("and is kept", localStorage.getItem("redd-plan-todo-add-list") === "l-shed");
+  typeInto(title(), "Oil the gate");
+  check("the next task starts on it, tinted, with a ×", await until(() => listChip()?.classList.contains("is-set") && listChip().textContent.includes("Shed") && Boolean($(".composer-chip-list-wrap .composer-chip-clear"))));
+  click($(".composer-chip-list-wrap .composer-chip-clear"));
+  check("the × puts it on no list", await until(() => listChip()?.classList.contains("is-unlisted")));
+  check("and forgets the list", localStorage.getItem("redd-plan-todo-add-list") === null);
+  press(title(), "Enter");
+  check("so the task goes on no list", await until(() => onAll.length === 2 && onAll[1].listId === null), JSON.stringify(onAll[1]));
+  all.unmount();
 }

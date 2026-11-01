@@ -31,6 +31,15 @@ export function useCardMenusState() {
     null
   );
   const [menuShowsMoveTargets, setMenuShowsMoveTargets] = React.useState(false);
+  /** Board View: the menu shows the columns to move the task to. */
+  const [menuShowsColumns, setMenuShowsColumns] = React.useState(false);
+  /** The menu shows the tasks this one can become a step of. */
+  const [menuShowsParents, setMenuShowsParents] = React.useState(false);
+  // A menu opens on its offers, whichever task it is for.
+  React.useEffect(() => {
+    setMenuShowsColumns(false);
+    setMenuShowsParents(false);
+  }, [openMenuTaskId]);
   /** All/Favourites: list-origin chip opens a move-to-list picker. */
   const [openListPickerTaskId, setOpenListPickerTaskId] = React.useState<
     string | null
@@ -64,6 +73,10 @@ export function useCardMenusState() {
     setMenuAnchorEl,
     menuShowsMoveTargets,
     setMenuShowsMoveTargets,
+    menuShowsColumns,
+    setMenuShowsColumns,
+    menuShowsParents,
+    setMenuShowsParents,
     openListPickerTaskId,
     setOpenListPickerTaskId,
     listPickerAnchorEl,

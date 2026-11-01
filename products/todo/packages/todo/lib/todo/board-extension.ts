@@ -22,6 +22,12 @@ export type TodoBoardExtension = {
   hiddenListIdsOnAll: readonly string[];
   /** A line above a task's words: whose step it is. Null for most tasks. */
   renderTaskHeader: (task: TodoTask) => React.ReactNode;
+  /**
+   * Words at the right end of the row under a task's words, just before
+   * its list: whose step it is, when that is said there rather than above.
+   * Null for most tasks.
+   */
+  renderListLabel?: (task: TodoTask) => React.ReactNode;
   /** A task was ticked off on the board. `refresh` reads the board again. */
   onTaskCompleted: (task: TodoTask, refresh: () => Promise<void>) => void;
   /** A task was deleted on the board. */

@@ -13,9 +13,15 @@ import type { TodoTask } from "./types";
 
 export type SessionQueue = string[] | null;
 
-/** A new session's queue: the open tasks of the Today column, as it stands. */
-export function sessionQueueOf(today: Pick<TodoTask, "id" | "completed">[]): string[] {
-  return today.filter((task) => !task.completed).map((task) => task.id);
+/**
+ * A new session's queue: the open tasks of the Today column, as it stands,
+ * after the steps due today that the board shows above it.
+ */
+export function sessionQueueOf(
+  today: Pick<TodoTask, "id" | "completed">[],
+  steps: Pick<TodoTask, "id" | "completed">[] = []
+): string[] {
+  return [...steps, ...today].filter((task) => !task.completed).map((task) => task.id);
 }
 
 /**
@@ -52,15 +58,48 @@ export function queueReordered(ids: SessionQueue, order: string[]): SessionQueue
  * queue that are done. So a task whose date moves off today leaves the
  * session, a task added to Today joins it, and an order changed on either
  * side is the one order both show.
+ *
+ * The steps the board shows above Today (due today or before, see
+ * stepsDueToday) are in the session too. A step has no place in the
+ * column's order, so the queue places it: before the first column task
+ * that comes after it in the queue. A step that is not in the queue (it
+ * came due during the session) goes first, as on the board.
  */
 export function sessionTasksFromBoard<T extends Pick<TodoTask, "id" | "completed">>(
   ids: string[],
   todayColumn: T[],
-  tasks: T[]
+  tasks: T[],
+  steps: T[] = []
 ): T[] {
-  const open = todayColumn.filter((task) => !task.completed);
+  const open = withStepsPlaced(
+    ids,
+    todayColumn.filter((task) => !task.completed),
+    steps.filter((step) => !step.completed)
+  );
   const done = ids
     .map((id) => tasks.find((task) => task.id === id))
     .filter((task): task is T => Boolean(task?.completed));
   return [...open, ...done];
+}
+
+function withStepsPlaced<T extends Pick<TodoTask, "id">>(
+  ids: string[],
+  open: T[],
+  steps: T[]
+): T[] {
+  if (steps.length === 0) return open;
+  const at = new Map(ids.map((id, index) => [id, index]));
+  const queued = steps
+    .filter((step) => at.has(step.id))
+    .sort((a, b) => at.get(a.id)! - at.get(b.id)!);
+  const out = steps.filter((step) => !at.has(step.id));
+  let next = 0;
+  for (const task of open) {
+    const place = at.get(task.id);
+    if (place !== undefined) {
+      while (next < queued.length && at.get(queued[next].id)! < place) out.push(queued[next++]);
+    }
+    out.push(task);
+  }
+  return [...out, ...queued.slice(next)];
 }

@@ -60,6 +60,40 @@ export async function startWindowDragging(): Promise<void> {
   await tauri.core.invoke("plugin:window|start_dragging");
 }
 
+/** The window's place and size, in points (logical pixels). */
+export type WindowBounds = { x: number; y: number; width: number; height: number };
+
+/** Where this window is and how big, or null outside the desktop shell. */
+export async function readWindowBounds(): Promise<WindowBounds | null> {
+  const invoke = tauriInvoke();
+  if (!invoke) return null;
+  const [size, position, scale] = (await Promise.all([
+    invoke("plugin:window|inner_size"),
+    invoke("plugin:window|outer_position"),
+    invoke("plugin:window|scale_factor"),
+  ])) as [{ width: number; height: number }, { x: number; y: number }, number];
+  const s = scale || 1;
+  return { x: position.x / s, y: position.y / s, width: size.width / s, height: size.height / s };
+}
+
+/**
+ * Move and size this window, in points. The page does it, not the system:
+ * on macOS Tauri cannot start a resize from a press in the page
+ * (tao's drag_resize_window is not supported there).
+ */
+export async function setWindowBounds(bounds: WindowBounds, move: boolean): Promise<void> {
+  const invoke = tauriInvoke();
+  if (!invoke) return;
+  // Both at once: one after the other, the far edge jumped for a frame
+  // while the left one was dragged.
+  await Promise.all([
+    move
+      ? invoke("plugin:window|set_position", { value: { Logical: { x: bounds.x, y: bounds.y } } })
+      : Promise.resolve(),
+    invoke("plugin:window|set_size", { value: { Logical: { width: bounds.width, height: bounds.height } } }),
+  ]);
+}
+
 const WINDOW_DRAG_MOVE_PX = 4;
 
 /**

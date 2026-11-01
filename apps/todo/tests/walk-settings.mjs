@@ -1,3 +1,4 @@
+import { openTaskDetails, closeTaskDetails } from "./page-walk.mjs";
 /**
  * Settings: each switch and what it changes on the board, the language,
  * the theme and the zoom (the buttons, and the keys the desktop app
@@ -28,7 +29,7 @@ async function openSettings() {
   await until(() => Boolean($("#settings-modal")));
 }
 async function closeSettings() {
-  if ($("#settings-modal")) click($("#settings-modal .cancel-btn"));
+  if ($("#settings-modal")) click($("#settings-modal .settings-sheet-back"));
   await until(() => !$("#settings-modal"));
 }
 async function flip(label) {
@@ -138,17 +139,19 @@ export async function walkSettings(page) {
   }
   check(
     "assigning on shows the people on a card",
-    await until(() => Boolean(cardOf("Box the books")?.querySelector(".task-chip-assign.is-set")))
+    await until(() => cardOf("Box the books")?.querySelector(".task-chip-assign")?.getAttribute("title")?.includes("Pip"))
   );
+  await openTaskDetails("Sweep the loft");
   check(
     "and a task made while it was off can take a person",
-    await until(() => Boolean(cardOf("Sweep the loft")?.querySelector(".task-chip-assign")))
+    await until(() => Boolean($('.task-details-panel [aria-label="Assigned to"]')))
   );
+  await closeTaskDetails();
   await flip(t("enableAssignTasks"));
   await closeSettings();
   check(
     "assigning off takes them away",
-    await until(() => !cardOf("Box the books")?.querySelector(".task-chip-assign"))
+    await until(() => !cardOf("Box the books")?.textContent.includes("Pip"))
   );
   check("the people stay on the task", board.query("SELECT * FROM todo_task_assignees").length === 1);
 
@@ -167,7 +170,7 @@ export async function walkSettings(page) {
   if (await until(() => Boolean($(".language-picker-option--switch")))) {
     click($(".language-picker-option--switch"));
   }
-  check("the language changes the page", await until(() => $("#settings-modal-title")?.textContent === makeT("da")("settings")));
+  check("the language changes the page", await until(() => $("#settings-modal .settings-sheet-title")?.textContent === makeT("da")("settings")));
   check("and is kept", localStorage.getItem("redd-plan-todo-lang") === "da");
   click($(".language-picker-trigger"));
   if (await until(() => Boolean($(".language-picker-option--switch")))) {
@@ -308,7 +311,9 @@ export async function walkSettings(page) {
   check("the zoom kept comes back", await until(() => zoom() === "1.2"), zoom());
   const order = () => $$(".list-board > .board-column").map((el) => el.dataset.boardColumn).join();
   check("the column order kept comes back", await until(() => order() === "today,week,backlog"), order());
-  check("focus mode kept comes back", await until(() => $(".todo-shell")?.classList.contains("focus-mode")));
+  // Focus mode is not kept: the app starts with the lists and the footer.
+  check("focus mode saved by an older app is not turned on", !$(".todo-shell")?.classList.contains("focus-mode"));
+  check("and the old value is removed", localStorage.getItem("redd-plan-todo-focus-mode") === null);
   again.unmount();
   localStorage.setItem("redd-plan-todo-plan", "1");
   localStorage.setItem("redd-plan-todo-view", "plan");
@@ -350,7 +355,8 @@ export async function walkSettings(page) {
   check("the system's dark mode is followed", await until(() => $(".todo-shell")?.dataset.theme === "dark"));
   dark.matches = false;
   for (const fn of dark.listeners) fn({ matches: false });
-  check("and its change", await until(() => $(".todo-shell")?.dataset.theme === undefined));
+  // Light is said, not left out: the Calendar View takes the nearest theme.
+  check("and its change", await until(() => $(".todo-shell")?.dataset.theme === "light"));
   await openSettings();
   check("the focus timer's switch kept comes back", settingsSwitchState(t("alwaysShowFocusTimer"), false));
   await closeSettings();

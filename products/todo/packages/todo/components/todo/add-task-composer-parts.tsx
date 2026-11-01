@@ -11,7 +11,7 @@
 
 import * as React from "react";
 
-import { Calendar, ChevronDown, List, ListChecks, User, X } from "lucide-react";
+import { Calendar, Clock, List, ListChecks, Pencil, User, X } from "lucide-react";
 
 import { DuePopover } from "@/components/todo/DuePopover";
 import { DurationPopover } from "@/components/todo/DurationPopover";
@@ -22,12 +22,11 @@ import {
   TaskAssigneeStack,
 } from "@/components/todo/TodoPeopleEditor";
 import { TrixNotesEditor } from "@/components/todo/TrixNotesEditor";
-import { ClockIcon, NotesIcon } from "@/components/todo/task-icons";
 import type { AddTaskComposerModel } from "@/components/todo/use-add-task-composer";
 import { pendingAttachments } from "@/lib/todo/basecamp-richtext";
 import { formatDurationShort } from "@/lib/todo/duration";
 import { firstNameOf } from "@/lib/todo/people";
-import { ListIcon, listInitials, resolveListIconId } from "@/lib/todo/list-icons";
+import { ListIcon, resolveListIconId } from "@/lib/todo/list-icons";
 import { formatDueOn, notesHtmlIsEmpty, type SubtaskDraft } from "@/lib/todo/task-draft";
 
 /** Keep focus where it is: a chip is a tool, not a place to land. */
@@ -197,22 +196,22 @@ export function composerDurationChip(c: AddTaskComposerModel) {
       <button
         ref={durationChipRef}
         type="button"
-        className={`composer-chip${hasDuration ? " is-set" : " is-icon"}${
+        className={`composer-chip${hasDuration ? " is-set" : ""}${
           durationOpen ? " is-on" : ""
         }`}
         title={t("addDuration")}
-        aria-label={t("addDuration")}
         aria-haspopup="dialog"
         aria-expanded={durationOpen}
         onMouseDown={keepFocus}
         onClick={() => setDurationOpen((v) => !v)}
       >
-        <ClockIcon size={14} />
-        {durationMinutes != null ? (
-          <span className="composer-chip-label">
-            {formatDurationShort(durationMinutes, minutesLabel, t("hoursShort"))}
-          </span>
-        ) : null}
+        <Clock size={15} strokeWidth={1.75} aria-hidden />
+        {/* Named until a length is picked, as Assign and Due are. */}
+        <span className="composer-chip-label">
+          {durationMinutes != null
+            ? formatDurationShort(durationMinutes, minutesLabel, t("hoursShort"))
+            : t("fieldDuration")}
+        </span>
       </button>
       {hasDuration ? (
         <button
@@ -251,20 +250,20 @@ export function composerNotesChip(c: AddTaskComposerModel) {
     setNotesOpen,
     hasNotes,
   } = c;
+  // Open, the field below the chips is the notes: the chip steps aside.
+  if (notesOpen) return null;
   return (
     <button
       ref={notesChipRef}
       type="button"
-      className={`composer-chip is-icon${notesOpen ? " is-on" : ""}${
-        !notesOpen && hasNotes ? " is-set" : ""
-      }`}
+      className={`composer-chip${hasNotes ? " is-set" : ""}`}
       title={t("fieldNotes")}
-      aria-label={t("fieldNotes")}
-      aria-pressed={notesOpen}
       onMouseDown={keepFocus}
       onClick={() => setNotesOpen((v) => !v)}
     >
-      <NotesIcon />
+      {/* Named, as Assign is: an icon alone did not say what it adds. */}
+      <Pencil size={15} strokeWidth={1.75} aria-hidden />
+      <span className="composer-chip-label">{t("fieldNotes")}</span>
     </button>
   );
 }
@@ -277,21 +276,20 @@ export function composerSubtasksChip(c: AddTaskComposerModel) {
     setSubtasksOpen,
     subtaskCount,
   } = c;
+  // As Notes: open, its rows below the chips stand for it.
+  if (subtasksOpen) return null;
   return (
     <button
       ref={subtasksChipRef}
       type="button"
-      className={`composer-chip is-icon${subtasksOpen ? " is-on" : ""}${
-        !subtasksOpen && subtaskCount ? " is-set" : ""
-      }`}
+      className={`composer-chip is-icon${subtaskCount ? " is-set" : ""}`}
       title={t("subtasks")}
       aria-label={t("subtasks")}
-      aria-pressed={subtasksOpen}
       onMouseDown={keepFocus}
       onClick={() => setSubtasksOpen((v) => !v)}
     >
       <ListChecks size={14} strokeWidth={2} aria-hidden />
-      {!subtasksOpen && subtaskCount ? (
+      {subtaskCount ? (
         <span className="composer-chip-label">{subtaskCount}</span>
       ) : null}
     </button>
@@ -307,18 +305,21 @@ export function composerListChip(c: AddTaskComposerModel) {
     listOpen,
     setListOpen,
     patch,
-    pickedList,
     targetList,
     targetIconId,
+    onAll,
+    clearList,
   } = c;
   return (
     <span className="composer-chip-wrap composer-chip-list-wrap">
+      {/* Set, tinted, with a × on All; on All with no list, a dashed coral
+          "No list", so a task that would land on no list says so. */}
       <button
         ref={listRef}
         type="button"
         className={`composer-chip composer-chip-list${
-          targetList ? " is-set" : ""
-        }`}
+          targetList ? " is-set" : onAll ? " is-unlisted" : ""
+        }${targetList && onAll ? " has-clear" : ""}`}
         title={t("fieldList")}
         aria-haspopup="menu"
         aria-expanded={listOpen}
@@ -332,24 +333,35 @@ export function composerListChip(c: AddTaskComposerModel) {
           }
         }}
       >
+        {/* A list with no icon is its name alone. */}
         {targetList ? (
-          <span
-            className={`composer-list-icon${targetIconId ? " has-icon" : ""}`}
-          >
-            {targetIconId ? (
+          targetIconId ? (
+            <span className="composer-list-icon has-icon">
               <ListIcon id={targetIconId} size={14} />
-            ) : (
-              listInitials(targetList.name)
-            )}
-          </span>
+            </span>
+          ) : null
         ) : (
           <List size={14} strokeWidth={1.75} aria-hidden />
         )}
         <span className="composer-chip-label">
           {targetList ? targetList.name : t("composerNoList")}
         </span>
-        <ChevronDown size={12} strokeWidth={2.25} aria-hidden />
       </button>
+      {targetList && onAll ? (
+        <button
+          type="button"
+          className="composer-chip-clear"
+          title={t("composerClear")}
+          aria-label={t("composerClear")}
+          onMouseDown={keepFocus}
+          onClick={() => {
+            clearList();
+            listRef.current?.focus();
+          }}
+        >
+          <X size={12} strokeWidth={2.5} aria-hidden />
+        </button>
+      ) : null}
       <MenuPortal
         open={listOpen}
         anchorEl={listOpen ? listRef.current : null}
@@ -369,11 +381,11 @@ export function composerListChip(c: AddTaskComposerModel) {
           <button
             type="button"
             role="menuitemradio"
-            aria-checked={!pickedList}
-            className={`task-list-picker-item${!pickedList ? " is-current" : ""}`}
+            aria-checked={!targetList}
+            className={`task-list-picker-item${!targetList ? " is-current" : ""}`}
             onClick={() => {
               setListOpen(false);
-              patch({ listId: null });
+              clearList();
               listRef.current?.focus();
             }}
           >
@@ -404,11 +416,8 @@ export function composerListChip(c: AddTaskComposerModel) {
               <span
                 className={`task-list-picker-icon${iconId ? " has-icon" : ""}`}
               >
-                {iconId ? (
-                  <ListIcon id={iconId} size={14} />
-                ) : (
-                  listInitials(list.name)
-                )}
+                {/* No icon: the slot stays empty, so the names line up. */}
+                  {iconId ? <ListIcon id={iconId} size={14} /> : null}
               </span>
               <span className="task-list-picker-name">{list.name}</span>
             </button>
@@ -453,7 +462,8 @@ export function composerNotesSection(c: AddTaskComposerModel) {
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           setNotesOpen(false);
-          notesChipRef.current?.focus();
+          // The chip is drawn again once the section is put away.
+          requestAnimationFrame(() => notesChipRef.current?.focus());
         }
       }}
       onBlur={(e) => {
@@ -593,7 +603,7 @@ export function composerSubtasksSection(c: AddTaskComposerModel) {
                 removeSubtask(row.key);
               } else if (e.key === "Escape") {
                 setSubtasksOpen(false);
-                subtasksChipRef.current?.focus();
+                requestAnimationFrame(() => subtasksChipRef.current?.focus());
               }
             }}
             onBlur={() => {
@@ -627,7 +637,7 @@ export function composerSubtasksSection(c: AddTaskComposerModel) {
               }
             } else if (e.key === "Escape") {
               setSubtasksOpen(false);
-              subtasksChipRef.current?.focus();
+              requestAnimationFrame(() => subtasksChipRef.current?.focus());
             }
           }}
           onBlur={() => {

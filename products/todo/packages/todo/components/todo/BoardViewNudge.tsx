@@ -55,8 +55,8 @@ function BoardPicture() {
       width="20"
       height="11"
       rx="2.5"
-      fill={accent ? "rgba(42, 157, 143, 0.22)" : "none"}
-      stroke={accent ? "var(--accent-primary, #2a9d8f)" : "currentColor"}
+      fill={accent ? "rgba(0, 93, 83, 0.22)" : "none"}
+      stroke={accent ? "var(--accent-primary, #005d53)" : "currentColor"}
     />
   );
   return (

@@ -53,7 +53,6 @@ export function useSavedPrefs({
   setGroupsEnabled,
   setCurrentGroupId,
   setCurrentListId,
-  setFocusMode,
   setView,
   viewRestoredRef,
 }: {
@@ -67,7 +66,6 @@ export function useSavedPrefs({
   setGroupsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setCurrentGroupId: React.Dispatch<React.SetStateAction<string | null>>;
   setCurrentListId: React.Dispatch<React.SetStateAction<string | null>>;
-  setFocusMode: React.Dispatch<React.SetStateAction<boolean>>;
   setView: React.Dispatch<React.SetStateAction<TodoView>>;
   viewRestoredRef: React.RefObject<boolean>;
 }) {
@@ -108,7 +106,9 @@ export function useSavedPrefs({
       if (g) setCurrentGroupId(g);
       const savedList = localStorage.getItem(TODO_CURRENT_LIST_KEY);
       if (savedList === TODO_ALL_LIST_ID || savedList) setCurrentListId(savedList);
-      setFocusMode(localStorage.getItem(FOCUS_MODE_KEY) === "1");
+      // Focus mode is not kept: each start shows the lists and the
+      // footer. An older app saved it, so that value goes.
+      localStorage.removeItem(FOCUS_MODE_KEY);
       // A view that is off now is put right by the two effects below.
       const savedView = parseSavedView(localStorage.getItem(VIEW_KEY));
       if (savedView) setView(savedView);
@@ -126,7 +126,6 @@ export function useSavedPrefs({
     setColumnOrder,
     setCurrentGroupId,
     setCurrentListId,
-    setFocusMode,
     setFocusTimerAlways,
     setGroupsEnabled,
     setKanbanEnabled,

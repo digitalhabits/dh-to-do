@@ -6,7 +6,11 @@
 /** redd-do's updateFocusTimer: countdown vs expected duration, red overtime. */
 export function formatFocusTime(
   elapsedMs: number,
-  durationMinutes: number | null
+  durationMinutes: number | null,
+  /** "0:32", "12:05", "1:02:05": no hours under an hour, and no leading
+      zero. The Today session's clock reads so; the focus panel keeps
+      "00:00:32". */
+  { compact = false }: { compact?: boolean } = {}
 ): { text: string; overtime: boolean } {
   let displayMs = elapsedMs;
   let overtime = false;
@@ -22,9 +26,13 @@ export function formatFocusTime(
   const hours = Math.floor(displayMs / 3_600_000);
   const minutes = Math.floor((displayMs % 3_600_000) / 60_000);
   const seconds = Math.floor((displayMs % 60_000) / 1000);
-  const text = `${hours.toString().padStart(2, "0")}:${minutes
-    .toString()
-    .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  const text = compact
+    ? hours > 0
+      ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+      : `${minutes}:${seconds.toString().padStart(2, "0")}`
+    : `${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   return { text: overtime && durationMinutes ? `-${text}` : text, overtime };
 }
 

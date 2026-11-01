@@ -101,6 +101,7 @@ export function useTaskActions({
   openTasks,
   doneTasks,
   boardColumns,
+  todaySteps,
   showBoard,
   isSearching,
   somedayEnabled,
@@ -145,6 +146,8 @@ export function useTaskActions({
   openTasks: TodoTask[];
   doneTasks: TodoTask[];
   boardColumns: Record<TodoBoardColumn, TodoTask[]>;
+  /** The steps due today the board shows above Today; the session has them too. */
+  todaySteps: TodoTask[];
   showBoard: boolean;
   isSearching: boolean;
   somedayEnabled: boolean;
@@ -396,9 +399,9 @@ export function useTaskActions({
     }
   }
 
-  /** Open the Today session on the column as it stands. */
+  /** Open the Today session on the column as it stands, its due steps first. */
   function startTodaySession() {
-    const queue = sessionQueueOf(boardColumns.today);
+    const queue = sessionQueueOf(boardColumns.today, todaySteps);
     if (queue.length === 0) return;
     setSessionIds(queue);
   }
@@ -412,13 +415,14 @@ export function useTaskActions({
   /** Take a finished task back up: not done, and first in Today again. */
   function uncompleteSessionTask(task: TodoTask) {
     void mutateTask(task.id, { completed: false });
-    moveTaskToEdge(task, "top");
+    // A step has no place in Today's order: the queue alone places it.
+    if (!task.parentTaskId) moveTaskToEdge(task, "top");
     setSessionIds((ids) => queueWithFirst(ids, task.id));
   }
 
   /** Skip: the task goes to the end of Today, and the next one runs. */
   function skipSessionTask(task: TodoTask) {
-    moveTaskToEdge(task, "bottom");
+    if (!task.parentTaskId) moveTaskToEdge(task, "bottom");
     setSessionIds((ids) => queueWithLast(ids, task.id));
   }
 
@@ -848,7 +852,9 @@ export function useTaskActions({
     }
   }
 
-  async function removeTask(id: string) {
+  /** Delete a task. `undo: false` for a delete that is part of another
+      change (a subtask made a task), where "Undo" would undo half of it. */
+  async function removeTask(id: string, opts?: { undo?: boolean }) {
     const task = state.tasks.find((t) => t.id === id);
     if (!task) return;
     setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }));
@@ -861,9 +867,11 @@ export function useTaskActions({
       }
       // A step says so: "Task deleted" over a card of steps read as
       // though the whole task had gone.
-      showUndo(t(task.parentTaskId ? "subtaskDeleted" : "taskDeleted"), () => {
-        void recreateTask(task).then(refresh);
-      });
+      if (opts?.undo !== false) {
+        showUndo(t(task.parentTaskId ? "subtaskDeleted" : "taskDeleted"), () => {
+          void recreateTask(task).then(refresh);
+        });
+      }
     } catch (err) {
       toast.error(describeError(err, t("deleteFailed")));
       void refresh();

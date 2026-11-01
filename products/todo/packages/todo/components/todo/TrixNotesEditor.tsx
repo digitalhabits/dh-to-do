@@ -742,8 +742,21 @@ export function TrixNotesEditor({
         true
       );
 
+      /* A chosen picture (Trix marks its figure mutable) hides the text
+         highlight: see .has-chosen-picture in todo.css. A class, not a
+         `:has()` there, which made every letter typed anywhere on the page
+         restyle it (~6ms a letter on a big board). Read a frame later, once
+         Trix has marked the figure. */
+      const markChosen = () =>
+        requestAnimationFrame(() =>
+          el.classList.toggle(
+            "has-chosen-picture",
+            Boolean(el.querySelector(".attachment[data-trix-mutable]"))
+          )
+        );
       el.addEventListener("trix-selection-change", () => {
         positionBubble(el, hostRef.current, toolbarRef.current, setBubble);
+        markChosen();
       });
       el.addEventListener("blur", () => setBubble(null));
 

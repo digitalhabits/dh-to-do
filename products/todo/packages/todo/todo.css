@@ -4,25 +4,46 @@
  * Every selector is scoped under .todo-shell. Planner-specific layout
  * overrides live in app/todo-theme.css (imported AFTER this file).
  */
-/* Bundled fonts — locally hosted so the app works offline.
-   Inter and Caveat woff2 files live in src/fonts/.
-   Each font ships latin + latin-ext (covers English, Danish, and other Western European). */
+/* Bundled fonts, locally hosted so the app works offline (fonts/).
+   Text: Schibsted Grotesk, the Centre for Digital Habits' text face (the
+   design system in Claude Design), as in Mail: the two weights the website
+   ships, so 500 falls to 400 and 700 to 600. SIL Open Font License,
+   fonts/OFL.txt. Handwriting: Caveat, latin + latin-ext. */
 @font-face {
-    font-family: 'Inter';
+    font-family: 'Schibsted Grotesk';
     font-style: normal;
-    font-weight: 400 700;
+    font-weight: 400;
     font-display: swap;
-    src: url('fonts/inter-latin.woff2') format('woff2');
+    src: url('fonts/SchibstedGrotesk-Regular.woff') format('woff');
+}
+
+@font-face {
+    font-family: 'Schibsted Grotesk';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('fonts/SchibstedGrotesk-SemiBold.woff') format('woff');
+}
+
+/* Task names: the variable Schibsted Grotesk (Google Fonts, OFL), under a
+   name of its own, so they can be 450. Its range stops at 600, as the
+   two weights above do; the rest of the app keeps those two. */
+@font-face {
+    font-family: 'Schibsted Grotesk Names';
+    font-style: normal;
+    font-weight: 450 600;
+    font-display: swap;
+    src: url('fonts/SchibstedGrotesk-Variable-latin.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
-    font-family: 'Inter';
+    font-family: 'Schibsted Grotesk Names';
     font-style: normal;
-    font-weight: 400 700;
+    font-weight: 450 600;
     font-display: swap;
-    src: url('fonts/inter-latin-ext.woff2') format('woff2');
-    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    src: url('fonts/SchibstedGrotesk-Variable-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
@@ -51,71 +72,75 @@
 }
 
 .todo-shell {
-    /* ReDD brand tokens */
-    --redd-cream: #faf8f5;
-    --redd-warm-grey: var(--cream-section);
+    /* Centre for Digital Habits design system (Claude Design), as Mail:
+       cream page, white cards, ink text, the brand green. The names are
+       the old ReDD ones; the values are the system's. */
+    --redd-cream: #f5f1ea;
+    /* The system's sand family for fills: a step between cream and sand. */
+    --redd-warm-grey: #efeae2;
     --redd-card: #ffffff;
-    --redd-navy: #1e2d3e;
-    --redd-body: #2c2c35;
-    --redd-muted: #696977;
-    --redd-border: #e1dcd6;
-    --redd-coral: #d4605a;
-    --redd-coral-soft: #faebea;
-    --redd-teal: #2a9d8f;
-    --redd-teal-hover: #21806f;
-    --redd-teal-soft: #e5f5f3;
+    --redd-navy: #1b3d4a;
+    --redd-body: #1b3d4a;
+    --redd-muted: #586f77;
+    --redd-border: #d2d4d0;
+    --redd-coral: #b4432e;
+    --redd-coral-soft: #f6e8e6;
+    --redd-teal: #005d53;
+    --redd-teal-hover: #004d45;
+    --redd-teal-soft: #dbf0ea;
     --redd-blue: #4a90e2;
     --redd-blue-soft: #e8f1fa;
 
     /* Backgrounds */
-    --bg-gradient: linear-gradient(180deg, #faf8f5 0%, var(--cream-section) 100%);
-    --app-bg: #faf8f5;
-    --app-bg-solid: #faf8f5;
-    --bg-subtle: var(--cream-section);
+    --bg-gradient: linear-gradient(180deg, #f5f1ea 0%, #efeae2 100%);
+    --app-bg: #f5f1ea;
+    --app-bg-solid: #f5f1ea;
+    --bg-subtle: #efeae2;
     --bg-card: #ffffff;
     --task-bg: #ffffff;
-    --hover-bg: rgba(30, 45, 62, 0.04);
-    --active-bg: rgba(30, 45, 62, 0.07);
+    --hover-bg: rgba(27, 61, 74, 0.04);
+    --active-bg: rgba(27, 61, 74, 0.07);
     --input-bg: transparent;
     --input-surface: #ffffff;
     --modal-bg: #ffffff;
 
     /* Text */
-    --text-primary: #1e2d3e;
-    --text-secondary: #4a5563;
-    --text-tertiary: #696977;
+    --text-primary: #1b3d4a;
+    --text-secondary: #47616a;
+    --text-tertiary: #586f77;
     --text-inverse: #ffffff;
 
     /* Borders */
-    --border-color: rgba(30, 45, 62, 0.08);
-    --border-color-medium: #e1dcd6;
-    --border-color-strong: rgba(30, 45, 62, 0.20);
+    --border-color: rgba(27, 61, 74, 0.08);
+    --border-color-medium: #d2d4d0;
+    --border-color-strong: rgba(27, 61, 74, 0.20);
 
     /* Accents */
-    --accent-primary: #2a9d8f;
-    --accent-hover: #21806f;
-    --focus-btn-bg: #1e2d3e;
-    --focus-btn-bg-hover: #2c3f55;
+    --accent-primary: #005d53;
+    --accent-hover: #004d45;
+    /* The system's main button: green, ink under the pointer. */
+    --focus-btn-bg: #005d53;
+    --focus-btn-bg-hover: #1b3d4a;
     --focus-btn-text: #ffffff;
     /* The ring around the Today Start button. Green on the navy pill. */
     --start-btn-ring: var(--accent-primary);
 
     /* Status */
-    --danger: #d4605a;
-    --success: #2a9d8f;
+    --danger: #b4432e;
+    --success: #005d53;
     --warning: #f59e0b;
 
     /* Navigation */
-    --nav-item-text: rgba(30, 45, 62, 0.55);
-    --nav-item-hover-bg: rgba(30, 45, 62, 0.05);
-    --nav-item-hover-text: #1e2d3e;
+    --nav-item-text: rgba(27, 61, 74, 0.55);
+    --nav-item-hover-bg: rgba(27, 61, 74, 0.05);
+    --nav-item-hover-text: #1b3d4a;
 
     /* Layout */
     --content-max-width: 600px;
     --title-bar-height: 50px;
     /* Match blocker: sheet canvas vs slightly lighter settings row panels. */
-    --settings-sheet-bg: #F7F5F0;
-    --settings-panel-bg: #FAF8F5;
+    --settings-sheet-bg: #f5f1ea;
+    --settings-panel-bg: #ffffff;
     /* How far a card's utility pill reaches above the card's top edge. The
        column's scroll box makes the same room above its first card. */
     --task-pill-overhang: 10px;
@@ -258,7 +283,7 @@
 }
 
 .todo-shell {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
+    font-family: 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
     background: var(--app-bg-solid);
     color: var(--text-primary);
     overflow: hidden;
@@ -272,6 +297,7 @@
 .todo-shell .settings-header h3,
 .todo-shell .settings-modal-header h3,
 .todo-shell .onboarding-content h1 {
+    font-weight: 500;
     font-family: Georgia, 'Times New Roman', serif;
     letter-spacing: -0.01em;
 }
@@ -461,7 +487,7 @@ html.redd-native-shell .todo-shell .title-bar {
     gap: 2px;
     background: var(--bg-subtle);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 3px;
     margin: 0;
     /* Centered by flex parent */
@@ -473,7 +499,7 @@ html.redd-native-shell .todo-shell .title-bar {
     height: 26px;
     border: none;
     background: transparent;
-    border-radius: 7px;
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -496,7 +522,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .view-btn.active {
     background: var(--bg-card);
     color: var(--text-primary);
-    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.06);
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.06);
 }
 
 /* The reader can put the view buttons in their own order by a drag. The
@@ -519,7 +545,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .view-btn.is-dragging {
     background: var(--bg-card);
     color: var(--text-primary);
-    box-shadow: 0 3px 10px rgba(30, 45, 62, 0.18);
+    box-shadow: 0 3px 10px rgba(27, 61, 74, 0.18);
     transform: scale(1.06);
 }
 
@@ -955,7 +981,10 @@ html.redd-native-shell .todo-shell .title-bar {
 /* ------------------------------------------------------------------ */
 .todo-shell .list-search {
     flex-shrink: 0;
-    padding: 10px 24px 0 24px;
+    /* 6px on top: with 10px the glass sat far from the tabs, or the title
+       bar in focus mode. The 4px under it is the task area's own top: the
+       list's margin, or the board's padding. */
+    padding: 6px 24px 0 24px;
 }
 
 .todo-shell .list-search-row {
@@ -1017,7 +1046,7 @@ html.redd-native-shell .todo-shell .title-bar {
     background: transparent;
     color: var(--text-tertiary);
     cursor: pointer;
-    border-radius: 7px;
+    border-radius: 6px;
 }
 
 .todo-shell .list-search-inner.open .list-search-toggle {
@@ -1116,7 +1145,7 @@ html.redd-native-shell .todo-shell .title-bar {
     gap: 5px;
     max-width: 160px;
     border: 1px solid transparent;
-    border-radius: 7px;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
     font-size: 12px;
@@ -1168,12 +1197,10 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .tasks-container.board-mode {
     display: flex;
     flex-direction: column;
-    padding: 16px 20px 8px;
+    /* 4px over and under, as the list's margin has it: the search row and
+       DONE stand as close to the columns as to the list. */
+    padding: 4px 20px 4px;
     overflow: hidden;
-}
-
-.todo-shell .list-search + .tasks-container {
-    padding-top: 10px;
 }
 
 /* The task area. On the board it steps out of the layout, and the board
@@ -1188,7 +1215,7 @@ html.redd-native-shell .todo-shell .title-bar {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    margin: 10px 24px 4px;
+    margin: 4px 24px 4px;
     /* One column has room to spare, so more than a board column's.
 
        The top is at least the pill's overhang and a little more. This box
@@ -1198,8 +1225,8 @@ html.redd-native-shell .todo-shell .title-bar {
        the first card lost its top. */
     --list-column-top: max(20px, calc(var(--task-pill-overhang) + 6px));
     padding: var(--list-column-top) 20px 16px;
-    border-radius: 14px;
-    background: #f4f1ec;
+    border-radius: 12px;
+    background: #efeae2;
     box-sizing: border-box;
     overflow: hidden;
 }
@@ -1258,7 +1285,7 @@ html.redd-native-shell .todo-shell .title-bar {
     gap: 6px;
     padding: 5px 12px;
     border: 1px solid transparent;
-    border-radius: 9px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text-secondary);
     font-size: 13px;
@@ -1277,7 +1304,7 @@ html.redd-native-shell .todo-shell .title-bar {
     border-color: var(--border-color-medium);
     color: var(--text-primary);
     font-weight: 600;
-    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.08);
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.08);
 }
 
 .todo-shell .board-people-scope-count {
@@ -1289,9 +1316,10 @@ html.redd-native-shell .todo-shell .title-bar {
 
 /* The pills after the switch. */
 .todo-shell .board-assignee-filter.after-scope {
-    /* No hairline: the pills read as the switch's own, which they are. */
+    /* No hairline: the faces read as the switch's own, which they are.
+       3px of room, so the ring on a face picked is not cut off. */
     margin-left: 0;
-    padding-left: 0;
+    padding: 3px;
 }
 
 /* All-tab assignee filter — left of pull-to-reveal search */
@@ -1339,7 +1367,35 @@ html.redd-native-shell .todo-shell .title-bar {
     background: var(--bg-card);
     border-color: var(--border-color-medium);
     color: var(--text-primary);
-    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.06);
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.06);
+}
+
+/* A person is a face, no name: the name is its tooltip. The chip keeps
+   the named chips' height (26 + 2 + 2 + the border). No ring at rest;
+   the face picked wears a mint one, and the rest step back. */
+.todo-shell .board-assignee-filter-btn.is-person,
+.todo-shell .board-assignee-filter-btn.is-person:first-child {
+    padding: 2px;
+    border-color: transparent;
+    background: transparent;
+}
+
+.todo-shell .board-assignee-filter-btn.is-person:hover {
+    background: transparent;
+}
+
+.todo-shell .board-assignee-filter-btn.is-person.active {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-btn-bg) 75%, transparent);
+}
+
+.todo-shell .board-assignee-filter-btn.is-person.is-dimmed {
+    opacity: 0.5;
+}
+
+.todo-shell .board-assignee-filter-btn.is-person.is-dimmed:hover {
+    opacity: 0.85;
 }
 
 /* Dragged to reorder, as the list tabs and group tabs are. */
@@ -1506,8 +1562,8 @@ html.redd-native-shell .todo-shell .title-bar {
     max-height: 100%;
     padding: 14px 12px 12px;
     border: 1px solid transparent;
-    border-radius: 14px;
-    background: #f4f1ec;
+    border-radius: 12px;
+    background: #efeae2;
     box-sizing: border-box;
     overflow: hidden;
     transition:
@@ -1576,7 +1632,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .board-column.board-column-drop-target {
     outline: 1.5px solid color-mix(in srgb, var(--accent-primary) 45%, transparent);
     outline-offset: -1px;
-    background: color-mix(in srgb, var(--accent-primary) 6%, #f4f1ec);
+    background: color-mix(in srgb, var(--accent-primary) 6%, #efeae2);
 }
 
 .todo-shell[data-theme="dark"] .board-column.board-column-drop-target {
@@ -1643,7 +1699,7 @@ html.redd-native-shell .todo-shell .title-bar {
     box-sizing: border-box;
     padding: 10px 12px;
     border: 1px dashed color-mix(in srgb, var(--text-primary) 28%, var(--border-color));
-    border-radius: 10px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text-primary);
     font-size: 14px;
@@ -1752,12 +1808,13 @@ html.redd-native-shell .todo-shell .title-bar {
     flex-direction: column;
     align-items: stretch;
     position: relative;
-    padding: 12px;
+    /* 1px more at the top: the checkbox and name sit a touch lower. */
+    padding: 13px 12px 12px;
     margin-bottom: 8px;
     background: var(--task-bg);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
-    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.04);
     transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
     cursor: default;
     user-select: none;
@@ -1772,11 +1829,11 @@ html.redd-native-shell .todo-shell .title-bar {
 @keyframes taskNavigateHighlight {
     0% {
         border-color: var(--accent-primary);
-        box-shadow: 0 0 0 2px rgba(42, 157, 143, 0.28);
+        box-shadow: 0 0 0 2px rgba(0, 93, 83, 0.28);
     }
     100% {
         border-color: var(--border-color);
-        box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04);
+        box-shadow: 0 1px 2px rgba(27, 61, 74, 0.04);
     }
 }
 
@@ -1872,6 +1929,14 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 .todo-shell .task-list-origin:hover:not(:disabled),
+/* A step's list (StepListMark): shown, not a button. */
+.todo-shell .task-list-origin.is-static,
+.todo-shell .task-list-origin.is-static:hover {
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: default;
+}
+
 .todo-shell .task-list-origin-wrap.is-open .task-list-origin {
     color: var(--text-primary);
     background: var(--border-color);
@@ -1899,22 +1964,21 @@ html.redd-native-shell .todo-shell .title-bar {
     display: block;
 }
 
-/* Unassigned (local) tasks: keep the slot, reveal a soft list icon on hover. */
-.todo-shell .task-list-origin.is-unassigned {
-    opacity: 0;
-    color: var(--text-tertiary);
-}
-
+/* Unassigned (local) tasks: a list icon in coral, as the add box's
+   "No list", so a task on no list says so. Always shown: it faded on
+   hover, the wrong way round. */
+.todo-shell .task-list-origin.is-unassigned,
 .todo-shell .task-item:hover .task-list-origin.is-unassigned,
 .todo-shell .task-list-origin-wrap.is-open .task-list-origin.is-unassigned {
-    opacity: 0.45;
+    opacity: 1;
+    color: var(--redd-coral);
 }
 
 .todo-shell .task-item:hover .task-list-origin.is-unassigned:hover,
 .todo-shell .task-list-origin-wrap.is-open .task-list-origin.is-unassigned {
-    opacity: 0.75;
-    background: var(--border-color);
-    color: var(--text-secondary);
+    opacity: 1;
+    background: color-mix(in srgb, var(--redd-coral) 12%, transparent);
+    color: var(--redd-coral);
 }
 
 .todo-shell .task-list-picker {
@@ -1928,9 +1992,9 @@ html.redd-native-shell .todo-shell .title-bar {
     overflow-y: auto;
     padding: 4px;
     border: 1px solid var(--border-color-medium);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--modal-bg);
-    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.12);
 }
 
 /* The search box of a long list menu (SearchableListMenu). It stays at
@@ -2133,6 +2197,12 @@ html.redd-native-shell .todo-shell .title-bar {
     /* For positioning the done button */
 }
 
+/* A note opened from a "Notes ▾" chip (the Today session): its fill alone
+   says where to write; no frame round it. */
+.todo-shell .notes-container.is-chevron .notes-editor-wrapper {
+    border-color: transparent;
+}
+
 /* Custom Quill Styles */
 /*
  * The notes editors wear Quill's bubble theme, so there is no bar above the
@@ -2220,7 +2290,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .notes-overlay-card {
     background: var(--modal-bg);
     border: 1px solid var(--border-color-medium);
-    border-radius: 16px;
+    border-radius: 12px;
     width: 100%;
     max-width: 900px;
     height: 100%;
@@ -2445,7 +2515,7 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 .todo-shell .task-item:hover {
-    box-shadow: 0 6px 16px rgba(30, 45, 62, 0.08);
+    box-shadow: 0 6px 16px rgba(27, 61, 74, 0.08);
     border-color: var(--border-color-medium);
     transform: translateY(-1px);
 }
@@ -2494,11 +2564,11 @@ html.redd-native-shell .todo-shell .title-bar {
         background: color-mix(in srgb, var(--accent-primary) 22%, var(--task-bg));
         /* The row's own shadow stays under the ring, or it drops away for
            the length of the animation and comes back at the end. */
-        box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04), 0 0 0 2px var(--accent-primary);
+        box-shadow: 0 1px 2px rgba(27, 61, 74, 0.04), 0 0 0 2px var(--accent-primary);
     }
     100% {
         background: var(--task-bg);
-        box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04), 0 0 0 2px transparent;
+        box-shadow: 0 1px 2px rgba(27, 61, 74, 0.04), 0 0 0 2px transparent;
     }
 }
 
@@ -2617,7 +2687,10 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell .task-text {
     flex: 1;
-    font-size: 14px;
+    font-size: 14.3px;
+    /* A little heavier than body text, so a task name reads clearly. */
+    font-family: 'Schibsted Grotesk Names', 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
+    font-weight: 450;
     line-height: 1.4;
     word-wrap: break-word;
 }
@@ -2678,13 +2751,15 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .task-edit-input {
     flex: 1;
     min-width: 0;
-    font-size: 14px;
+    /* As the name it changes (.task-text). */
+    font-size: 14.3px;
+    font-weight: 450;
     line-height: 1.4;
     padding: 0;
     margin: 0;
     border: none;
     background: transparent;
-    font-family: inherit;
+    font-family: 'Schibsted Grotesk Names', 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
     color: inherit;
     outline: none;
     border-bottom: 1px solid var(--accent-primary);
@@ -2757,7 +2832,7 @@ html.redd-native-shell .todo-shell .title-bar {
     bottom: 0;
     z-index: 6;
     padding-left: 6px;
-    border-radius: 10px 0 0 10px;
+    border-radius: 8px 0 0 8px;
     /* `--modal-bg`, not `--bg-subtle`: subtle is rgba(255,255,255,0.03)
        in the dark theme, and the words read straight through it. This has
        to cover them. */
@@ -2771,7 +2846,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .task-item:hover .task-actions,
 .todo-shell .task-item.has-open-menu .task-actions {
     z-index: 6;
-    border-radius: 0 10px 10px 0;
+    border-radius: 0 8px 8px 0;
     background: var(--modal-bg);
 }
 
@@ -2803,9 +2878,11 @@ html.redd-native-shell .todo-shell .title-bar {
  * Only on the compact tile, where the pill reaches the box. On a full card
  * the pill stops well short of it, and the ground — white, the pill's
  * colour — showed as a square on the card's hover tint.
+ * Only on a row that still has the pill: board rows lost it to the details
+ * panel, and the backing then showed as a shade round the box.
  */
-.todo-shell.todo-tile-compact .task-item:hover .task-checkbox,
-.todo-shell.todo-tile-compact .task-item.has-open-menu .task-checkbox {
+.todo-shell.todo-tile-compact .task-item:has(.task-utility-pill):hover .task-checkbox,
+.todo-shell.todo-tile-compact .task-item.has-open-menu:has(.task-utility-pill) .task-checkbox {
     position: relative;
     z-index: 7;
     /* The second shadow ends where the words begin: the box is 18px, the
@@ -2818,8 +2895,8 @@ html.redd-native-shell .todo-shell .title-bar {
 
 /* On a done row the tick has no gap after it to cover — the list picker sits
    under it rather than beside it. */
-.todo-shell.todo-tile-compact .task-item:hover .task-leading .task-checkbox,
-.todo-shell.todo-tile-compact .task-item.has-open-menu .task-leading .task-checkbox {
+.todo-shell.todo-tile-compact .task-item:has(.task-utility-pill):hover .task-leading .task-checkbox,
+.todo-shell.todo-tile-compact .task-item.has-open-menu:has(.task-utility-pill) .task-leading .task-checkbox {
     box-shadow: 0 0 0 3px var(--modal-bg);
 }
 
@@ -2853,7 +2930,7 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 .todo-shell .task-menu-open .task-item:hover {
-    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.04);
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.04);
     transform: none;
 }
 
@@ -2935,7 +3012,7 @@ html.redd-native-shell .todo-shell .title-bar {
     background: var(--modal-bg);
     border: 1px solid var(--border-color-medium);
     border-radius: 12px;
-    box-shadow: 0 10px 28px rgba(30, 45, 62, 0.14);
+    box-shadow: 0 10px 28px rgba(27, 61, 74, 0.14);
     z-index: 120;
     padding: 6px;
 }
@@ -3064,8 +3141,8 @@ html.redd-native-shell .todo-shell .title-bar {
     width: min(360px, calc(100vw - 32px));
     background: var(--modal-bg);
     border: 1px solid var(--border-color-medium);
-    border-radius: 16px;
-    box-shadow: 0 16px 40px rgba(30, 45, 62, 0.18);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(27, 61, 74, 0.18);
     padding: 16px;
 }
 
@@ -3225,7 +3302,7 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell .people-editor-me.is-me {
     border-color: transparent;
-    background: rgba(42, 157, 143, 0.16);
+    background: rgba(0, 93, 83, 0.16);
     color: #1f7a6f;
 }
 
@@ -3289,7 +3366,7 @@ html.redd-native-shell .todo-shell .title-bar {
     background: var(--modal-bg);
     border: 1px solid var(--border-color-medium);
     border-radius: 12px;
-    box-shadow: 0 10px 24px rgba(30, 45, 62, 0.12);
+    box-shadow: 0 10px 24px rgba(27, 61, 74, 0.12);
     padding: 4px;
     max-height: 220px;
     overflow-y: auto;
@@ -3410,8 +3487,8 @@ html.redd-native-shell .todo-shell .title-bar {
     left: 0;
     background: var(--modal-bg);
     border: 1px solid var(--border-color-medium);
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.12);
     z-index: 100;
     min-width: 140px;
     padding: 4px;
@@ -3636,10 +3713,10 @@ html.redd-native-shell .todo-shell .title-bar {
     padding: 18px 22px;
     background: var(--modal-bg, #ffffff);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: 12px;
     box-shadow:
-        0 2px 4px rgba(30, 45, 62, 0.06),
-        0 14px 36px rgba(30, 45, 62, 0.16);
+        0 2px 4px rgba(27, 61, 74, 0.06),
+        0 14px 36px rgba(27, 61, 74, 0.16);
     z-index: 30;
     animation: board-nudge-in 0.22s ease-out;
 }
@@ -3735,7 +3812,7 @@ html.redd-native-shell .todo-shell .title-bar {
     display: flex;
     align-items: center;
     border: 1px dashed color-mix(in srgb, var(--text-primary) 28%, var(--border-color));
-    border-radius: 10px;
+    border-radius: 8px;
     background: transparent;
     transition: border-color 0.15s ease, background 0.15s ease;
     padding-right: 6px;
@@ -3928,7 +4005,7 @@ html.redd-native-shell .todo-shell .title-bar {
     padding: 0;
     border: none;
     background: var(--hover-bg);
-    border-radius: 3px;
+    border-radius: 4px;
     cursor: pointer;
     color: var(--text-secondary);
     transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
@@ -3994,7 +4071,7 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell ::-webkit-scrollbar-thumb {
     background: var(--border-color-medium);
-    border-radius: 2px;
+    border-radius: 4px;
 }
 
 .todo-shell ::-webkit-scrollbar-thumb:hover {
@@ -4009,7 +4086,7 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell .plan-calendar-help-content::-webkit-scrollbar-thumb {
     background: var(--border-color-strong);
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 /* Tabs specific scrollbar */
@@ -4248,7 +4325,7 @@ html.redd-native-shell .todo-shell .title-bar {
     inset: 0;
     padding: 16px;
     box-sizing: border-box;
-    background: rgba(30, 45, 62, 0.45);
+    background: rgba(27, 61, 74, 0.45);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -4272,7 +4349,7 @@ html.redd-native-shell .todo-shell .title-bar {
     right: 0;
     height: 30px;
     background: var(--app-bg);
-    box-shadow: inset 0 -1px 0 rgba(30, 45, 62, 0.08);
+    box-shadow: inset 0 -1px 0 rgba(27, 61, 74, 0.08);
     z-index: 2200;
 }
 
@@ -4286,6 +4363,15 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell.mac-window .modal-overlay {
     top: 30px;
+}
+
+/*
+  A dialog (Settings, a list's name, Shortcuts…) comes over task details
+  too: opened while details were open, Settings sat behind them. Under the
+  confirm dialog, which can be asked from inside one of these.
+*/
+.todo-shell .modal-overlay:not(.notes-overlay):not(.people-editor-overlay) {
+    z-index: 2050;
 }
 
 .todo-shell #confirm-modal {
@@ -4312,7 +4398,7 @@ html.redd-native-shell .todo-shell .title-bar {
     max-width: min(400px, 100%);
     max-height: 100%;
     overflow-y: auto;
-    box-shadow: 0 16px 40px rgba(30, 45, 62, 0.18);
+    box-shadow: 0 16px 40px rgba(27, 61, 74, 0.18);
 }
 
 /* The bin in an edit dialog's top-right corner: the same delete as the tab's ×. */
@@ -4381,7 +4467,7 @@ html.redd-native-shell .todo-shell .title-bar {
     margin: 0;
     font-family: Georgia, 'Times New Roman', serif;
     font-size: 1.45rem;
-    font-weight: 700;
+    font-weight: 500;
     line-height: 1.25;
     color: var(--redd-navy);
 }
@@ -4410,7 +4496,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell .settings-section-heading {
     margin: 0;
     padding: 0 2px;
-    /* Blocker's section label font: Inter draws these caps heavier. */
+    /* Blocker's section label font: the text face draws these caps heavier. */
     font-family: Arial, Helvetica, sans-serif;
     font-size: 11px;
     font-weight: 500;
@@ -4716,7 +4802,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell #settings-modal .settings-deleted-tasks {
     margin: 10px 0 0 23px;
     padding: 8px 12px;
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--hover-bg);
     min-height: 20px;
 }
@@ -4987,7 +5073,7 @@ html.redd-native-shell .todo-shell .title-bar {
     width: 22px;
     height: 14px;
     flex-shrink: 0;
-    border-radius: 3px;
+    border-radius: 4px;
     overflow: hidden;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
@@ -5149,7 +5235,7 @@ html.redd-native-shell .todo-shell .title-bar {
     font-weight: 400;
     line-height: 1.45;
     text-align: left;
-    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.12);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -5249,7 +5335,7 @@ html.redd-native-shell .todo-shell .title-bar {
 
 .todo-shell .settings-connect-btn--basecamp {
     background-color: #ffe004;
-    color: #1e2d3e;
+    color: #1b3d4a;
 }
 
 .todo-shell .settings-connect-btn--basecamp:hover:not(:disabled) {
@@ -5348,7 +5434,7 @@ html.redd-native-shell .todo-shell .title-bar {
     position: absolute;
     inset: 0;
     background: hsl(222, 15%, 82%);
-    border-radius: 24px;
+    border-radius: 12px;
     transition: background 0.25s ease;
 }
 
@@ -5398,7 +5484,7 @@ html.redd-native-shell .todo-shell .title-bar {
     padding: 12px 14px;
     background: #e9f0ed;
     border: 1px solid #ccd8d2;
-    border-radius: 10px;
+    border-radius: 8px;
     color: #2d5a4c;
 }
 
@@ -5454,9 +5540,11 @@ html.redd-native-shell .todo-shell .title-bar {
     background: var(--hover-bg);
 }
 
-/* ≤718px: full-screen settings sheet under the title bar (blocker breakpoint). */
+/* ≤718px: full-screen settings sheet (blocker breakpoint). The top bar's
+   buttons are hidden while Settings is open, so the sheet starts at the top
+   and leaves no empty band where the bar was. */
 .todo-shell.todo-w-narrow #settings-modal {
-    top: var(--title-bar-height);
+    top: 0;
     left: 0;
     right: 0;
     bottom: 0;
@@ -5485,8 +5573,7 @@ html.redd-native-shell .todo-shell .title-bar {
 }
 
 .todo-shell.todo-w-narrow #settings-modal .settings-sheet-header {
-    display: grid;
-    grid-template-columns: auto 1fr;
+    display: flex;
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
@@ -5495,13 +5582,16 @@ html.redd-native-shell .todo-shell .title-bar {
     border-bottom: 1px solid var(--border-color-medium);
 }
 
+/* The chevron and the word "Settings", one button. */
 .todo-shell.todo-w-narrow #settings-modal .settings-sheet-back {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 32px;
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
     height: 32px;
-    padding: 0;
+    padding: 0 10px 0 6px;
     border: none;
     border-radius: 8px;
     background: transparent;
@@ -5516,7 +5606,7 @@ html.redd-native-shell .todo-shell .title-bar {
 .todo-shell.todo-w-narrow #settings-modal .settings-sheet-title {
     font-family: Georgia, 'Times New Roman', serif;
     font-size: 1.25rem;
-    font-weight: 700;
+    font-weight: 500;
     line-height: 1.2;
     color: var(--text-primary);
     min-width: 0;
@@ -5718,17 +5808,17 @@ html.redd-native-shell .todo-shell .title-bar {
 
 /* Popped-out focus panel: flat canary sticky + matching chrome (same whether the main app is light or dark) */
 .todo-shell.focus-panel-window:not(.is-fullscreen) .focus-container:not(.fullscreen) {
-    --text-primary: #1e2d3e;
-    --text-secondary: #4a5563;
-    --text-tertiary: #696977;
-    --hover-bg: rgba(30, 45, 62, 0.06);
-    --active-bg: rgba(30, 45, 62, 0.1);
+    --text-primary: #1b3d4a;
+    --text-secondary: #47616a;
+    --text-tertiary: #586f77;
+    --hover-bg: rgba(27, 61, 74, 0.06);
+    --active-bg: rgba(27, 61, 74, 0.1);
     --modal-bg: #ffffff;
-    --bg-subtle: var(--cream-section);
-    --border-color: rgba(30, 45, 62, 0.08);
-    --border-color-medium: #e1dcd6;
-    --accent-primary: #2a9d8f;
-    --accent-hover: #21806f;
+    --bg-subtle: #efeae2;
+    --border-color: rgba(27, 61, 74, 0.08);
+    --border-color-medium: #d2d4d0;
+    --accent-primary: #005d53;
+    --accent-hover: #004d45;
     --redd-blue: #4a90e2;
     --warning: #f59e0b;
     /* A sticky note: a touch lighter where it is glued at the top, and a
@@ -5752,6 +5842,15 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) {
 html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-mode {
     inset: 4px 10px 16px;
     height: auto;
+}
+
+/* The note's own sides make the window wider, where the window is bigger
+   than the note (focus-resize-edges.tsx keeps these numbers in step). */
+.focus-resize-edge {
+    display: none;
+}
+html.focus-note-room .focus-resize-edge {
+    display: block;
 }
 
 .todo-shell.focus-panel-window:not(.is-fullscreen) .focus-container:not(.fullscreen) .focus-notes-container {
@@ -5782,7 +5881,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     background: #f2e79e;
     border: 1px solid rgba(120, 100, 35, 0.28);
     backdrop-filter: none;
-    box-shadow: 0 3px 10px rgba(30, 45, 62, 0.08);
+    box-shadow: 0 3px 10px rgba(27, 61, 74, 0.08);
 }
 
 .todo-shell.focus-panel-window.is-second:not(.is-fullscreen) .focus-container:not(.fullscreen) .focus-buttons-container {
@@ -5890,18 +5989,17 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     margin-block: auto;
 }
 
-/* The timer is level with the name's first line. It starts on the same
-   baseline, and then moves down a little: digits are as tall as capitals,
-   so on the baseline their middle is above the middle of the name's small
-   letters. Inter's capitals are 0.727em and its small letters 0.545em, so
-   the move is (0.727 x 17px - 0.545 x 18px) / 2, about 1.3px. */
+/* The timer is level with the name's first line. It stands on the same
+   baseline and then moves down half a pixel (one pixel of a Mac's
+   screen). Set by eye: 1.2px down (the middle of the small letters) read
+   as low, and 0.35px up (the middle of the capitals) as high. */
 .todo-shell .focus-container:not(.fullscreen) .focus-bar {
     align-items: baseline;
 }
 
 .todo-shell .focus-container:not(.fullscreen) .focus-timer {
     position: relative;
-    top: 0.075em;
+    top: 0.5px;
 }
 
 /* Attention ring animation when focus mode opens */
@@ -5912,7 +6010,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     border-radius: 8px;
     pointer-events: none;
     box-sizing: border-box;
-    border: 5px solid rgba(42, 157, 143, 0);
+    border: 5px solid rgba(0, 93, 83, 0);
     opacity: 0;
     animation: attentionRing 1200ms ease-out 1 forwards;
 }
@@ -5920,26 +6018,26 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 @keyframes attentionRing {
     0% {
         opacity: 0;
-        border-color: rgba(42, 157, 143, 0);
-        box-shadow: 0 0 0 0 rgba(42, 157, 143, 0);
+        border-color: rgba(0, 93, 83, 0);
+        box-shadow: 0 0 0 0 rgba(0, 93, 83, 0);
     }
 
     15% {
         opacity: 1;
-        border-color: rgba(42, 157, 143, 0.95);
-        box-shadow: 0 0 0 2px rgba(42, 157, 143, 0.35);
+        border-color: rgba(0, 93, 83, 0.95);
+        box-shadow: 0 0 0 2px rgba(0, 93, 83, 0.35);
     }
 
     70% {
         opacity: 0.6;
-        border-color: rgba(42, 157, 143, 0.65);
-        box-shadow: 0 0 0 6px rgba(42, 157, 143, 0.15);
+        border-color: rgba(0, 93, 83, 0.65);
+        box-shadow: 0 0 0 6px rgba(0, 93, 83, 0.15);
     }
 
     100% {
         opacity: 0;
-        border-color: rgba(42, 157, 143, 0);
-        box-shadow: 0 0 0 10px rgba(42, 157, 143, 0);
+        border-color: rgba(0, 93, 83, 0);
+        box-shadow: 0 0 0 10px rgba(0, 93, 83, 0);
     }
 }
 
@@ -5977,7 +6075,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .focus-container.fullscreen .focus-task-name {
     font-family: Georgia, 'Times New Roman', serif;
     font-size: 52px;
-    font-weight: 700;
+    font-weight: 500;
     letter-spacing: -0.015em;
     text-align: center;
     margin-right: 0;
@@ -6036,7 +6134,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     transform: none;
     padding: 10px 12px;
     gap: 10px;
-    border-radius: 24px;
+    border-radius: 12px;
 }
 
 .todo-shell .focus-container.fullscreen .complete-focus-btn,
@@ -6101,11 +6199,11 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     display: flex;
     gap: 4px;
     padding: 4px;
-    border-radius: 14px;
+    border-radius: 12px;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     backdrop-filter: blur(10px);
-    box-shadow: 0 12px 28px rgba(30, 45, 62, 0.14);
+    box-shadow: 0 12px 28px rgba(27, 61, 74, 0.14);
     opacity: 0;
     transition: opacity 0.2s ease;
     pointer-events: none;
@@ -6238,7 +6336,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     background: var(--modal-bg);
     border: 1px solid var(--border-color-medium);
     border-radius: 12px;
-    box-shadow: 0 16px 32px rgba(30, 45, 62, 0.16);
+    box-shadow: 0 16px 32px rgba(27, 61, 74, 0.16);
     padding: 8px;
     margin: 6px 14px 0 auto;
     gap: 6px;
@@ -6319,7 +6417,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     gap: 5px;
     max-width: 160px;
     border: 1px solid transparent;
-    border-radius: 7px;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
     font-size: 12px;
@@ -6405,7 +6503,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .focus-task-switch-item {
     width: 100%;
     border: none;
-    border-radius: 7px;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-primary);
     text-align: left;
@@ -6465,7 +6563,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     /* Align with left padding */
     top: 50%;
     transform: translateY(-50%);
-    background: #1e2d3e;
+    background: #1b3d4a;
     color: #ffffff;
     padding: 6px 14px;
     border-radius: 8px;
@@ -6477,7 +6575,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     display: flex;
     align-items: center;
     gap: 12px;
-    box-shadow: 0 8px 20px rgba(30, 45, 62, 0.18);
+    box-shadow: 0 8px 20px rgba(27, 61, 74, 0.18);
 }
 
 .todo-shell .focus-toast.visible {
@@ -6690,7 +6788,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell #oauth-connect-btn,
 .todo-shell #connect-bc-btn {
     background-color: #ffe004;
-    color: #1e2d3e;
+    color: #1b3d4a;
 }
 
 .todo-shell #oauth-connect-btn:hover,
@@ -6857,8 +6955,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
     box-sizing: border-box;
     z-index: 1000;
-    color: var(--text-primary, #1e2d3e);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
+    color: var(--text-primary, #1b3d4a);
+    font-family: 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
 }
 
 /* Portaled to document.body — escapes modal overflow clipping. */
@@ -6887,7 +6985,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     font-family: inherit;
     font-size: 15px;
     font-weight: 400;
-    color: var(--text-primary, #1e2d3e);
+    color: var(--text-primary, #1b3d4a);
     margin: 0;
     box-sizing: border-box;
 }
@@ -7100,7 +7198,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     width: 32px;
     height: 4px;
     background: var(--border-color-strong);
-    border-radius: 2px;
+    border-radius: 4px;
 }
 
 /* Undo Toast */
@@ -7121,7 +7219,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     bottom: 32px;
     left: 50%;
     transform: translateX(-50%);
-    background: #1e2d3e;
+    background: #1b3d4a;
     /* Always navy for toast */
     color: #ffffff;
     padding: 12px 32px;
@@ -7129,7 +7227,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     display: flex;
     align-items: center;
     gap: 16px;
-    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.18);
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.18);
     border: 1px solid rgba(255, 255, 255, 0.10);
     z-index: 10050;
     pointer-events: auto;
@@ -7210,7 +7308,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     transition: background 0.15s ease, transform 0.15s ease;
     padding: 0;
     color: var(--text-tertiary);
-    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.05);
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.05);
 }
 
 .todo-shell .manual-update-btn:hover {
@@ -7294,7 +7392,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     bottom: 0;
     background-color: var(--border-color-strong);
     transition: .3s cubic-bezier(0.4, 0.0, 0.2, 1);
-    border-radius: 24px;
+    border-radius: 12px;
 }
 
 .todo-shell .slider:before {
@@ -7307,7 +7405,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     background-color: #ffffff;
     transition: .3s cubic-bezier(0.4, 0.0, 0.2, 1);
     border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(30, 45, 62, 0.18);
+    box-shadow: 0 1px 3px rgba(27, 61, 74, 0.18);
 }
 
 .todo-shell input:checked+.slider {
@@ -7407,7 +7505,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     box-sizing: border-box;
     color: var(--text-primary);
     /* On document.body, out of the shell's font too. */
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
+    font-family: 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, Arial, Helvetica, sans-serif;
 }
 
 .todo-shell .icon-picker-search,
@@ -7666,7 +7764,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 
 /* Tab Border Colors (for grouped mode - bottom border only) */
 .todo-shell .tab.tab-border-red {
-    border-bottom-color: #d4605a !important;
+    border-bottom-color: #b4432e !important;
 }
 
 .todo-shell .tab.tab-border-orange {
@@ -8110,14 +8208,14 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     height: 64px;
     display: block;
     margin: 0 auto;
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.12);
 }
 
 .todo-shell .onboarding-content h1 {
     font-family: Georgia, 'Times New Roman', serif;
     font-size: 32px;
-    font-weight: 700;
+    font-weight: 500;
     letter-spacing: -0.01em;
     color: var(--text-primary);
     margin-bottom: 12px;
@@ -8131,7 +8229,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     margin: 0 auto 10px;
     padding: 5px 12px;
     border-radius: 999px;
-    background: rgba(30, 45, 62, 0.06);
+    background: rgba(27, 61, 74, 0.06);
     font-size: 13px;
     line-height: 1.35;
     color: var(--text-secondary);
@@ -8155,8 +8253,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .onboarding-focus-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color-medium);
-    border-radius: 16px;
-    box-shadow: 0 12px 32px rgba(30, 45, 62, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(27, 61, 74, 0.08);
     padding: 30px 40px;
     margin: 20px 0 18px;
 }
@@ -8275,7 +8373,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     width: 100%;
     padding: 12px;
     border: none;
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--button-bg);
     color: #ffffff;
     font-family: inherit;
@@ -8316,7 +8414,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell #rebrand-onboarding .onboarding-app-icon {
     width: 88px;
     height: 88px;
-    border-radius: 22px;
+    border-radius: 12px;
 }
 
 .todo-shell .rebrand-onboarding-subtitle {
@@ -8340,7 +8438,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     padding: 18px 20px 16px;
     border: none;
     border-left: 4px solid var(--rebrand-card-border);
-    border-radius: 14px;
+    border-radius: 12px;
     background: var(--rebrand-card-bg);
     text-align: left;
 }
@@ -8592,8 +8690,10 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 /* A chosen picture shows its own ring; the browser's highlight of the caret
    stops around it only drew a blue strip above it. Trix marks the chosen
    picture's figure as mutable; every picture's img is always marked, so
-   matching that hid all highlight in any note with a picture. */
-.todo-shell trix-editor:has(.attachment[data-trix-mutable]) *::selection {
+   matching that hid all highlight in any note with a picture. The editor
+   says so with a class (TrixNotesEditor), not a `:has()`, which cost every
+   keystroke on the page a restyle. */
+.todo-shell trix-editor.has-chosen-picture *::selection {
     background: transparent;
 }
 
@@ -8682,7 +8782,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     margin: -6px 0 0 -6px;
     box-sizing: border-box;
     border: 2px solid color-mix(in srgb, var(--accent-primary) 55%, var(--text-primary));
-    border-radius: 3px;
+    border-radius: 4px;
     background: var(--modal-bg);
     touch-action: none;
 }
@@ -8800,8 +8900,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 .todo-shell trix-editor .attachment__toolbar .trix-button-group {
-    background: rgba(30, 45, 62, 0.92);
-    border-radius: 10px;
+    background: rgba(27, 61, 74, 0.92);
+    border-radius: 8px;
     padding: 5px;
     gap: 4px;
     box-shadow: 0 6px 16px rgba(15, 23, 32, 0.28);
@@ -9127,7 +9227,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     width: 28px;
     height: 26px;
     padding: 0;
-    border-radius: 5px;
+    border-radius: 4px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -9172,7 +9272,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .trix-notes-bubble [data-trix-dialog] input[type="url"] {
     background: var(--bg-subtle);
     border: 1px solid var(--border-color);
-    border-radius: 5px;
+    border-radius: 4px;
     color: var(--text-primary);
     padding: 4px 8px;
     font-size: 13px;
@@ -9182,7 +9282,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .trix-notes-bubble [data-trix-dialog] input[type="button"] {
     background: var(--hover-bg);
     border: none;
-    border-radius: 5px;
+    border-radius: 4px;
     color: var(--text-primary);
     padding: 4px 10px;
     font-size: 13px;
@@ -9263,7 +9363,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     width: 24px;
     height: 24px;
     border: none;
-    border-radius: 7px;
+    border-radius: 6px;
     background: var(--task-bg);
     color: var(--text-tertiary);
     opacity: 0;
@@ -9300,15 +9400,14 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .task-overlay-card {
     --overlay-gutter: 52px;
     --overlay-side: 40px;
-    --overlay-done-band: #285c55;
+    --overlay-done-band: #005d53;
     --overlay-done-ink: #ffffff;
-    /* The page's cream. --bg-subtle names it, but through --cream-section,
-       which only the planner's stylesheet defines. */
-    --overlay-cream: var(--cream-section, #f1eeea);
+    /* The design system's cream, the page's, in both apps. */
+    --overlay-cream: #f5f1ea;
     padding: 0;
     gap: 0;
     overflow: hidden;
-    border-radius: 20px;
+    border-radius: 12px;
 }
 
 .todo-shell[data-theme="dark"] .task-overlay-card {
@@ -9404,7 +9503,14 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     border-radius: 999px;
     background: #f5f0e8;
     color: var(--overlay-done-band);
+    /* A button: unticked, the task is not done. */
+    padding: 0;
+    border: 0;
+    cursor: pointer;
 }
+
+.todo-shell .task-overlay-done-mark:hover { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35); }
+.todo-shell .task-overlay-done-mark:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .todo-shell .task-overlay-done-title {
     flex: 1;
@@ -9425,25 +9531,6 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 
 .todo-shell .task-overlay-done-band .notes-overlay-title.is-editable:focus-visible {
     outline-color: #a9dccf;
-}
-
-.todo-shell .task-overlay-undone-btn {
-    flex-shrink: 0;
-    margin-left: 16px;
-    padding: 8px 18px;
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    border-radius: 8px;
-    background: transparent;
-    color: var(--overlay-done-ink);
-    font: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.todo-shell .task-overlay-undone-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.8);
 }
 
 .todo-shell .task-overlay-done-band .notes-collapse-btn {
@@ -9826,9 +9913,9 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 
 /* The new row's circle: dashed, with a plus, since there is nothing to
    tick yet. A click puts the caret in the words beside it. */
+/* A calm plus, no circle: the add row asks for words, not a tick. */
 .todo-shell .task-subtask-check.task-subtask-check-ghost {
-    border-style: dashed;
-    border-color: var(--border-color-strong);
+    border-color: transparent;
     background: transparent;
     color: var(--text-tertiary);
     cursor: text;
@@ -9955,6 +10042,12 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     color: var(--focus-btn-text);
 }
 
+/* A step's day, coral when it is today, tomorrow or past. */
+.todo-shell .task-subtask-due.is-soon,
+.todo-shell .task-subtask-due.is-soon:hover {
+    color: var(--redd-coral);
+}
+
 /* Who a subtask in the Today session is for: its faces, on the first line
    beside the words, as the check circle stands. */
 .todo-shell .today-session-subtask-people {
@@ -10008,7 +10101,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     margin: 2px 4px 8px 30px;
     padding: 4px 34px 4px 8px;
     border: 1px solid var(--border-color-medium);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--input-surface, #fff);
 }
 
@@ -10060,11 +10153,6 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 
     .todo-shell .task-overlay-done-title {
         flex-basis: calc(100% - var(--overlay-gutter) - 48px);
-    }
-
-    .todo-shell .task-overlay-undone-btn {
-        order: 3;
-        margin-left: var(--overlay-gutter);
     }
 
     .todo-shell .task-overlay-list-wrap {
@@ -10157,7 +10245,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
  * in a quarter tile: the meta row moves to the right end of the line and
  * the words keep clear of it.
  */
-.todo-shell.todo-tile-compact .task-item {
+.todo-shell.todo-cards-one-line .task-item {
     padding: 6px 10px;
     margin-bottom: 6px;
 }
@@ -10171,7 +10259,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
  * letters to leave room for nothing. Laid out as a line instead, the marks
  * take what they need and the words take the rest.
  */
-.todo-shell.todo-tile-compact .task-item {
+.todo-shell.todo-cards-one-line .task-item {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -10186,14 +10274,14 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
  * hold that beside the marks, the marks wrap under the words instead,
  * to the right, the way the full card lays them out.
  */
-.todo-shell.todo-tile-compact .task-main-row {
+.todo-shell.todo-cards-one-line .task-main-row {
     flex: 1 1 0;
     min-width: min(11rem, 100%);
 }
 
 /* Anything else the card holds — a note being written, the subtasks —
    takes a line of its own under the two. */
-.todo-shell.todo-tile-compact .task-item > *:not(.task-main-row):not(.task-meta-row) {
+.todo-shell.todo-cards-one-line .task-item > *:not(.task-main-row):not(.task-meta-row) {
     flex: 1 0 100%;
 }
 
@@ -10206,7 +10294,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
  * what the tile is for. Three lines is the cap, so a card still cannot run
  * away down the tile, and only a genuinely long name ends in an ellipsis.
  */
-.todo-shell.todo-tile-compact .task-text {
+.todo-shell.todo-cards-one-line .task-text {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -10214,12 +10302,18 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     overflow-wrap: anywhere;
 }
 
-.todo-shell.todo-tile-compact .task-meta-row {
+.todo-shell.todo-cards-one-line .task-meta-row {
     flex: 0 0 auto;
     margin-top: 0;
     /* At the end of the words' line, or at the right of its own. */
     margin-left: auto;
     min-height: 0;
+    /* No wider than the card: on a line of its own, a full row (people,
+       date, Notes, steps, list) ran past the card's edge, up to 59px on a
+       narrow column. Its marks wrap instead, kept to the right. */
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 /* ------------------------------------------------------------------ */
@@ -10236,7 +10330,9 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
-    padding: 0 2px 8px;
+    /* 4px over the row: room for Start's ring under the pointer, which
+       the edge above cut off flat. */
+    padding: 4px 2px 8px;
 }
 
 .todo-shell .board-pill {
@@ -10247,7 +10343,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     padding: 5px 10px;
     border: none;
     border-radius: 999px;
-    background: #f2efe9;
+    background: #efeae2;
     color: var(--text-secondary);
     font-size: 11px;
     font-weight: 700;
@@ -10277,7 +10373,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .board-pill.is-drop-target {
     outline: 1.5px solid color-mix(in srgb, var(--accent-primary) 55%, transparent);
     outline-offset: 1px;
-    background: color-mix(in srgb, var(--accent-primary) 14%, #f2efe9);
+    background: color-mix(in srgb, var(--accent-primary) 14%, #efeae2);
 }
 
 .todo-shell .board-pill-count {
@@ -10306,9 +10402,9 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     min-width: 150px;
     padding: 4px;
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--modal-bg, #fff);
-    box-shadow: 0 12px 28px rgba(30, 45, 62, 0.16);
+    box-shadow: 0 12px 28px rgba(27, 61, 74, 0.16);
 }
 
 .todo-shell .board-pill-menu-item {
@@ -10318,7 +10414,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     gap: 10px;
     padding: 7px 9px;
     border: none;
-    border-radius: 7px;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-primary);
     font-size: 11px;
@@ -10347,6 +10443,19 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     position: static;
     transform: none;
     margin-left: auto;
+}
+
+/* Under the pointer it grows as in the header, but is not lifted: the
+   header's hover rule moves it up by half its height, which here took it
+   out of the row and under the edge of the tile. */
+.todo-shell .board-pills .board-pills-start:is(:hover, :focus-visible) {
+    transform: scale(1.035);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .todo-shell .board-pills .board-pills-start:is(:hover, :focus-visible) {
+        transform: none;
+    }
 }
 
 /*
@@ -10430,14 +10539,10 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
  * then moves off it. The shell's overhang is the room the column keeps
  * above its first card, so it is the lifted height here.
  */
-.todo-shell.todo-tile-compact {
-    /* 26px, not the pill's whole height: the pill is 32px tall, so its last
-       6px stay on the card. At 34px it rose clear of the card and read as a
-       thing floating above the row, not as a part of it. 6px is the row's
-       own padding, so the pill ends where the chips begin and covers none
-       of them. */
-    --task-pill-overhang: 26px;
-}
+/* The cards no longer draw the pill (Focus and ⋮ are in the row now), so
+   the stacked tile keeps the shell's 10px above its first card, not the
+   pill's 26px. With 26px the open section's cards scrolled up over the
+   bottom of its header: over the name, the count and Start. */
 
 .todo-shell.todo-tile-compact .task-utility-pill {
     top: -10px;
@@ -10757,6 +10862,125 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 }
 
 /* ------------------------------------------------------------------ */
+/* The add row, as the design's "17d": dashed only while idle, a solid  */
+/* mint edge once in use; one chip style, plain while empty and tinted  */
+/* with a × once set, never teal; Add the only filled button. Notes and */
+/* steps open below the chips, under a rule, and their chip steps aside.*/
+/* ------------------------------------------------------------------ */
+
+.todo-shell .input-wrapper.task-composer {
+    border-radius: 10px;
+}
+
+.todo-shell .input-wrapper.task-composer:focus-within,
+.todo-shell .input-wrapper.task-composer.is-open {
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--focus-btn-bg) 70%, transparent);
+    background: var(--task-bg);
+}
+
+.todo-shell .task-composer .composer-main {
+    padding: 4px 6px 4px 0;
+}
+
+/* Idle: "+ Add task...", the plus where the words begin. */
+.todo-shell .task-composer .composer-idle-plus {
+    flex-shrink: 0;
+    /* The row's 8px gap and the title's 12px give back all but 6px. */
+    margin: 0 -14px 0 12px;
+    color: var(--text-tertiary);
+}
+
+.todo-shell .task-composer .add-task-btn {
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+/* The chips start where the title's words do: the row's 4px and a chip's
+   8px are the title's 12px. */
+.todo-shell .task-composer .composer-chips {
+    gap: 4px;
+    padding: 0 10px 8px 4px;
+    border-top: none;
+}
+
+.todo-shell .task-composer .composer-chip {
+    height: 30px;
+    padding: 0 8px;
+    gap: 7px;
+    border-color: transparent;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.todo-shell .task-composer .composer-chip:hover:not(:disabled),
+.todo-shell .task-composer .composer-chip.is-on,
+.todo-shell .task-composer .composer-chip.is-on:hover:not(:disabled) {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+.todo-shell .task-composer .composer-chip.is-set {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* Set, the chip and its × are one tinted pill. */
+.todo-shell .task-composer .composer-chip-wrap .composer-chip.is-set {
+    padding-left: 10px;
+}
+
+.todo-shell .task-composer .composer-chip-clear {
+    height: 30px;
+    padding: 0 10px 0 2px;
+    background: var(--hover-bg);
+}
+
+.todo-shell .task-composer .composer-chip-clear:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+/* The list, on the right: tinted as any set chip, with a × on All; on a
+   list's tab it is that list, with nothing to clear. On All with no list,
+   "No list" in a dashed coral edge, so a task bound for no list says so. */
+.todo-shell .task-composer .composer-chip-wrap .composer-chip-list.is-set {
+    padding: 0 10px;
+    border-radius: 999px;
+}
+
+.todo-shell .task-composer .composer-chip-wrap .composer-chip-list.is-set.has-clear {
+    padding-right: 4px;
+    border-radius: 999px 0 0 999px;
+}
+
+.todo-shell .task-composer .composer-chip-list.is-unlisted {
+    border: 1px dashed color-mix(in srgb, var(--redd-coral) 70%, transparent);
+    color: var(--redd-coral);
+}
+
+.todo-shell .task-composer .composer-chip-list.is-unlisted:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--redd-coral) 10%, transparent);
+    color: var(--redd-coral);
+}
+
+/* Notes and steps, below the chips, under a rule in line with the title
+   and the Add button. A note grows to about eight lines, then scrolls. */
+.todo-shell .task-composer .composer-section {
+    margin: 0 12px;
+    padding: 10px 0 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.todo-shell .task-composer .composer-notes-editor trix-editor {
+    min-height: 4.5em;
+    max-height: 12em;
+}
+
+/* ------------------------------------------------------------------ */
 /* The card's meta row                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -10796,6 +11020,18 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 
 .todo-shell .task-chip-due.is-due-today.is-set {
     color: var(--accent-primary);
+}
+
+/* In the Today column every task is due today: the teal would say nothing,
+   so there the date reads as any other. A date gone by stays red. */
+.todo-shell .board-column-today .task-chip-due.is-due-today.is-set {
+    color: var(--text-primary);
+}
+
+/* Only today's date (and a date gone by) is bold: Tomorrow and later read
+   as plain dates, so today stands out among them. */
+.todo-shell .task-chip-due.is-set:not(.is-due-today):not(.is-overdue) {
+    font-weight: 400;
 }
 
 .todo-shell .task-chip-due.is-overdue.is-set {
@@ -10929,8 +11165,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     background: var(--modal-bg);
     border: 1px solid var(--border-color);
     box-shadow:
-        0 1px 2px rgba(30, 45, 62, 0.08),
-        0 4px 12px rgba(30, 45, 62, 0.10);
+        0 1px 2px rgba(27, 61, 74, 0.08),
+        0 4px 12px rgba(27, 61, 74, 0.10);
 }
 
 .todo-shell .task-item:hover .task-utility-pill,
@@ -11039,9 +11275,9 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     width: 15rem;
     padding: 10px;
     border: 1px solid var(--border-color-medium);
-    border-radius: 14px;
+    border-radius: 12px;
     background: var(--modal-bg);
-    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.12);
 }
 
 .todo-shell .duration-popover-presets {
@@ -11053,7 +11289,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .duration-popover-preset {
     padding: 9px 0;
     border: 1px solid var(--border-color-strong);
-    border-radius: 10px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text-primary);
     font: inherit;
@@ -11110,9 +11346,9 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     width: 18.5rem;
     padding: 12px;
     border: 1px solid var(--border-color-medium);
-    border-radius: 14px;
+    border-radius: 12px;
     background: var(--modal-bg);
-    box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
+    box-shadow: 0 8px 24px rgba(27, 61, 74, 0.12);
 }
 
 .todo-shell .due-popover-presets {
@@ -11124,7 +11360,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .due-popover-preset {
     padding: 6px 12px;
     border: none;
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--active-bg);
     color: var(--text-primary);
     font: inherit;
@@ -11153,7 +11389,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .due-popover-month {
     padding: 2px 8px;
     border: none;
-    border-radius: 7px;
+    border-radius: 6px;
     background: transparent;
     font: inherit;
     font-size: 14px;
@@ -11182,7 +11418,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     height: 26px;
     padding: 0;
     border: none;
-    border-radius: 7px;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
@@ -11211,7 +11447,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     height: 32px;
     padding: 0;
     border: none;
-    border-radius: 9px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text-primary);
     font: inherit;
@@ -11268,7 +11504,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
    the ring shows whatever WebKit makes of :focus-visible. Not under
    .todo-shell, for a menu drawn outside it. */
 [data-focus-walked]:focus {
-    outline: 2px solid var(--accent-primary, #2a9d8f);
+    outline: 2px solid var(--accent-primary, #005d53);
     outline-offset: 2px;
 }
 
@@ -11359,15 +11595,22 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     letter-spacing: 0.01em;
     cursor: pointer;
     /* Nothing at rest, whatever the order. It fades in with the pointer
-       on the header, naming the order when it is not the default. */
+       on the column, naming the order when it is not the default. */
     opacity: 0;
     transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-.todo-shell .board-column-header:hover .board-sort-btn,
+.todo-shell .board-column:hover .board-sort-btn,
 .todo-shell .board-sort-wrap.is-open .board-sort-btn,
 .todo-shell .board-sort-btn:focus-visible {
     opacity: 1;
+}
+
+/* A touch screen has no hover: show the order at all times. */
+@media (hover: none) {
+    .todo-shell .board-sort-btn {
+        opacity: 1;
+    }
 }
 
 .todo-shell .board-sort-btn:hover,
@@ -11459,12 +11702,12 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
    through it when a button in it took the focus. */
 .todo-shell .calendar-task-popover.calendar-task-popover--new {
     padding: 10px;
-    border-radius: 16px;
+    border-radius: 12px;
     border: 1px solid var(--border-color);
     background: var(--modal-bg);
     box-shadow:
-        0 2px 4px rgba(30, 45, 62, 0.06),
-        0 8px 24px rgba(30, 45, 62, 0.14);
+        0 2px 4px rgba(27, 61, 74, 0.06),
+        0 8px 24px rgba(27, 61, 74, 0.14);
 }
 
 /* "New task" or "Existing task", at the top of the add-task box. */
@@ -11491,7 +11734,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
 .todo-shell .calendar-task-mode-btn.active {
     background: var(--modal-bg);
     color: var(--text-primary);
-    box-shadow: 0 1px 2px rgba(30, 45, 62, 0.12);
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.12);
 }
 
 /* The task switcher of the focus window, for an existing task. Its list
@@ -11514,8 +11757,8 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     margin: 0;
     background: var(--modal-bg);
     box-shadow:
-        0 2px 4px rgba(30, 45, 62, 0.06),
-        0 8px 24px rgba(30, 45, 62, 0.14);
+        0 2px 4px rgba(27, 61, 74, 0.06),
+        0 8px 24px rgba(27, 61, 74, 0.14);
 }
 
 /* The tasks of a day (renderCalendarDay): a frame round the cards, as the
@@ -11525,12 +11768,12 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     flex-direction: column;
     max-height: min(70vh, 640px);
     padding: 14px 10px 10px;
-    border-radius: 16px;
+    border-radius: 12px;
     border: 1px solid var(--border-color);
     background: var(--modal-bg);
     box-shadow:
-        0 2px 4px rgba(30, 45, 62, 0.06),
-        0 16px 36px rgba(30, 45, 62, 0.18);
+        0 2px 4px rgba(27, 61, 74, 0.06),
+        0 16px 36px rgba(27, 61, 74, 0.18);
     pointer-events: auto;
 }
 
@@ -11576,7 +11819,7 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     margin-top: 8px;
     padding: 9px 12px;
     border: 1px dashed var(--border-color-strong, var(--border-color));
-    border-radius: 10px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text-secondary);
     font: inherit;
@@ -11603,7 +11846,283 @@ html.focus-note-room .todo-shell.focus-panel-window:not(.is-fullscreen) #focus-m
     display: inline-block;
     flex-shrink: 0;
     object-fit: contain;
-    border-radius: 3px;
+    border-radius: 4px;
     vertical-align: middle;
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Settings as a page (TodoSettingsModal, use-settings-page.ts): it    */
+/* covers the To-Do, with "‹ Settings" at the top. Wide enough, the    */
+/* sections are a sidebar beside the page, with the feedback line and  */
+/* the version at its foot; narrower, one column with those at the end.*/
+/* The page's own width decides (is-wide), not the board's.            */
+/* ------------------------------------------------------------------ */
+/* From the top, as the narrow sheet: the top bar's buttons are hidden
+   while Settings is open. The Mac app keeps the window's strip (below). */
+.todo-shell #settings-modal.settings-page {
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0;
+    align-items: stretch;
+    background: var(--settings-sheet-bg);
+    backdrop-filter: none;
+}
+
+.todo-shell.mac-window #settings-modal.settings-page {
+    top: 30px;
+}
+
+.todo-shell #settings-modal.settings-page .modal-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--settings-sheet-bg);
+}
+
+.todo-shell #settings-modal.settings-page .settings-sheet-header {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 8px 16px;
+    background: var(--app-bg);
+    border-bottom: 1px solid var(--border-color-medium);
+}
+
+.todo-shell #settings-modal.settings-page .settings-sheet-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    height: 34px;
+    padding: 0 10px 0 6px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.todo-shell #settings-modal.settings-page .settings-sheet-back:hover {
+    background: var(--hover-bg);
+}
+
+.todo-shell #settings-modal.settings-page .settings-sheet-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 1.35rem;
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-panes {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+/* The sidebar: the sections, and at its foot the feedback and version. */
+.todo-shell #settings-modal.settings-page .settings-page-nav {
+    display: none;
+}
+
+.todo-shell #settings-modal.settings-page.is-wide .settings-page-nav {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 0 0 210px;
+    min-height: 0;
+    padding: 20px 8px 16px;
+    border-right: 1px solid var(--border-color-medium);
+    overflow-y: auto;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-nav-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-nav-item {
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-nav-item:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-nav-item.is-current {
+    background: var(--active-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-tertiary);
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-feedback {
+    margin: 0;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-feedback a {
+    color: var(--focus-btn-bg);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+/* Narrow: the foot at the end of the page, under the last section. */
+.todo-shell #settings-modal.settings-page:not(.is-wide) .settings-page-foot {
+    padding: 8px 2px 4px;
+}
+
+/* The page itself. */
+.todo-shell #settings-modal.settings-page .settings-sheet-body {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 28px 40px 48px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.todo-shell #settings-modal.settings-page:not(.is-wide) .settings-sheet-body {
+    padding: 20px 18px 32px;
+}
+
+.todo-shell #settings-modal.settings-page .settings-stack {
+    max-width: 720px;
+    gap: 44px;
+    padding: 0;
+}
+
+.todo-shell #settings-modal.settings-page .settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-heading {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 2rem;
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+.todo-shell #settings-modal.settings-page:not(.is-wide) .settings-page-heading {
+    font-size: 1.6rem;
+}
+
+.todo-shell #settings-modal.settings-page .settings-page-intro {
+    margin: -4px 0 4px;
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--text-tertiary);
+}
+
+.todo-shell #settings-modal.settings-page .settings-panel {
+    border-color: var(--border-color);
+    background: var(--modal-bg);
+    box-shadow: 0 1px 2px rgba(27, 61, 74, 0.05);
+}
+
+.todo-shell #settings-modal.settings-page .settings-row {
+    min-height: 64px;
+    padding: 12px 18px;
+}
+
+.todo-shell #settings-modal.settings-page .settings-row-label {
+    font-size: 16px;
+}
+
+.todo-shell #settings-modal.settings-page .settings-row-hint {
+    font-size: 14px;
+}
+
+/* The density switch: words only, the chosen one a raised white pill. */
+.todo-shell #settings-modal.settings-page [role="radiogroup"].board-people-scope {
+    border-color: transparent;
+    background: var(--bg-subtle);
+}
+
+.todo-shell #settings-modal.settings-page [role="radiogroup"] .board-people-scope-btn.active {
+    background: var(--bg-card);
+    border-color: transparent;
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(27, 61, 74, 0.14);
+}
+
+/* A feature row's icon, in front of its name and level with it; the line
+   under the name starts under the name, not under the icon. */
+.todo-shell #settings-modal.settings-page .settings-row.has-icon {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 12px;
+}
+
+.todo-shell #settings-modal.settings-page .settings-row.has-icon .settings-row-icon {
+    display: inline-flex;
+    align-self: start;
+    margin-top: 2px;
+    color: var(--text-tertiary);
+}
+
+/* "Make subtask of..." in a task's ⋮ menu (task-menu-parent.tsx): the
+   open tasks to go into. A board has many, so the list scrolls under its
+   search box, and a long task name is cut to one line. */
+.todo-shell .task-parent-picker {
+    max-height: 340px;
+    max-width: 320px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* Each list's name under its icon, as the tabs have it. */
+.todo-shell .task-parent-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.todo-shell .task-parent-heading svg {
+    flex: none;
+}
+
+.todo-shell .task-parent-item-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

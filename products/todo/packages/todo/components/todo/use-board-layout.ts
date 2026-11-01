@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { type DetailsBeside, detailsWidthFor, readStoredDetailsWidth, storeDetailsWidth } from "@/lib/todo/details-width";
 
 import { isInteractiveDragTarget } from "@/components/todo/use-pointer-drag";
 import {
@@ -39,7 +40,7 @@ const SHELL_WIDTHS: { max: number; className: string }[] = [
   side by side. Three layouts where the reader expects two, and the
   middle one the worst of both.
 */
-const BOARD_STACK_MAX = 900;
+export const BOARD_STACK_MAX = 900;
 /**
  * And below this, not even that: the headers are the tile.
  *
@@ -60,14 +61,38 @@ const BOARD_PILLS_MAX = 500;
  */
 const PILL_FOLD_MAX = 340;
 
+/** useLayoutEffect, but useEffect on the server, where there is no paint. */
+const useLayoutEffectInBrowser = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
+
+/** The shell's width classes for the room the board has. */
+function widthClassesFor(availableWidth: number): string {
+  return SHELL_WIDTHS.filter((w) => availableWidth <= w.max)
+    .map((w) => w.className)
+    .join(" ");
+}
+
+/**
+ * How the board lays itself out in this much room: its width classes and
+ * whether it stacks. Two widths with the same key draw the same board, so
+ * the divider, mid-drag, tells the page only when the key changes.
+ */
+export function boardLayoutKey(availableWidth: number): string {
+  return `${widthClassesFor(availableWidth)}|${availableWidth <= BOARD_STACK_MAX ? "stacked" : "columns"}`;
+}
+
 /**
  * How big the shell is, and the classes its widths give. Sets the board
  * stacked below BOARD_STACK_MAX.
  */
 export function useShellSize({
   setBoardStacked,
+  detailsOpen = false,
+  beside = "board",
 }: {
   setBoardStacked: React.Dispatch<React.SetStateAction<boolean>>;
+  detailsOpen?: boolean;
+  /** What details stand beside: Board View, or a list (details-width.ts). */
+  beside?: DetailsBeside;
 }) {
   /**
    * How wide this page actually is, watched.
@@ -91,20 +116,37 @@ export function useShellSize({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  /* The width the reader dragged task details to, kept per device; null
+     is the standard width (details-width.ts). */
+  const [pickedWidths, setPickedWidths] = React.useState<Record<DetailsBeside, number | null>>(() => ({
+    board: readStoredDetailsWidth("board"),
+    list: readStoredDetailsWidth("list"),
+  }));
+  /** `keep` false: a width on its way (the divider mid-drag), not stored yet. */
+  const setDetailsWidth = React.useCallback((width: number | null, keep = true) => {
+    setPickedWidths((now) => ({ ...now, [beside]: width }));
+    if (keep) storeDetailsWidth(width, beside);
+  }, [beside]);
+  /** How wide details are beside the list, in the shell's own pixels. */
+  const detailsWidth = shellWidth == null ? null : detailsWidthFor(shellWidth, pickedWidths[beside], beside);
   /* Until it has been measured, the wide board — what it has always
      opened as, and one frame later the measurement settles it. */
-  React.useEffect(() => {
-    if (shellWidth == null) return;
-    setBoardStacked(shellWidth <= BOARD_STACK_MAX);
-  }, [shellWidth, setBoardStacked]);
-  const shellWidthClasses =
-    shellWidth == null
-      ? ""
-      : SHELL_WIDTHS.filter((w) => shellWidth <= w.max)
-          .map((w) => w.className)
-          .join(" ");
+  // The board lays itself out in the space left beside details, as the
+  // CSS does with --task-details-width (set from detailsWidth on the shell).
+  const availableWidth = shellWidth != null && detailsWidth != null && detailsOpen && shellWidth > 1000
+    ? shellWidth - detailsWidth
+    : shellWidth;
+  /* Before the paint, not after it: in an effect, the frame where the room
+     crossed the breakpoint was drawn with the new width classes on the old
+     layout (stacked, Soon and Backlog folded, their cards hidden), so going
+     from one column to three flashed empty columns. */
+  useLayoutEffectInBrowser(() => {
+    if (availableWidth == null) return;
+    setBoardStacked(availableWidth <= BOARD_STACK_MAX);
+  }, [availableWidth, setBoardStacked]);
+  const shellWidthClasses = availableWidth == null ? "" : widthClassesFor(availableWidth);
 
-  return { shellRef, shellWidth, shellHeight, shellWidthClasses };
+  return { shellRef, shellWidth, shellHeight, shellWidthClasses, detailsWidth, setDetailsWidth };
 }
 
 /**

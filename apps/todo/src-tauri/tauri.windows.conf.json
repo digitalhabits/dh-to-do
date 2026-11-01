@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "app": {
+    "windows": [
+      {
+        "title": "Digital Habits: To-Do",
+        "decorations": false,
+        "dragDropEnabled": false,
+        "width": 680,
+        "height": 760,
+        "minWidth": 380,
+        "minHeight": 400,
+        "resizable": true,
+        "fullscreen": false,
+        "backgroundColor": "#f5f1ea",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15 dh-todo-native/0.1"
+      }
+    ]
+  }
+}

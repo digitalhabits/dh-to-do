@@ -5,12 +5,15 @@ import { toast } from "sonner";
 
 import { loadTrix } from "@/components/todo/TrixNotesEditor";
 import type { TodoApi } from "@/components/todo/use-write-tracking";
-import { isOfflineNow } from "@/lib/offline/todo-offline";
+import { isOfflineNow, wasOfflineRecently } from "@/lib/offline/todo-offline";
 import { PAGE_CACHE_KEYS, setPageSnapshot } from "@/lib/page-snapshot-cache";
 import { describeError, isNetworkBlip } from "@/lib/todo/errors";
 import { todayDueOn } from "@/lib/todo/task-draft";
 import { normalizeTaskAssignees } from "@/lib/todo/task-helpers";
 import type { TodoState } from "@/lib/todo/types";
+
+/** How long after being offline a failed read stays quiet (see wasOfflineRecently). */
+const OFFLINE_GRACE_MS = 15_000;
 
 export type TodoPageSnapshot = { state: TodoState };
 
@@ -161,7 +164,8 @@ export function useBoardReads({
         }
       } catch (err) {
         // Keep the cached snapshot when offline — do not clear the board.
-        if (isOfflineNow()) return;
+        // Just back from offline counts too: the offline pill says why.
+        if (isOfflineNow() || wasOfflineRecently(OFFLINE_GRACE_MS)) return;
         if (isNetworkBlip(err)) {
           /*
             "Load failed", said by WebKit about a fetch that a reload
@@ -174,6 +178,7 @@ export function useBoardReads({
             await readBoard();
             return;
           } catch {
+            if (isOfflineNow() || wasOfflineRecently(OFFLINE_GRACE_MS)) return;
             toast.error(tRef.current("loadTasksOffline"));
             return;
           }

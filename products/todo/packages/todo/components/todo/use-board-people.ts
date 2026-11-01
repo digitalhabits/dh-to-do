@@ -37,6 +37,7 @@ export function useBoardPeople({
   assignAnchorEl,
   setOpenAssignTaskId,
   setAssignAnchorEl,
+  registerUndo,
 }: {
   state: TodoState;
   setState: React.Dispatch<React.SetStateAction<TodoState>>;
@@ -50,6 +51,8 @@ export function useBoardPeople({
   assignAnchorEl: HTMLElement | null;
   setOpenAssignTaskId: React.Dispatch<React.SetStateAction<string | null>>;
   setAssignAnchorEl: React.Dispatch<React.SetStateAction<HTMLElement | null>>;
+  /** Make a change the one Cmd+Z takes back (use-undo). */
+  registerUndo?: (restore: () => void) => void;
 }) {
   const peopleById = React.useMemo(() => {
     const map = new Map<string, TodoPerson>();
@@ -177,6 +180,8 @@ export function useBoardPeople({
     if (!task) return;
     const removing = task.assigneeIds.includes(personId);
     const next = toggleId(task.assigneeIds, personId);
+    /** The task's people as they were, for Cmd+Z. */
+    const before = task.assigneeIds;
 
     /*
       The people on a subtask are always on its task too, so the two
@@ -205,6 +210,13 @@ export function useBoardPeople({
           confirmLabel: t("unassignCascadeConfirm"),
           danger: true,
           onConfirm: () => {
+            // Cmd+Z puts the person back on the task and on each subtask
+            // they held. The task first: a subtask's people are on it too.
+            registerUndo?.(() => {
+              void mutateTask(taskId, { assigneeIds: before }).then(() => {
+                for (const child of held) void mutateTask(child.id, { assigneeIds: child.assigneeIds });
+              });
+            });
             // The children on screen follow at once; the store makes the
             // same cut authoritatively.
             setState((s) => ({
@@ -239,6 +251,17 @@ export function useBoardPeople({
         }));
       }
     }
+    /* Cmd+Z puts the people back as they were: on the task, and on its
+       parent where putting someone on a subtask put them there too. The
+       subtask first, so taking them off the parent cuts nothing more. */
+    const parentAdded = !removing && task.parentTaskId
+      ? liveRef.current.state.tasks.find((row) => row.id === task.parentTaskId && !row.assigneeIds.includes(personId))
+      : undefined;
+    registerUndo?.(() => {
+      void mutateTask(taskId, { assigneeIds: before }).then(() => {
+        if (parentAdded) void mutateTask(parentAdded.id, { assigneeIds: parentAdded.assigneeIds });
+      });
+    });
     // Keep the menu open so multiple people can be checked.
     void mutateTask(taskId, { assigneeIds: next });
   }

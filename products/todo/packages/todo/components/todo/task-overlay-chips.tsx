@@ -10,20 +10,23 @@
  */
 
 import * as React from "react";
-import { Calendar, ChevronDown, User } from "lucide-react";
+import { Calendar, User, X } from "lucide-react";
 
 import { DuePopover } from "@/components/todo/DuePopover";
+import { DurationPopover } from "@/components/todo/DurationPopover";
 import { SearchableListMenu } from "@/components/todo/SearchableListMenu";
 import { TaskAssignMenu, TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
+import { TaskDetailsInfo } from "@/components/todo/task-details-info";
 import { TaskOverlayDue } from "@/components/todo/task-overlay-due";
 import { ClockIcon } from "@/components/todo/task-icons";
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { doneBucket } from "@/lib/todo/done-groups";
 import type { TodoLang } from "@/lib/todo/i18n";
-import { minutesFromTyped } from "@/lib/todo/duration-input";
 import { ListIcon, resolveListIconId } from "@/lib/todo/list-icons";
 import { daysUntilDue, formatDueOn } from "@/lib/todo/task-draft";
-import { columnEnd, dueDatePatch, listOriginLetters } from "@/lib/todo/task-helpers";
+import { spawnCompletionParty } from "@/lib/todo/task-celebration";
+import { columnEnd, dueDatePatch } from "@/lib/todo/task-helpers";
+import { formatDurationLong, formatDurationShort } from "@/lib/todo/duration";
 import { type TodoPerson, type TodoTask } from "@/lib/todo/types";
 
 const noSubscribe = () => () => {};
@@ -49,16 +52,7 @@ function CompletedLine({ completedAt, lang, t }: { completedAt: string; lang: To
   return <p className="task-overlay-done-when">{inBrowser ? completedLine(completedAt, lang, t) : null}</p>;
 }
 
-const CollapseIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 14 10 14 10 20" />
-    <polyline points="20 10 14 10 14 4" />
-    <line x1="14" y1="10" x2="21" y2="3" />
-    <line x1="3" y1="21" x2="10" y2="14" />
-  </svg>
-);
-
-/** The head of the card: the tick, the words, and the way out. */
+/** The head of the card: the box to tick (or untick), and the words. */
 export function TaskOverlayHead({
   m,
   task,
@@ -68,18 +62,7 @@ export function TaskOverlayHead({
   task: TodoTask;
   title: React.ReactNode;
 }) {
-  const { t, lang, toggleTaskCompleted, saveNotes } = m;
-  const close = (
-    <button
-      type="button"
-      className="notes-collapse-btn"
-      title={t("collapseTask")}
-      aria-label={t("collapseTask")}
-      onClick={() => saveNotes(task.id)}
-    >
-      <CollapseIcon />
-    </button>
-  );
+  const { t, lang, toggleTaskCompleted } = m;
   if (!task.completed) {
     return (
       <div className="notes-overlay-head">
@@ -88,36 +71,43 @@ export function TaskOverlayHead({
             type="checkbox"
             className="task-checkbox"
             checked={false}
-            onChange={(event) => toggleTaskCompleted(task, event)}
+            onChange={(event) => {
+              // The 🎉 the card gets, over this box: in details there is no
+              // card for the tick to cheer over (completeTaskWithFlight).
+              spawnCompletionParty(event.currentTarget.parentElement ?? event.currentTarget);
+              toggleTaskCompleted(task, event);
+            }}
             aria-label={t("markDone")}
           />
         </span>
         {title}
-        {close}
       </div>
     );
   }
   return (
     <div className="notes-overlay-head task-overlay-done-band">
       <span className="task-overlay-gutter">
-        <span className="task-overlay-done-mark" aria-hidden>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        {/* The ticked box: unticking it is how a task is marked not done,
+            as on its card. */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked="true"
+          className="task-overlay-done-mark"
+          aria-label={t("markNotDone")}
+          title={t("markNotDone")}
+          onClick={() => void m.mutateTask(task.id, { completed: false })}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <polyline points="20 6 9 17 4 12" />
           </svg>
-        </span>
+        </button>
       </span>
       <div className="task-overlay-done-title">
-        {task.completedAt ? <CompletedLine completedAt={task.completedAt} lang={lang} t={t} /> : null}
+        {/* Under the name, so ticking it moves neither the box nor the name. */}
         {title}
+        {task.completedAt ? <CompletedLine completedAt={task.completedAt} lang={lang} t={t} /> : null}
       </div>
-      <button
-        type="button"
-        className="task-overlay-undone-btn"
-        onClick={() => void m.mutateTask(task.id, { completed: false })}
-      >
-        {t("markNotDone")}
-      </button>
-      {close}
     </div>
   );
 }
@@ -161,7 +151,10 @@ function AssignChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
           setOverlayAssignAnchor(null);
           setPeopleEditorOpen(true);
         }}
-        onClose={() => setOverlayAssignAnchor(null)}
+        onClose={() => {
+          overlayAssignAnchor?.focus();
+          setOverlayAssignAnchor(null);
+        }}
       />
     </span>
   );
@@ -170,44 +163,50 @@ function AssignChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
 /** "Add duration" until there is one, then the minutes; a click types them. */
 function DurationChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
   const { t, mutateTask } = m;
-  const [editing, setEditing] = React.useState(false);
+  /* The same picker the add row uses, in its pill look: presets and a
+     "Custom" box. Open while it has a button to sit under. */
+  const [anchor, setAnchor] = React.useState<HTMLElement | null>(null);
   const minutes = task.expectedDurationMinutes;
-  if (editing) {
-    return (
-      <span className="task-overlay-chip is-editing">
-        <ClockIcon />
-        <input
-          autoFocus
-          type="text"
-          inputMode="numeric"
-          className="task-overlay-chip-input"
-          defaultValue={minutes == null ? "" : String(minutes)}
-          placeholder="min"
-          aria-label={t("fieldDuration")}
-          onBlur={(e) => {
-            setEditing(false);
-            const next = minutesFromTyped(e.target.value);
-            if (next !== (minutes ?? null)) void mutateTask(task.id, { expectedDurationMinutes: next });
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-            if (e.key === "Escape") setEditing(false);
-          }}
-        />
-        <span className="task-overlay-unit">min</span>
-      </span>
-    );
-  }
+  const close = React.useCallback(() => setAnchor(null), []);
   return (
-    <button
-      type="button"
-      className={`task-overlay-chip${minutes == null ? " is-ghost" : ""}`}
-      aria-label={t("fieldDuration")}
-      onClick={() => setEditing(true)}
-    >
-      <ClockIcon />
-      <span>{minutes == null ? t("addDuration") : `${minutes} min`}</span>
-    </button>
+    <span className="task-overlay-duration-value">
+      <button
+        type="button"
+        className={`task-overlay-chip task-overlay-duration${minutes == null ? " is-ghost" : ""}`}
+        aria-label={t("fieldDuration")}
+        aria-haspopup="dialog"
+        aria-expanded={anchor != null}
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}
+      >
+        {/* As for the date: the icon only asks. */}
+        {minutes == null ? <ClockIcon /> : null}
+        <span>
+          {minutes == null ? t("addDuration") : formatDurationLong(minutes, t("hoursShort"))}
+        </span>
+      </button>
+      {minutes != null ? (
+        <button
+          type="button"
+          className="task-overlay-duration-clear"
+          aria-label={t("clearDuration")}
+          title={t("clearDuration")}
+          onClick={() => void mutateTask(task.id, { expectedDurationMinutes: null })}
+        >
+          <X size={14} strokeWidth={2} aria-hidden />
+        </button>
+      ) : null}
+      <DurationPopover
+        open={anchor != null}
+        anchorEl={anchor}
+        minutes={minutes ?? null}
+        t={t}
+        onClose={close}
+        onPick={(next) => {
+          setAnchor(null);
+          if (next !== (minutes ?? null)) void mutateTask(task.id, { expectedDurationMinutes: next });
+        }}
+      />
+    </span>
   );
 }
 
@@ -215,7 +214,7 @@ function DurationChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
 function DoneDueChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
   const { t, lang, mutateTask } = m;
   const [anchor, setAnchor] = React.useState<HTMLButtonElement | null>(null);
-  if (!task.dueOn) return null;
+  if (!task.dueOn) return <span>—</span>;
   const days = daysUntilDue(task.dueOn);
   const when = formatDueOn(task.dueOn, lang, t);
   // "Due yesterday", not "Due Yesterday"; a date keeps its capital.
@@ -251,15 +250,22 @@ function DoneDueChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
   );
 }
 
-/** The list the task is on, at the far end of the row; the picker moves it. */
-function ListChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
+/** The list the task is on, in the details top bar: just its name, or "No list"
+    in the error colour. The picker moves it. */
+/**
+ * The task's list, as a button that moves it to another. `iconOnly`: a list
+ * with an icon shows just the icon (the details bar); its name is the tooltip.
+ */
+export function TaskDetailsListButton({ m, task, iconOnly = false }: { m: TodoPageModel; task: TodoTask; iconOnly?: boolean }) {
   const { state, moveTargets, t, overlayListOpen, setOverlayListOpen, mutateTask } = m;
   const taskList = state.lists.find((l) => l.id === task.listId);
+  const shownIcon = iconOnly && taskList ? resolveListIconId(taskList.emoji) : null;
   return (
     <div className={`task-list-origin-wrap task-overlay-list-wrap${overlayListOpen ? " is-open" : ""}`}>
       <button
         type="button"
-        className={`task-overlay-chip task-overlay-list-chip${taskList ? " is-filled" : " is-ghost"}`}
+        className={`task-details-list-btn${taskList ? "" : " is-unlisted"}${shownIcon ? " is-icon" : ""}`}
+        title={taskList?.name}
         aria-haspopup="menu"
         aria-expanded={overlayListOpen}
         aria-label={t("fieldList")}
@@ -269,11 +275,7 @@ function ListChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
           setOverlayListOpen((v) => !v);
         }}
       >
-        {resolveListIconId(taskList?.emoji) ? (
-          <ListIcon id={resolveListIconId(taskList?.emoji)!} size={15} />
-        ) : null}
-        <span>{taskList?.name ?? t("composerNoList")}</span>
-        <ChevronDown size={15} strokeWidth={2} aria-hidden />
+        {shownIcon ? <ListIcon id={shownIcon} size={18} /> : <span>{taskList?.name ?? t("composerNoList")}</span>}
       </button>
       {overlayListOpen ? (
         <SearchableListMenu
@@ -298,7 +300,7 @@ function ListChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
                 }}
               >
                 <span className={`task-list-picker-icon${iconId ? " has-icon" : ""}`}>
-                  {iconId ? <ListIcon id={iconId} size={14} /> : listOriginLetters(l)}
+                  {iconId ? <ListIcon id={iconId} size={14} /> : null}
                 </span>
                 <span className="task-list-picker-name">{l.name}</span>
               </button>
@@ -311,12 +313,13 @@ function ListChip({ m, task }: { m: TodoPageModel; task: TodoTask }) {
 }
 
 /** The row of chips under the words. */
-export function TaskOverlayChips({ m, task }: { m: TodoPageModel; task: TodoTask }) {
+export function TaskOverlayChips({ m, task, withInfo = true }: { m: TodoPageModel; task: TodoTask; withInfo?: boolean }) {
   const done = task.completed;
   return (
     <div className="task-overlay-chips">
-      {m.assignEnabled ? <AssignChip m={m} task={task} /> : null}
-      {done ? (
+      {withInfo ? <TaskDetailsInfo m={m} task={task} /> : null}
+      {m.assignEnabled ? <div className="task-details-field"><span className="task-details-field-label">{m.t("fieldAssignedTo")}</span><AssignChip m={m} task={task} /></div> : null}
+      <div className="task-details-field"><span className="task-details-field-label">{m.t("fieldDueOn")}</span>{done ? (
         <DoneDueChip m={m} task={task} />
       ) : (
         <TaskOverlayDue
@@ -327,9 +330,29 @@ export function TaskOverlayChips({ m, task }: { m: TodoPageModel; task: TodoTask
           lang={m.lang}
           t={m.t}
         />
-      )}
-      {done && task.expectedDurationMinutes == null ? null : <DurationChip m={m} task={task} />}
-      <ListChip m={m} task={task} />
+      )}</div>
+      {done && task.expectedDurationMinutes == null ? null : <div className="task-details-field"><span className="task-details-field-label">{m.t("fieldDuration")}</span><DurationChip m={m} task={task} /></div>}
+      {done ? <div className="task-details-field">
+        <span className="task-details-field-label">{m.t("taskTimeSpent")}</span>
+        {m.editingDurationTaskId === task.id ? <input
+          autoFocus
+          className="task-duration-input"
+          aria-label={m.t("taskTimeSpent")}
+          value={m.editingDuration}
+          onChange={(event) => m.setEditingDuration(event.target.value)}
+          onBlur={() => m.commitEditDuration(task)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              m.setEditingDurationTaskId(null);
+            }
+          }}
+        /> : <button type="button" className="task-overlay-chip" onClick={() => {
+          m.setEditingDurationTaskId(task.id);
+          m.setEditingDuration(task.timeSpentSeconds ? formatDurationShort(Math.round(task.timeSpentSeconds / 60), m.t("minutes"), m.t("hoursShort")) : "");
+        }}>{task.timeSpentSeconds ? formatDurationShort(Math.round(task.timeSpentSeconds / 60), m.t("minutes"), m.t("hoursShort")) : m.t("addTimeSpent")}</button>}
+      </div> : null}
     </div>
   );
 }

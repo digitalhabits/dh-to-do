@@ -80,7 +80,9 @@ export function isMyTask(task: ScopedTask, me: Set<string>, makers: Set<string>)
 
 /**
  * The tasks the board shows under a scope. On "mine", the reader's own;
- * on "everyone", all of them, or those on any of the chosen people.
+ * on "everyone", all of them, or those on any of the chosen people. The
+ * reader among the chosen counts as on "mine": their own, and the ones
+ * nobody is on that they made, so "you and Ann" is never less than "you".
  */
 export function tasksInScope<T extends ScopedTask>(
   tasks: T[],
@@ -96,5 +98,10 @@ export function tasksInScope<T extends ScopedTask>(
   }
   if (!chosen.length) return tasks;
   const selected = new Set(chosen);
-  return tasks.filter((t) => t.assigneeIds.some((id) => selected.has(id)));
+  const withMe = me.some((id) => selected.has(id));
+  const mine = new Set(me);
+  const made = new Set(makers);
+  return tasks.filter(
+    (t) => t.assigneeIds.some((id) => selected.has(id)) || (withMe && isMyTask(t, mine, made))
+  );
 }

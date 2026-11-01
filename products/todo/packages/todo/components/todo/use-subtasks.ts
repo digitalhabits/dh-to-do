@@ -88,7 +88,8 @@ export function useSubtasks({
   /**
    * A subtask is a full task, so its edits are `mutateTask` and its delete
    * is `removeTask` — the same optimistic paths, undo included. Only the
-   * create differs: the new row carries its parent.
+   * create differs: the new row carries its parent. Gives the new row's
+   * id, or null when nothing was made (a failed save says so itself).
    */
   async function addSubtask(
     parent: TodoTask,
@@ -97,10 +98,11 @@ export function useSubtasks({
       assigneeIds?: string[];
       notesHtml?: string | null;
       expectedDurationMinutes?: number | null;
+      dueOn?: string | null;
     } = {}
-  ) {
+  ): Promise<string | null> {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
     const id = newClientId();
     const siblings = subtasksByTask.get(parent.id) ?? [];
     const now = new Date().toISOString();
@@ -112,6 +114,7 @@ export function useSubtasks({
       notesHtml: extras.notesHtml ?? null,
       assigneeIds: extras.assigneeIds ?? [],
       expectedDurationMinutes: extras.expectedDurationMinutes ?? null,
+      dueOn: extras.dueOn ?? null,
       position: nextStepPosition(siblings),
       parentTaskId: parent.id,
       createdAt: now,
@@ -128,6 +131,7 @@ export function useSubtasks({
         ...(extras.expectedDurationMinutes != null
           ? { expectedDurationMinutes: extras.expectedDurationMinutes }
           : {}),
+        ...(extras.dueOn ? { dueOn: extras.dueOn } : {}),
       });
       const saved = json.task as TodoTask | undefined;
       if (saved?.id) {
@@ -136,9 +140,11 @@ export function useSubtasks({
           tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...saved } : t)),
         }));
       }
+      return saved?.id ?? id;
     } catch (err) {
       setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }));
       toast.error(describeError(err, t("addSubtaskFailed")));
+      return null;
     }
   }
 
@@ -160,6 +166,7 @@ export function useSubtasks({
   const [newSubtaskNotes, setNewSubtaskNotes] = React.useState("");
   const [newSubtaskNotesOpen, setNewSubtaskNotesOpen] = React.useState(false);
   const [newSubtaskDuration, setNewSubtaskDuration] = React.useState<number | null>(null);
+  const [newSubtaskDue, setNewSubtaskDue] = React.useState<string | null>(null);
   const [newSubtaskDurEditing, setNewSubtaskDurEditing] = React.useState(false);
   const newSubtaskInputRef = React.useRef<HTMLInputElement | null>(null);
   /* Opened from a card's subtask button: the caret goes to "Add a subtask",
@@ -175,8 +182,9 @@ export function useSubtasks({
     const focusInput = () => {
       const input = newSubtaskInputRef.current;
       if (!input) return;
+      // No scroll here: details open with the subtasks at the top
+      // (scrollDetailsTo in use-notes-card).
       input.focus({ preventScroll: true });
-      input.scrollIntoView({ block: "nearest" });
     };
     const frames: number[] = [requestAnimationFrame(focusInput)];
     const onEditorReady = () => frames.push(requestAnimationFrame(focusInput));
@@ -198,6 +206,7 @@ export function useSubtasks({
     setNewSubtaskNotes("");
     setNewSubtaskNotesOpen(false);
     setNewSubtaskDuration(null);
+    setNewSubtaskDue(null);
     setNewSubtaskDurEditing(false);
   }
 
@@ -212,6 +221,7 @@ export function useSubtasks({
       assigneeIds: newSubtaskAssigneeIds,
       notesHtml: notesHtmlIsEmpty(newSubtaskNotes) ? null : newSubtaskNotes,
       expectedDurationMinutes: newSubtaskDuration,
+      dueOn: newSubtaskDue,
     });
     resetNewSubtask();
     newSubtaskInputRef.current?.focus();
@@ -348,6 +358,7 @@ export function useSubtasks({
   }
 
   return {
+    reorderSubtasks,
     subtasksByTask,
     toggleSubtaskDone,
     addSubtask,
@@ -366,6 +377,8 @@ export function useSubtasks({
     newSubtaskNotesOpen,
     setNewSubtaskNotesOpen,
     newSubtaskDuration,
+    newSubtaskDue,
+    setNewSubtaskDue,
     setNewSubtaskDuration,
     newSubtaskDurEditing,
     setNewSubtaskDurEditing,

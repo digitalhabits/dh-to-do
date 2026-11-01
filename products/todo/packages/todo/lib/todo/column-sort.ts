@@ -46,6 +46,10 @@ export function byPosition(a: Sortable, b: Sortable): number {
   return a.position - b.position || a.createdAt.localeCompare(b.createdAt);
 }
 
+/** What an order is kept for: a board column, or the list when Board View
+    is off. */
+export type SortTarget = TodoBoardColumn | "list";
+
 /** How a column is ordered: which key, and whether it runs backwards. */
 export type ColumnOrder = { sort: ColumnSort; desc: boolean };
 
@@ -53,6 +57,9 @@ export const DEFAULT_COLUMN_ORDER: ColumnOrder = {
   sort: DEFAULT_COLUMN_SORT,
   desc: false,
 };
+
+/** The list, with Board View off, starts in its own (manual) order. */
+export const LIST_DEFAULT_ORDER: ColumnOrder = { sort: "manual", desc: false };
 
 /**
  * The key one order sorts by, in its natural direction, or null where
@@ -131,18 +138,20 @@ export const SORT_LABEL_KEY: Record<ColumnSort, string> = {
 };
 
 /** The orders this device keeps, or due date for a column it keeps none for. */
-export function loadColumnSorts(): Record<TodoBoardColumn, ColumnOrder> {
-  const sorts = {
+export function loadColumnSorts(): ColumnSorts {
+  const sorts: ColumnSorts = {
     someday: DEFAULT_COLUMN_ORDER,
     backlog: DEFAULT_COLUMN_ORDER,
     week: DEFAULT_COLUMN_ORDER,
     today: DEFAULT_COLUMN_ORDER,
+    // The list keeps the order it has always had until another is picked.
+    list: LIST_DEFAULT_ORDER,
   };
   if (typeof window === "undefined") return sorts;
   try {
     const raw = localStorage.getItem(COLUMN_SORT_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    for (const column of TODO_BOARD_COLUMNS) {
+    for (const column of [...TODO_BOARD_COLUMNS, "list"] as const) {
       const value = parsed[column];
       // The first shape kept the sort's name alone.
       if (isColumnSort(value)) {
@@ -158,14 +167,14 @@ export function loadColumnSorts(): Record<TodoBoardColumn, ColumnOrder> {
   return sorts;
 }
 
-/** Every column's order, as the board keeps them. */
-export type ColumnSorts = Record<TodoBoardColumn, ColumnOrder>;
+/** Every column's order, as the board keeps them, and the list's. */
+export type ColumnSorts = Record<SortTarget, ColumnOrder>;
 
 /** With assigning off, a column kept on "assignee" reads by due date. */
 export function columnSortsInUse(stored: ColumnSorts, assignEnabled: boolean): ColumnSorts {
   if (assignEnabled) return stored;
   const next = { ...stored };
-  for (const column of Object.keys(next) as TodoBoardColumn[]) {
+  for (const column of Object.keys(next) as SortTarget[]) {
     if (next[column].sort === "assignee") {
       next[column] = DEFAULT_COLUMN_ORDER;
     }
@@ -179,7 +188,7 @@ export function columnSortsInUse(stored: ColumnSorts, assignEnabled: boolean): C
  */
 export function pickedColumnSorts(
   current: ColumnSorts,
-  column: TodoBoardColumn,
+  column: SortTarget,
   sort: ColumnSort
 ): ColumnSorts {
   const was = current[column];

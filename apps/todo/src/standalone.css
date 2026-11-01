@@ -3,7 +3,7 @@ body,
 #root {
   margin: 0;
   height: 100%;
-  background: #faf8f5;
+  background: #f5f1ea;
 }
 
 /* Focus window (index.html?focus=1): the page is a transparent NSPanel and
@@ -32,4 +32,120 @@ html.platform-windows .todo-shell.focus-panel-window:not(.is-fullscreen) .focus-
 /* Windows shows scrollbars all the time; macOS only while scrolling. */
 html.platform-windows .todo-shell.focus-panel-window .focus-task-switch-tabs {
   scrollbar-width: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Windows: the window buttons (WindowControls.tsx).                   */
+/* The window has no system title bar. As on a Mac, the buttons share  */
+/* the top row of the app: they sit at its right, where Windows keeps  */
+/* them, and a bar under them leaves them room. The app's top bar,     */
+/* the task details bar and the Settings header move the window. The   */
+/* focus windows are other windows and keep their own look.            */
+/* ------------------------------------------------------------------ */
+html.platform-windows:not(.focus-window) {
+  /* 44px, as the Mail app's: one row with the app's top bar. */
+  --win-controls-h: 44px;
+  --win-controls-w: 138px;
+}
+
+/* The board's shell can be zoomed (Settings > Zoom level). The buttons are
+   not, so a length inside the shell divides by the zoom to match them on
+   screen. */
+html.platform-windows:not(.focus-window) .todo-shell {
+  --win-room: calc(var(--win-controls-w) / var(--todo-zoom, 1) + 8px);
+}
+
+/* Task details are at the window's right edge, under the buttons: their
+   bar ends before them. Centred in a wide window, it keeps its centring. */
+html.platform-windows:not(.focus-window) .todo-shell .task-details-navigation {
+  padding-right: var(--win-room);
+}
+html.platform-windows:not(.focus-window) .todo-shell.task-details-replace .task-details-navigation {
+  padding-right: max(var(--win-room), calc((100% - 720px) / 2 - 10px));
+}
+
+/* The top bar is one row with the window buttons, as in the Claude app:
+   the same height, and its buttons centred on the same line. The task
+   details bar follows the tabs line under it (task-details-bar.tsx). */
+html.platform-windows:not(.focus-window) .todo-shell .title-bar {
+  padding-top: 0;
+  min-height: calc(var(--win-controls-h) / var(--todo-zoom, 1));
+}
+
+/* The 44px row leaves room under the top bar's 32px buttons that the Mac
+   does not have. Pull what is under the row up a little: the tabs closer
+   to the row, and the search (the filter bar) closer to the tabs line. */
+html.platform-windows:not(.focus-window) .todo-shell .content-column {
+  margin-top: -12px;
+}
+html.platform-windows:not(.focus-window) .todo-shell .list-search {
+  padding-top: 0;
+}
+
+/* The top bar's buttons are centred. In a narrow window, with nothing
+   beside the list, they would run under the window buttons: keep them
+   clear. */
+html.platform-windows:not(.focus-window) .todo-shell.todo-w-narrow:not(.task-details-open) .title-bar {
+  padding-right: var(--win-room);
+}
+
+.dh-window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  /* Over everything, the welcome screen (100000) and its footer (100001)
+     too: the window must always be closable. */
+  z-index: 100003;
+  display: flex;
+  height: var(--win-controls-h);
+  --win-fg: #1b3d4a;
+  --win-hover: rgba(27, 61, 74, 0.07);
+  --win-active: rgba(27, 61, 74, 0.13);
+}
+
+/* The buttons are outside the shell, where the theme is set, so they ask
+   the shell for it. */
+html:has(.todo-shell[data-theme="dark"]) .dh-window-controls {
+  --win-fg: #f5f0e8;
+  --win-hover: rgba(255, 255, 255, 0.07);
+  --win-active: rgba(255, 255, 255, 0.13);
+}
+
+.dh-window-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--win-fg);
+  cursor: default;
+}
+
+.dh-window-controls button:hover {
+  background: var(--win-hover);
+}
+
+.dh-window-controls button:active {
+  background: var(--win-active);
+}
+
+.dh-window-controls button:focus-visible {
+  outline: 2px solid #005d53;
+  outline-offset: -2px;
+}
+
+/* Close is red with a white cross, as on every Windows window. #c42b1c is
+   the colour Windows uses. */
+.dh-window-controls button.is-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.dh-window-controls button.is-close:active {
+  background: rgba(196, 43, 28, 0.9);
+  color: #fff;
 }

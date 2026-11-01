@@ -372,9 +372,10 @@ async function peopleScope() {
   f.rerender({ ...base, doneTasks: tasks });
   check("the done pile keeps to the scope too", ids(f.result().filteredDoneTasks) === "t1,t3");
   f.rerender({ ...base, peopleScope: "everyone", assigneeFilterIds: ["p2"] });
-  check("everyone, with a pill on, is that person's", ids(f.result().boardTasks) === "t2");
+  // The board follows a switch a moment later (a deferred value): wait for it.
+  check("everyone, with a pill on, is that person's", await until(() => ids(f.result().boardTasks) === "t2"), ids(f.result().boardTasks));
   f.rerender({ ...base, assignEnabled: false, assigneeFilterIds: [] });
-  check("with assigning off there is no 'mine'", !f.result().hasMe && f.result().scope === "everyone" && ids(f.result().boardTasks) === "t1,t2,t3");
+  check("with assigning off there is no 'mine'", await until(() => !f.result().hasMe && f.result().scope === "everyone" && ids(f.result().boardTasks) === "t1,t2,t3"), ids(f.result().boardTasks));
   check("and no pills", f.result().assigneeFilterPeople.length === 0);
   f.rerender({ ...base, personPreviewIds: ["p2", "p1"] });
   check("during a pill's drag the pills follow it", f.result().assigneeFilterPeople.map((p) => p.id).join() === "p2,p1");
@@ -1316,10 +1317,16 @@ async function notesCard() {
   const toasts = [];
   toastSink.push = (t) => toasts.push(t);
   const writes = [];
-  const mutateTask = async (id, patch) => writes.push({ id, ...patch });
+  // The board's notes, as the writes leave them: a save that changes
+  // nothing is not sent (see mounted-notes-save).
+  const stored = new Map([["n1", "<div>old words</div>"], ["n2", "<div>two</div>"]]);
+  const mutateTask = async (id, patch) => {
+    writes.push({ id, ...patch });
+    if ("notesHtml" in patch) stored.set(id, patch.notesHtml);
+  };
   const hook = renderHook(() => {
     const notesCard = useNotesCardState();
-    return { ...notesCard, ...useNotesCard({ notesCard, mutateTask, t: EN_T }) };
+    return { ...notesCard, ...useNotesCard({ notesCard, mutateTask, storedNotesOf: (id) => stored.get(id), t: EN_T }) };
   });
   const r = () => hook.result();
   const task = { id: "n1", notesHtml: "<div>old words</div>" };
@@ -2710,7 +2717,7 @@ async function danishToasts() {
   toastSink.push = (t) => toasts.push(t);
   const hook = renderHook(() => {
     const notesCard = useNotesCardState();
-    return { ...notesCard, ...useNotesCard({ notesCard, mutateTask: async () => {}, t: makeT("da") }) };
+    return { ...notesCard, ...useNotesCard({ notesCard, mutateTask: async () => {}, storedNotesOf: () => null, t: makeT("da") }) };
   });
   flushed(() => hook.result().toggleNotes({ id: "n1", notesHtml: "<div>ord</div>" }));
   hook.result().notesUploading.current = 1;

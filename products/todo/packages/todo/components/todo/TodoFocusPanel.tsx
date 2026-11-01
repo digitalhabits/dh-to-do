@@ -28,6 +28,7 @@ import {
 import { walkArrowStops, walkTabStops } from "@/lib/todo/focus-walk";
 import { focusBarNaturalWidth } from "@/lib/todo/focus-panel-width";
 import { TaskSwitchPicker } from "@/components/todo/TaskSwitchPicker";
+import { FocusResizeEdges, setFocusSizeLimits } from "@/components/todo/focus-resize-edges";
 import {
   FOCUS_TIMER_ALWAYS_KEY,
   FOCUS_TIMER_PREF_MESSAGE,
@@ -69,6 +70,8 @@ const FOCUS_PANEL_MIN_HEIGHT = 56;
 const FOCUS_PANEL_CONTENT_GAP = 6;
 /** Matches the shell clamp, so the measurement never asks for more. */
 const FOCUS_PANEL_MAX_HEIGHT = 640;
+/** How much taller than its content the shells let the window be drawn (FOCUS_POPOUT_ROOM). */
+const FOCUS_PANEL_DRAW_ROOM = 80;
 
 /**
  * Text entry keeps its own pointer. A press-and-drag inside the search box
@@ -803,6 +806,13 @@ export function TodoFocusPanel({
         barRef.current && nameRef.current
           ? focusBarNaturalWidth(barRef.current, nameRef.current) + room.x
           : undefined;
+      // The same sizes the shell allows, for the note's own edges.
+      setFocusSizeLimits({
+        height: target,
+        maxHeight: Math.min(target + FOCUS_PANEL_DRAW_ROOM, Math.max(FOCUS_PANEL_MAX_HEIGHT, target)),
+        naturalWidth: width,
+        screenWidth: window.screen.availWidth,
+      });
       void setFocusPopoutHeight(target, width);
     };
 
@@ -881,6 +891,8 @@ export function TodoFocusPanel({
         walkTabStops(e, shellRef.current, { wrap: true });
       }}
     >
+      {/* The note's own edges resize the window (focus-resize-edges). */}
+      {!fullscreen ? <FocusResizeEdges /> : null}
       <div id="focus-mode">
         <div
           className={`focus-container ${fullscreen ? "fullscreen" : ""}${

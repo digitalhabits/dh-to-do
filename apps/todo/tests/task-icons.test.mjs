@@ -26,7 +26,7 @@ const DRAWN = {
   MoveIcon: "9e47ef2e0910",
   MoveToBottomIcon: "1b623487a460",
   MoveToTopIcon: "dda0437fbcbf",
-  NotesIcon: "6082c58bf8be",
+  NotesIcon: "fd53507d4a27", // the add-task box's pencil since 2026-10-25
   PlanViewIcon: "4d04e18588d1",
   SettingsGearIcon: "aa622e9ea618",
   TrashIcon: "e58bfdedbb3c",
