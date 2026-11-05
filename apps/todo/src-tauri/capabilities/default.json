@@ -43,6 +43,9 @@
         },
         {
           "url": "http://**"
+        },
+        {
+          "url": "ms-windows-store://**"
         }
       ]
     },

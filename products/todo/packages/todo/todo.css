@@ -7362,6 +7362,14 @@ html.focus-note-room .focus-resize-edge {
     color: var(--text-tertiary);
 }
 
+/* The GitHub mark fills its box; Basecamp's logo has room around it. A
+   smaller mark in the same 22px slot reads as the same size. */
+.todo-shell .sync-source-icon.github-icon {
+    width: 16px;
+    height: 16px;
+    margin: 3px;
+}
+
 /* Basecamp Icon Dark Mode Fix */
 .todo-shell[data-theme="dark"] .basecamp-icon {
     filter: brightness(0) invert(1);
@@ -11594,10 +11602,13 @@ html.focus-note-room .focus-resize-edge {
     font-weight: 600;
     letter-spacing: 0.01em;
     cursor: pointer;
-    /* Nothing at rest, whatever the order. It fades in with the pointer
-       on the column, naming the order when it is not the default. */
+    /* Nothing at rest, whatever the order. It shows with the pointer on
+       the column. No fade: the Mac app's web view can stop drawing in the
+       middle of one (while the window glides, for a Today session) and
+       leave half a label on screen. Opacity at once, not visibility, so
+       the keyboard still reaches it. */
     opacity: 0;
-    transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+    transition: color 0.15s ease, background 0.15s ease;
 }
 
 .todo-shell .board-column:hover .board-sort-btn,
