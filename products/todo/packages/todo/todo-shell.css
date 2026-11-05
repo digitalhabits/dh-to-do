@@ -1641,3 +1641,84 @@ textarea.today-session-edit.today-session-now-title {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/*
+  The Planner's window fitted to the session (session-window-fit.ts): the
+  window is the column. The card fills it, edge to edge, so there is one
+  surface and not a card on a panel. Its top leaves room for the window's
+  own buttons on the left and the way out on the right.
+*/
+/* While the window glides in on the column: the column's final layout,
+   whatever the window's width on the way. */
+.today-session.is-window-gliding {
+  padding: 0;
+  align-items: stretch;
+  /* At the left, at its final width, before the window glides in on it. */
+  justify-content: flex-start;
+  background: #efeae2;
+}
+
+.today-session.is-window-gliding .today-session-card {
+  width: var(--session-fit-width, 100%);
+  flex-shrink: 0;
+  max-height: none;
+  height: 100%;
+  padding: 48px 12px 28px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.todo-shell[data-theme="dark"] .today-session.is-window-gliding {
+  background: color-mix(in srgb, #fff 5%, var(--app-bg));
+}
+
+/* Above the card, which now covers the corner it sits in. */
+.today-session.is-window-gliding .today-session-esc {
+  z-index: 2;
+}
+
+/* The task in hand reads larger than the narrow-pane 17px: the slim
+   window is for that one task. */
+.today-session.is-window-gliding .today-session-now-title {
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+/* Once fitted, the window's width decides: slim, the column fills it;
+   wide (full screen), the card stands in the middle as before. CSS, not
+   script, so it is right in the first frame of the change. */
+@media (max-width: 480px) {
+  .today-session.is-window-fit {
+    padding: 0;
+    align-items: stretch;
+    /* At the left, at its final width, before the window glides in on it. */
+    justify-content: flex-start;
+    background: #efeae2;
+  }
+
+  .today-session.is-window-fit .today-session-card {
+    width: var(--session-fit-width, 100%);
+    flex-shrink: 0;
+    max-height: none;
+    height: 100%;
+    padding: 48px 12px 28px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .todo-shell[data-theme="dark"] .today-session.is-window-fit {
+    background: color-mix(in srgb, #fff 5%, var(--app-bg));
+  }
+
+  /* Above the card, which now covers the corner it sits in. */
+  .today-session.is-window-fit .today-session-esc {
+    z-index: 2;
+  }
+
+  /* The task in hand reads larger than the narrow-pane 17px: the slim
+     window is for that one task. */
+  .today-session.is-window-fit .today-session-now-title {
+    font-size: 19px;
+    line-height: 1.25;
+  }
+}

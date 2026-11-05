@@ -149,3 +149,46 @@ html:has(.todo-shell[data-theme="dark"]) .dh-window-controls {
   background: rgba(196, 43, 28, 0.9);
   color: #fff;
 }
+
+.todo-shell .store-review-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 2050;
+  width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+}
+.todo-shell .store-review-prompt-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(30, 45, 62, 0.12);
+  text-align: left;
+}
+.todo-shell .store-review-prompt-top,
+.todo-shell .store-review-prompt-stars,
+.todo-shell .store-review-prompt-actions { display: flex; align-items: center; }
+.todo-shell .store-review-prompt-top { justify-content: space-between; gap: 8px; }
+.todo-shell .store-review-prompt-stars { gap: 2px; color: #e0a100; }
+.todo-shell .store-review-prompt-stars svg { display: block; fill: currentColor; }
+.todo-shell .store-review-prompt-actions { flex-wrap: wrap; gap: 12px; margin-top: 2px; }
+.todo-shell .store-review-prompt-body { margin: 0; font-size: 0.95rem; font-weight: 500; line-height: 1.4; }
+.todo-shell .store-review-prompt-dismiss,
+.todo-shell .store-review-no-thanks {
+  border: none; background: none; cursor: pointer; color: var(--text-tertiary); font: inherit;
+}
+.todo-shell .store-review-prompt-dismiss { display: inline-flex; margin: -4px -6px 0 0; padding: 4px; border-radius: 6px; }
+.todo-shell .store-review-prompt-dismiss:hover { background: var(--hover-bg); color: var(--text-secondary); }
+.todo-shell .store-review-leave-link {
+  display: inline-flex; align-items: center; padding: 8px 14px;
+  border: 1px solid var(--accent-primary); border-radius: 8px; background: var(--accent-primary);
+  color: #fff; font-size: 0.875rem; font-weight: 600; line-height: 1.25rem; text-decoration: none;
+}
+.todo-shell .store-review-leave-link:hover { border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }
+.todo-shell .store-review-no-thanks { padding: 4px 0; font-size: 0.875rem; font-weight: 500; }
+.todo-shell .store-review-no-thanks:hover { color: var(--text-secondary); }

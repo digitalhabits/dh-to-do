@@ -9,6 +9,7 @@ import { TODO_APP_VERSION } from "@/lib/todo/version";
 
 import { isDemoApp, seedDemoBoard } from "./demo/seed";
 import { showUsagePingSwitchInDev, startUsagePing } from "./usage-ping";
+import { StoreReviewPrompt } from "./store-review";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { WindowControls } from "./WindowControls";
 
@@ -85,6 +86,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <>
         <TodoPage initialState={null} appVersion={TODO_APP_VERSION} />
         {demo ? null : <WelcomeScreen alwaysShow={import.meta.env.DEV} />}
+        {demo ? null : <StoreReviewPrompt />}
         <WindowControls />
         <Toaster position="bottom-center" richColors closeButton />
       </>

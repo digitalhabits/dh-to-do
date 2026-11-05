@@ -18,6 +18,7 @@ import {
 } from "@/lib/todo/task-celebration";
 import type { makeT, TodoLang } from "@/lib/todo/i18n";
 import { NotesChip } from "@/components/todo/notes-chip";
+import { useSessionWindowFit } from "@/components/todo/session-window-fit";
 import { formatDurationShort } from "@/lib/todo/duration";
 import { daysUntilDue, formatDueOnShort } from "@/lib/todo/task-draft";
 import type { TodoPerson, TodoTask } from "@/lib/todo/types";
@@ -120,6 +121,8 @@ export function TodayFocusSession({
 }) {
   const overlayRef = React.useRef<HTMLDivElement | null>(null);
   const celebrationRef = React.useRef<HTMLDivElement | null>(null);
+  // In the Planner app the window shrinks to this column, at the screen's left.
+  useSessionWindowFit(overlayRef);
   const [now, setNow] = React.useState(() => Date.now());
   const [sessionStart, setSessionStart] = React.useState(() => Date.now());
   /** When the clock was stopped, or null while it runs. */
