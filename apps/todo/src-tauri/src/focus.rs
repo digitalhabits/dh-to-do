@@ -170,6 +170,9 @@ fn round_without_border(window: &tauri::WebviewWindow) {
     DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
   };
   let Ok(hwnd) = window.hwnd() else { return };
+  // Tauri's `windows` crate can be a newer version than ours, and then its
+  // HWND is another type. The handle inside is the same: wrap it in ours.
+  let hwnd = windows::Win32::Foundation::HWND(hwnd.0 as _);
   let round = DWMWCP_ROUND;
   let no_border: u32 = 0xFFFF_FFFE; // DWMWA_COLOR_NONE
   unsafe {
