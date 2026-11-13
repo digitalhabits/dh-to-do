@@ -60,7 +60,7 @@ html.platform-windows:not(.focus-window) .todo-shell {
 html.platform-windows:not(.focus-window) .todo-shell .task-details-navigation {
   padding-right: var(--win-room);
 }
-html.platform-windows:not(.focus-window) .todo-shell.task-details-replace .task-details-navigation {
+html.platform-windows:not(.focus-window) .todo-shell.task-details-replace:not(.task-details-full) .task-details-navigation {
   padding-right: max(var(--win-room), calc((100% - 720px) / 2 - 10px));
 }
 
@@ -84,9 +84,16 @@ html.platform-windows:not(.focus-window) .todo-shell .list-search {
 
 /* The top bar's buttons are centred. In a narrow window, with nothing
    beside the list, they would run under the window buttons: keep them
-   clear. */
+   clear, with the same room on both sides so they stay centred. */
 html.platform-windows:not(.focus-window) .todo-shell.todo-w-narrow:not(.task-details-open) .title-bar {
-  padding-right: var(--win-room);
+  padding-inline: var(--win-room);
+}
+
+/* The Today session's "esc to exit" sits in the window's top right, which
+   the window buttons cover here. The top left is free: no traffic lights. */
+html.platform-windows:not(.focus-window) .today-session-corner {
+  right: auto;
+  left: 14px;
 }
 
 .dh-window-controls {

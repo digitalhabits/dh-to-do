@@ -5,7 +5,7 @@
  * Part of basecamp.ts, which re-exports what the rest of the app uses.
  */
 
-import { PlanError } from "@/lib/plan/errors";
+import { PlanError } from "@/lib/todo/plan-error";
 
 import {
   localAssigneesByTask,

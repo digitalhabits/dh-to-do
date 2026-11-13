@@ -191,13 +191,14 @@ export function useBoardPeople({
       store does the write; the card is updated at once so the avatar does
       not lag the menu.
 
-      Taking somebody off a task they still hold subtasks of is asked
-      about first: the store will strip their subtask assignments with the
-      same write, and that should never be a surprise.
+      Taking somebody off a task they still hold open subtasks of is
+      asked about first: the store will strip those assignments with the
+      same write, and that should never be a surprise. Done subtasks keep
+      the people who did them, so they are not asked about and not cut.
     */
     if (removing && !task.parentTaskId) {
-      const held = (subtasksByTask.get(taskId) ?? []).filter((child) =>
-        child.assigneeIds.includes(personId)
+      const held = (subtasksByTask.get(taskId) ?? []).filter(
+        (child) => !child.completed && child.assigneeIds.includes(personId)
       );
       if (held.length) {
         const name = peopleById.get(personId)?.name ?? "";
@@ -222,7 +223,9 @@ export function useBoardPeople({
             setState((s) => ({
               ...s,
               tasks: s.tasks.map((row) =>
-                row.parentTaskId === taskId && row.assigneeIds.includes(personId)
+                row.parentTaskId === taskId &&
+                !row.completed &&
+                row.assigneeIds.includes(personId)
                   ? {
                       ...row,
                       assigneeIds: row.assigneeIds.filter((id) => id !== personId),

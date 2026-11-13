@@ -1,4 +1,4 @@
-import { isNativeShell, openFocusPopout } from "@/lib/native-shell";
+import { isNativeShell, openFocusPopout } from "@/lib/todo/native-bridge";
 
 import type { TodoTask } from "./types";
 

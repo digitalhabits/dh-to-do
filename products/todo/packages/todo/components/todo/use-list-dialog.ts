@@ -4,8 +4,8 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import type { TodoApi } from "@/components/todo/use-write-tracking";
-import { isOfflineNow } from "@/lib/offline/todo-offline";
-import { fetchRemindersLists, isNativeShell, type RemindersList } from "@/lib/native-shell";
+import { todoHost } from "@/lib/todo/host";
+import { fetchRemindersLists, isNativeShell, type RemindersList } from "@/lib/todo/native-bridge";
 import { describeError } from "@/lib/todo/errors";
 import { countText, fillText } from "@/lib/todo/i18n";
 import { resolveListIconId } from "@/lib/todo/list-icons";
@@ -586,14 +586,14 @@ export function useListDialogActions({
       list.remindersListId &&
       isNativeShell() &&
       remindersConnected &&
-      !isOfflineNow()
+      !todoHost().isOfflineNow()
     ) {
       await importNewListFromReminders(list);
     }
-    if (list.basecampListId && !isOfflineNow()) {
+    if (list.basecampListId && !todoHost().isOfflineNow()) {
       await importNewListFromBasecamp(list);
     }
-    if (list.githubRepo && !isOfflineNow()) await importListFromGithub(list);
+    if (list.githubRepo && !todoHost().isOfflineNow()) await importListFromGithub(list);
   }
 
   async function renameList(
@@ -619,7 +619,7 @@ export function useListDialogActions({
     });
     // Linked to another repository: its open issues come in now, not at
     // the next poll.
-    if (links.githubRepo && links.githubRepo !== (list.githubRepo ?? null) && !isOfflineNow()) {
+    if (links.githubRepo && links.githubRepo !== (list.githubRepo ?? null) && !todoHost().isOfflineNow()) {
       await importListFromGithub(json.list as TodoList);
     }
   }

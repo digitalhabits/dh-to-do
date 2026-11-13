@@ -12,18 +12,7 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "next/dynamic": ["./src/seams/next-dynamic.tsx"],
-      "@/lib/offline/use-todo-offline": ["./src/seams/use-todo-offline-stub.ts"],
-      "@/lib/offline/todo-offline": ["./src/seams/todo-offline-stub.ts"],
-      "@/lib/page-snapshot-cache": ["./src/seams/page-snapshot-cache.ts"],
-      "@/lib/native-shell": ["../../products/todo/packages/todo/lib/todo/native-bridge.ts"],
-      "@/components/todo/TodoOfflineStatusPill": ["./src/seams/TodoOfflineStatusPill.tsx"],
-      "@/*": [
-        "./src/seams/*",
-        "../../products/todo/packages/todo/*",
-        "../../packages/shared/*",
-        "../../*"
-      ]
+      "@/*": ["../../products/todo/packages/todo/*"]
     }
   },
   "include": ["src", "vite.config.ts"]

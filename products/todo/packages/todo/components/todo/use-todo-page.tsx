@@ -17,8 +17,8 @@ import * as React from "react";
 
 import { toast } from "sonner";
 
-import { useTodoOffline } from "@/lib/offline/use-todo-offline";
-import { listenOpenSettings } from "@/lib/native-shell";
+import { todoHost } from "@/lib/todo/host";
+import { listenOpenSettings } from "@/lib/todo/native-bridge";
 import { useWriteTracking } from "@/components/todo/use-write-tracking";
 import { useZoomKeys } from "@/components/todo/use-zoom-keys";
 import { useCompactCards } from "@/components/todo/use-compact-cards";
@@ -153,7 +153,7 @@ export function useTodoPage({
     isSyncing,
     syncOfflineOps,
     lastError: syncError,
-  } = useTodoOffline({
+  } = todoHost().useOffline({
     onSynced: () => {
       void refreshRef.current();
     },
@@ -833,7 +833,7 @@ export function useTodoPage({
     setAssigneeFilterIds,
     people: state.people,
     viewerEmails,
-    markedMeId,
+    markedMeId: standalone ? markedMeId : null, // signed in, the sign-in says who; "Me" is the no-sign-in app's
     peopleScope,
     viewerKeys,
     openTasks,

@@ -19,8 +19,6 @@ export {
   saveBasecampConnection,
   deleteBasecampConnection,
   connectBasecampWithTokens,
-  basecampAuthorizeUrl,
-  exchangeBasecampCode,
   fetchBasecampIdentity,
 } from "./basecamp-client";
 

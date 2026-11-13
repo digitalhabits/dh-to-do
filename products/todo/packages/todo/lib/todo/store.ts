@@ -1,4 +1,4 @@
-import { PlanError } from "@/lib/plan/errors";
+import { PlanError } from "@/lib/todo/plan-error";
 
 import { todoDb, type SqlStatement } from "./db-driver";
 import { normalizeGithubLogin, normalizeGithubRepo } from "./github-names";
@@ -942,16 +942,16 @@ async function settleStepPeople(task: TodoTask, patch: TodoTaskPatch) {
     await settleParentPeople(task.parentTaskId);
   }
   /*
-    And taken off the task by hand, they are off its steps: after a
-    parent's people are changed, no child keeps somebody the parent no
-    longer has. settleParentPeople writes the parent without coming
-    through here, so a done step keeps the people who did it.
+    And taken off the task by hand, they are off its open steps. A done
+    step keeps the people who did it (settleParentPeople writes the parent
+    without coming through here).
   */
   if (!task.parentTaskId && patch.assigneeIds !== undefined) {
     if (task.assigneeIds.length) {
       await todoDb().query(
         `DELETE FROM todo_task_assignees
-          WHERE task_id IN (SELECT id FROM todo_tasks WHERE parent_task_id = $1)
+          WHERE task_id IN (SELECT id FROM todo_tasks
+                             WHERE parent_task_id = $1 AND completed = FALSE)
             AND person_id NOT IN (${task.assigneeIds
               .map((_, i) => `$${i + 2}`)
               .join(", ")})`,
@@ -960,7 +960,8 @@ async function settleStepPeople(task: TodoTask, patch: TodoTaskPatch) {
     } else {
       await todoDb().query(
         `DELETE FROM todo_task_assignees
-          WHERE task_id IN (SELECT id FROM todo_tasks WHERE parent_task_id = $1)`,
+          WHERE task_id IN (SELECT id FROM todo_tasks
+                             WHERE parent_task_id = $1 AND completed = FALSE)`,
         [task.id]
       );
     }

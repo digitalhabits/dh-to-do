@@ -5,8 +5,7 @@ import { toast } from "sonner";
 
 import { loadTrix } from "@/components/todo/TrixNotesEditor";
 import type { TodoApi } from "@/components/todo/use-write-tracking";
-import { isOfflineNow, wasOfflineRecently } from "@/lib/offline/todo-offline";
-import { PAGE_CACHE_KEYS, setPageSnapshot } from "@/lib/page-snapshot-cache";
+import { todoHost } from "@/lib/todo/host";
 import { describeError, isNetworkBlip } from "@/lib/todo/errors";
 import { todayDueOn } from "@/lib/todo/task-draft";
 import { normalizeTaskAssignees } from "@/lib/todo/task-helpers";
@@ -67,7 +66,7 @@ export function useBoardReads({
 }) {
   React.useEffect(() => {
     if (state !== EMPTY_STATE) {
-      setPageSnapshot<TodoPageSnapshot>(PAGE_CACHE_KEYS.todo, { state });
+      todoHost().saveBoardSnapshot(state);
     }
   }, [state]);
 
@@ -165,7 +164,7 @@ export function useBoardReads({
       } catch (err) {
         // Keep the cached snapshot when offline — do not clear the board.
         // Just back from offline counts too: the offline pill says why.
-        if (isOfflineNow() || wasOfflineRecently(OFFLINE_GRACE_MS)) return;
+        if (todoHost().isOfflineNow() || todoHost().wasOfflineRecently(OFFLINE_GRACE_MS)) return;
         if (isNetworkBlip(err)) {
           /*
             "Load failed", said by WebKit about a fetch that a reload
@@ -178,7 +177,7 @@ export function useBoardReads({
             await readBoard();
             return;
           } catch {
-            if (isOfflineNow() || wasOfflineRecently(OFFLINE_GRACE_MS)) return;
+            if (todoHost().isOfflineNow() || todoHost().wasOfflineRecently(OFFLINE_GRACE_MS)) return;
             toast.error(tRef.current("loadTasksOffline"));
             return;
           }
@@ -214,7 +213,7 @@ export function useBoardReads({
     function refreshOnReturn() {
       if (document.visibilityState !== "visible") return;
       if (editingTaskId || editingDurationTaskId) return;
-      if (isOfflineNow()) return;
+      if (todoHost().isOfflineNow()) return;
       const now = Date.now();
       if (now - lastRefreshAtRef.current < MIN_GAP_MS) return;
       lastRefreshAtRef.current = now;

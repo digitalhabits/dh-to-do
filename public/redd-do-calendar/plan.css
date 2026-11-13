@@ -17,24 +17,26 @@
     display: none !important;
 }
 
-/* Plan-specific theme variables — inherit from ReDD brand palette */
+/* Plan-specific theme variables, in the Centre for Digital Habits design
+   system as To-Do and the planner's tabs are: cream page, white panels,
+   ink text (never black), green actions with ink on hover. */
 #plan-mode {
-    --plan-app-bg: linear-gradient(180deg, #faf8f5 0%, var(--cream-section) 100%);
+    --plan-app-bg: #f5f1ea;
     --plan-container-bg: transparent;
     --plan-panel-bg: #ffffff;
-    --plan-panel-bg-soft: #faf8f5;
-    --plan-text-primary: #2c2c35;
-    --plan-text-secondary: #1e2d3e;
-    --plan-text-muted: #696977;
-    --plan-navy: #1e2d3e;
-    --plan-on-navy: #f5f0e8;
-    --plan-border-color: #e1dcd6;
-    --plan-accent-color: #2a9d8f;
-    --plan-accent-hover: #21806f;
-    --plan-coral: #d4605a;
-    --plan-row-hover-bg: rgba(42, 157, 143, 0.06);
-    --plan-today-bg: rgba(42, 157, 143, 0.12);
-    --plan-today-border: #2a9d8f;
+    --plan-panel-bg-soft: #f9f6f1;
+    --plan-text-primary: #1b3d4a;
+    --plan-text-secondary: #1b3d4a;
+    --plan-text-muted: #586f77;
+    --plan-navy: #1b3d4a;
+    --plan-on-navy: #f5f1ea;
+    --plan-border-color: rgba(27, 61, 74, 0.12);
+    --plan-accent-color: #005d53;
+    --plan-accent-hover: #1b3d4a;
+    --plan-coral: #b4432e;
+    --plan-row-hover-bg: rgba(0, 93, 83, 0.06);
+    --plan-today-bg: rgba(0, 93, 83, 0.10);
+    --plan-today-border: #005d53;
     --plan-event-color: #4a90e2;
     --plan-modal-bg: #ffffff;
     --plan-input-bg: #ffffff;
@@ -322,7 +324,7 @@
     /* A little wider than its column, to cover the gap beside it too. */
     margin-right: -12px;
     padding-right: 12px;
-    background: #faf8f5;
+    background: #f5f1ea;
 }
 
 #plan-mode.plan-theme-dark .plan-week-grid--carousel .plan-week-time-gutter {
@@ -705,7 +707,7 @@
     background:
         linear-gradient(var(--plan-week-head-tint, transparent), var(--plan-week-head-tint, transparent)),
         linear-gradient(var(--plan-week-head-fill), var(--plan-week-head-fill)),
-        var(--plan-week-page-bg, #faf8f5);
+        var(--plan-week-page-bg, #f5f1ea);
 }
 
 #plan-mode.plan-theme-dark .plan-week-day-header {
@@ -936,8 +938,9 @@
     padding-left: 0;
 }
 
+/* In its calendar's colour (--cal, set in plan.js); blue when it has none. */
 #plan-mode .plan-week-allday-item.calendar-event {
-    background: rgba(74, 144, 226, 0.14);
+    background: color-mix(in srgb, var(--cal, #4a90e2) 16%, transparent);
 }
 
 /* Open application deadlines, when the Applications tab has them on. Drawn
@@ -965,7 +968,7 @@
     white-space: nowrap;
     font-size: 12px;
     font-weight: 600;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: #92400e;
     user-select: none;
     z-index: 1;
@@ -999,7 +1002,7 @@
     box-shadow:
         0 2px 4px rgba(30, 45, 62, 0.06),
         0 14px 32px rgba(30, 45, 62, 0.2);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 13px;
     color: var(--plan-text-primary);
 }
@@ -1041,7 +1044,7 @@
     display: inline-block;
     margin-top: 10px;
     font-weight: 600;
-    color: var(--plan-accent, #2a9d8f);
+    color: var(--plan-accent-color, #005d53);
     text-decoration: none;
 }
 
@@ -1077,7 +1080,7 @@
     white-space: nowrap;
     font-size: 12px;
     font-weight: 600;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: #5b3fa0;
     pointer-events: none;
     user-select: none;
@@ -1120,7 +1123,7 @@
    teal of the app, so a task does not read as a deadline or as a note. */
 #plan-mode .plan-week-allday-item.calendar-task {
     background: rgba(42, 157, 143, 0.14);
-    color: #1f7a6f;
+    color: #005d53;
 }
 
 #plan-mode .calendar-task-icon {
@@ -1151,8 +1154,8 @@
     white-space: nowrap;
     font-size: 12px;
     font-weight: 600;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: #1f7a6f;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #005d53;
     pointer-events: none;
     user-select: none;
     z-index: 1;
@@ -1221,7 +1224,7 @@
     border: 0;
     border-radius: 999px;
     padding: 1px 7px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 11px;
     font-weight: 600;
     line-height: 16px;
@@ -1277,7 +1280,7 @@
 }
 
 #plan-mode .plan-week-allday-item.line-event {
-    background: rgba(74, 144, 226, 0.18);
+    background: color-mix(in srgb, var(--cal, #4a90e2) 18%, transparent);
 }
 
 #plan-mode .plan-week-time-grid {
@@ -1322,7 +1325,7 @@
     box-sizing: border-box;
     border-radius: 8px;
     padding: 4px 8px 5px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 11px;
     line-height: 1.3;
     cursor: grab;
@@ -1340,7 +1343,7 @@
 #plan-mode .plan-week-block--task {
     border: 1px solid rgba(42, 157, 143, 0.35);
     background: #e0f0ed;
-    color: #1f7a6f;
+    color: #005d53;
 }
 
 /* The reader's own note at a time of the day. As in the Months view it is
@@ -1521,7 +1524,7 @@
     z-index: 2;
     border: 1.5px dashed rgba(42, 157, 143, 0.7);
     background: rgba(42, 157, 143, 0.1);
-    color: #1f7a6f;
+    color: #005d53;
     font-size: 10px;
     font-weight: 600;
     pointer-events: none;
@@ -1563,8 +1566,8 @@
 }
 
 #plan-mode .plan-week-event.calendar-event {
-    border-color: rgba(74, 144, 226, 0.45);
-    background: #dceaf8;
+    border-color: color-mix(in srgb, var(--cal, #4a90e2) 45%, transparent);
+    background: color-mix(in srgb, var(--cal, #4a90e2) 19%, #fff);
 }
 
 #plan-mode.plan-theme-dark .plan-week-event {
@@ -1573,8 +1576,8 @@
 }
 
 #plan-mode.plan-theme-dark .plan-week-event.calendar-event {
-    background: #243548;
-    border-color: rgba(106, 169, 234, 0.5);
+    background: color-mix(in srgb, var(--cal, #4a90e2) 30%, #1b232b);
+    border-color: color-mix(in srgb, var(--cal, #4a90e2) 55%, transparent);
 }
 
 /* The name, then the time if a line is left (see createWeekTimedEvent).
@@ -1816,7 +1819,7 @@
 #plan-mode .plan-note-text.holiday {
     font-size: 11px;
     font-weight: 500;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: var(--plan-text-muted);
     pointer-events: none;
     user-select: none;
@@ -3279,7 +3282,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     box-shadow:
         0 2px 4px rgba(30, 45, 62, 0.06),
         0 14px 32px rgba(30, 45, 62, 0.2);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 #plan-mode .plan-day-menu-item {
@@ -3432,7 +3435,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     border: 0;
     border-radius: 8px;
     background: rgba(42, 157, 143, 0.13);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 12px;
     font-weight: 600;
     color: var(--plan-text-primary);
@@ -3471,12 +3474,12 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     flex: 0 0 auto;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
-    color: #1f7a6f;
+    color: #005d53;
 }
 
 #plan-mode .plan-week-goal-pill-progress.is-done {
     color: #ffffff;
-    background: #2a9d8f;
+    background: #005d53;
     border-radius: 999px;
     padding: 0 5px;
 }
@@ -3545,7 +3548,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     box-shadow:
         0 2px 4px rgba(30, 45, 62, 0.06),
         0 16px 36px rgba(30, 45, 62, 0.22);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 13px;
     color: var(--plan-text-primary);
 }
@@ -3661,7 +3664,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 #plan-mode .plan-goal-editor-result.is-on::after {
     content: "✓";
     margin-left: auto;
-    color: #1f7a6f;
+    color: #005d53;
 }
 
 #plan-mode .plan-goal-editor-tabs {
@@ -3816,7 +3819,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 11px;
     font-weight: 600;
     line-height: 1;
@@ -3949,7 +3952,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     border-left: 3px solid var(--band);
     background: var(--band-bg);
     color: var(--band-text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
@@ -4066,7 +4069,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
 }
 
 #plan-mode .plan-week-row-label {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 11px;
     font-weight: 500;
     color: var(--plan-text-muted);
@@ -4119,7 +4122,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     padding: 3px 8px 3px 3px;
     border-radius: 8px;
     background: rgba(30, 45, 62, 0.05);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 12.5px;
     font-weight: 600;
     line-height: 1.4;
@@ -4168,6 +4171,107 @@ body.dark-mode #plan-mode .plan-modal-dialog {
    A Roadmap entry's card, opened by a click on its bar or band. The
    same card as on the Roadmap tab. See openRoadmapCard in plan.js.
    ------------------------------------------------------------------ */
+/* An event from a calendar, opened with a click (openEventCard in plan.js):
+   to read, in the look of the Roadmap card, with the calendar's colour. */
+#plan-mode .plan-event-card {
+    position: fixed;
+    z-index: 5000;
+    width: 320px;
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
+    padding: 14px 16px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--plan-border-color);
+    background: var(--plan-modal-bg, #ffffff);
+    box-shadow:
+        0 2px 4px rgba(30, 45, 62, 0.06),
+        0 16px 36px rgba(30, 45, 62, 0.2);
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-event-card:focus {
+    outline: none;
+}
+
+#plan-mode .plan-event-card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+#plan-mode .plan-event-card-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    margin-top: 6px;
+    border-radius: 3px;
+    background: var(--cal, #4a90e2);
+}
+
+#plan-mode .plan-event-card-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+#plan-mode .plan-event-card-close {
+    flex: none;
+    margin: -4px -6px 0 0;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--plan-text-muted);
+    font-size: 18px;
+    line-height: 26px;
+    cursor: pointer;
+}
+
+#plan-mode .plan-event-card-close:hover {
+    background: var(--plan-hover-bg, rgba(30, 45, 62, 0.06));
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-event-card-when,
+#plan-mode .plan-event-card-calendar,
+#plan-mode .plan-event-card-where {
+    margin: 6px 0 0 18px;
+    color: var(--plan-text-muted);
+    overflow-wrap: anywhere;
+}
+
+#plan-mode .plan-event-card-when {
+    color: var(--plan-text-primary);
+}
+
+#plan-mode .plan-event-card-details {
+    margin: 12px 0 0 18px;
+    padding-top: 10px;
+    border-top: 1px solid var(--plan-border-color);
+    max-height: 240px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+#plan-mode .plan-event-card a {
+    color: #1f6f66;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+#plan-mode .calendar-event.plan-week-event,
+#plan-mode .calendar-event.plan-week-allday-item,
+#plan-mode .calendar-event.plan-week-line {
+    cursor: pointer;
+}
+
 #plan-mode .plan-roadmap-card {
     position: fixed;
     z-index: 5000;
@@ -4181,7 +4285,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     box-shadow:
         0 2px 4px rgba(30, 45, 62, 0.06),
         0 16px 36px rgba(30, 45, 62, 0.2);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 13px;
     color: var(--plan-text-primary);
 }
@@ -4366,7 +4470,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     border-radius: 0;
     background: #f5f2ec;
     box-shadow: -18px 0 44px rgba(30, 45, 62, 0.18);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 #plan-mode.plan-theme-dark .plan-calendar-popover {
@@ -4834,7 +4938,7 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     box-shadow:
         0 2px 4px rgba(30, 45, 62, 0.06),
         0 16px 36px rgba(30, 45, 62, 0.18);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: var(--plan-text-primary);
 }
 

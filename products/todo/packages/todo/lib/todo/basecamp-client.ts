@@ -5,16 +5,17 @@
  * Part of basecamp.ts, which re-exports what the rest of the app uses.
  */
 
-import { PlanError } from "@/lib/plan/errors";
+import { PlanError } from "@/lib/todo/plan-error";
 
 import { todoDb } from "./db-driver";
 
-const BASECAMP_USER_AGENT = "Digital Habits: To-Do (team@digitalhabits.org)";
-const LAUNCHPAD = "https://launchpad.37signals.com";
+export const BASECAMP_USER_AGENT = "Digital Habits: To-Do (team@digitalhabits.org)";
+export const LAUNCHPAD = "https://launchpad.37signals.com";
 
 /**
  * What differs per app. The planner uses global fetch and refreshes at
- * launchpad with its client secret. The standalone app fetches through the
+ * launchpad with its client secret (it installs that refresh itself; the
+ * secret never comes into this package). The standalone app fetches through the
  * Tauri HTTP plugin — webview fetch answers to CORS, and Basecamp does not —
  * and refreshes through the Amplify broker, because a desktop app holds no
  * client secret. Everything else in this file is the same sync either way.
@@ -27,7 +28,8 @@ export type BasecampTransport = {
 
 let transport: BasecampTransport = {
   fetch: (...args) => globalThis.fetch(...args),
-  refresh: (conn) => refreshAtLaunchpad(conn),
+  // No refresh until a host installs one.
+  refresh: async () => null,
 };
 
 export function setBasecampTransport(next: BasecampTransport) {
@@ -127,88 +129,6 @@ export async function connectBasecampWithTokens(input: {
     email: identity.email,
   });
   return identity;
-}
-
-function clientCredentials(): { id: string; secret: string } {
-  const id = process.env.BASECAMP_CLIENT_ID?.trim();
-  const secret = process.env.BASECAMP_CLIENT_SECRET?.trim();
-  if (!id || !secret) {
-    throw new PlanError(
-      "Basecamp is not configured (BASECAMP_CLIENT_ID / BASECAMP_CLIENT_SECRET)",
-      503
-    );
-  }
-  return { id, secret };
-}
-
-export function basecampAuthorizeUrl(redirectUri: string): string {
-  const { id } = clientCredentials();
-  const params = new URLSearchParams({
-    type: "web_server",
-    client_id: id,
-    redirect_uri: redirectUri,
-  });
-  return `${LAUNCHPAD}/authorization/new?${params.toString()}`;
-}
-
-export async function exchangeBasecampCode(
-  code: string,
-  redirectUri: string
-): Promise<{ accessToken: string; refreshToken: string | null }> {
-  const { id, secret } = clientCredentials();
-  const params = new URLSearchParams({
-    type: "web_server",
-    client_id: id,
-    redirect_uri: redirectUri,
-    client_secret: secret,
-    code,
-  });
-  const res = await transport.fetch(`${LAUNCHPAD}/authorization/token?${params.toString()}`, {
-    method: "POST",
-    headers: { "User-Agent": BASECAMP_USER_AGENT },
-  });
-  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok || !json.access_token) {
-    throw new PlanError(
-      `Basecamp token exchange failed (${res.status}): ${JSON.stringify(json)}`,
-      502
-    );
-  }
-  return {
-    accessToken: json.access_token as string,
-    refreshToken: (json.refresh_token as string | undefined) ?? null,
-  };
-}
-
-async function refreshAtLaunchpad(
-  conn: BasecampConnection
-): Promise<BasecampConnection | null> {
-  if (!conn.refreshToken) return null;
-  let id: string, secret: string;
-  try {
-    ({ id, secret } = clientCredentials());
-  } catch {
-    return null;
-  }
-  const params = new URLSearchParams({
-    type: "refresh",
-    refresh_token: conn.refreshToken,
-    client_id: id,
-    client_secret: secret,
-  });
-  const res = await transport.fetch(`${LAUNCHPAD}/authorization/token?${params.toString()}`, {
-    method: "POST",
-    headers: { "User-Agent": BASECAMP_USER_AGENT },
-  });
-  if (!res.ok) return null;
-  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!json.access_token) return null;
-  const updated: BasecampConnection = {
-    ...conn,
-    accessToken: json.access_token as string,
-  };
-  await saveBasecampConnection(updated);
-  return updated;
 }
 
 /** Fetch the launchpad identity to resolve the bc3 account id + email. */

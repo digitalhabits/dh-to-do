@@ -6,7 +6,7 @@
  * of its own and `store.ts` already imports the Basecamp client. Either of
  * those files would make an import cycle.
  */
-import { PlanError } from "@/lib/plan/errors";
+import { PlanError } from "@/lib/todo/plan-error";
 
 import { todoDb } from "./db-driver";
 

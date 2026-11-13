@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Calendar, Clock, Pause, Play } from "lucide-react";
+import {
+  ArrowRight,
+  Calendar,
+  Clock,
+  Maximize2,
+  Minimize2,
+  Pause,
+  Play,
+} from "lucide-react";
 
 import { FocusIcon } from "@/components/todo/task-icons";
 import { TaskAssigneeStack } from "@/components/todo/TodoPeopleEditor";
@@ -121,8 +129,9 @@ export function TodayFocusSession({
 }) {
   const overlayRef = React.useRef<HTMLDivElement | null>(null);
   const celebrationRef = React.useRef<HTMLDivElement | null>(null);
-  // In the Planner app the window shrinks to this column, at the screen's left.
-  useSessionWindowFit(overlayRef);
+  // In the Planner app the window shrinks to this column, at the screen's
+  // left or right (Settings). The button by "esc to exit" grows it back.
+  const windowFit = useSessionWindowFit(overlayRef);
   const [now, setNow] = React.useState(() => Date.now());
   const [sessionStart, setSessionStart] = React.useState(() => Date.now());
   /** When the clock was stopped, or null while it runs. */
@@ -517,9 +526,26 @@ export function TodayFocusSession({
     >
       {/* In the corner of the whole window, and shown whenever the pointer is
           anywhere on it — see todo-shell.css. */}
-      <button type="button" className="today-session-esc" onClick={exit}>
-        {t("sessionEsc")}
-      </button>
+      <div className="today-session-corner">
+        {windowFit.canExpand ? (
+          <button
+            type="button"
+            className="today-session-expand"
+            onClick={windowFit.toggleExpanded}
+            aria-label={t(windowFit.expanded ? "sessionShrink" : "sessionExpand")}
+            title={t(windowFit.expanded ? "sessionShrink" : "sessionExpand")}
+          >
+            {windowFit.expanded ? (
+              <Minimize2 size={11} strokeWidth={2.25} aria-hidden />
+            ) : (
+              <Maximize2 size={11} strokeWidth={2.25} aria-hidden />
+            )}
+          </button>
+        ) : null}
+        <button type="button" className="today-session-esc" onClick={exit}>
+          {t("sessionEsc")}
+        </button>
+      </div>
       <div
         className="today-session-card"
         // A text box matches :focus-visible however it was reached, so one

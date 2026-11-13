@@ -1,6 +1,6 @@
 [package]
 name = "digital-habits-todo"
-version = "3.3.1"
+version = "3.3.2"
 description = "Digital Habits: To-Do — standalone Mac, Windows and Linux app (SQLite via Tauri)"
 authors = ["Digital Habits"]
 license = ""
@@ -13,13 +13,13 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.3", features = ["macos-private-api"] }
+tauri = { version = "2.12.5", features = ["macos-private-api"] }
 tauri-plugin-log = "2"
 tauri-plugin-http = "2"
 tauri-plugin-opener = "2.5.4"
@@ -48,7 +48,7 @@ windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dw
 # The AppImage updates itself (linux_update.rs). The stores update the
 # Mac and Windows apps.
 [target.'cfg(target_os = "linux")'.dependencies]
-tauri-plugin-updater = "2"
+tauri-plugin-updater = "2.14.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

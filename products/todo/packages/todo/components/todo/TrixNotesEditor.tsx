@@ -37,7 +37,7 @@ import {
   type ImageSrcResolver,
 } from "@/lib/todo/basecamp-richtext";
 import { bytesToBase64 } from "@/lib/todo/backup-media";
-import { tauriInvoke } from "@/lib/native-shell";
+import { tauriInvoke } from "@/lib/todo/native-bridge";
 import { isStandaloneTodo } from "@/lib/todo/product-flavor";
 
 /**

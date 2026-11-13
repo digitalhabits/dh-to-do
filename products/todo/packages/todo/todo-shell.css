@@ -458,6 +458,7 @@ html.todo-welcome-open .todo-shell #normal-mode .footer {
    more answers the pointer on the card. Left alone, the card holds the work
    and nothing else. */
 .today-session-esc,
+.today-session-expand,
 .today-session-add {
   opacity: 0;
   pointer-events: none;
@@ -465,7 +466,9 @@ html.todo-welcome-open .todo-shell #normal-mode .footer {
 }
 
 .today-session:hover .today-session-esc,
+.today-session:hover .today-session-expand,
 .today-session-esc:focus-visible,
+.today-session-expand:focus-visible,
 .today-session-card:hover .today-session-add,
 /* Words in the box keep it on screen; an empty box with the caret in it does
    not, or one visit to it leaves it showing for the rest of the session. */
@@ -475,11 +478,40 @@ html.todo-welcome-open .todo-shell #normal-mode .footer {
   pointer-events: auto;
 }
 
-/* The corner of the window, not of the card. */
-.today-session-esc {
+/* The corner of the window, not of the card: the way out, and to its
+   left the button that grows the slim window to fill the screen. */
+.today-session-corner {
   position: absolute;
   top: 12px;
   right: 14px;
+  /* Over the card, which fills the slim window and covers this corner. */
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.today-session-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--hover-bg);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.today-session-expand:hover,
+.today-session-esc:hover {
+  background: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.today-session-esc {
   padding: 3px 9px;
   border: none;
   border-radius: 6px;
@@ -614,7 +646,9 @@ html.todo-welcome-open .todo-shell #normal-mode .footer {
 }
 
 .today-session:hover .today-session-esc,
+.today-session:hover .today-session-expand,
 .today-session-esc:focus-visible,
+.today-session-expand:focus-visible,
 .today-session-card:hover .today-session-add,
 /* Words in the box keep it on screen; an empty box with the caret in it does
    not, or one visit to it leaves it showing for the rest of the session. */
@@ -624,11 +658,40 @@ html.todo-welcome-open .todo-shell #normal-mode .footer {
   pointer-events: auto;
 }
 
-/* The corner of the window, not of the card. */
-.today-session-esc {
+/* The corner of the window, not of the card: the way out, and to its
+   left the button that grows the slim window to fill the screen. */
+.today-session-corner {
   position: absolute;
   top: 12px;
   right: 14px;
+  /* Over the card, which fills the slim window and covers this corner. */
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.today-session-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--hover-bg);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.today-session-expand:hover,
+.today-session-esc:hover {
+  background: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.today-session-esc {
   padding: 3px 9px;
   border: none;
   border-radius: 6px;
@@ -1607,6 +1670,8 @@ textarea.today-session-edit.today-session-now-title {
 /* Every task in the session is today's: the teal would say nothing, so
    "Today" reads as any other date here, as in the board's Today column. */
 .todo-shell .today-session .task-chip-due.is-due-today.is-set { color: var(--text-primary); }
+/* Open, the chip's fill is dark: light text, as everywhere else. */
+.todo-shell .today-session .task-chip-due.is-on.is-set { color: var(--focus-btn-text); }
 
 /* In the Today session an open card's day and list wait for the pointer
    (or the caret, or an open menu), so the cards say only what is to be
@@ -1668,12 +1733,18 @@ textarea.today-session-edit.today-session-now-title {
   box-shadow: none;
 }
 
+/* The column at the screen's right: it stands at the right of the page
+   while the window closes in on it from the left. */
+.today-session.is-window-gliding.is-window-right {
+  justify-content: flex-end;
+}
+
 .todo-shell[data-theme="dark"] .today-session.is-window-gliding {
   background: color-mix(in srgb, #fff 5%, var(--app-bg));
 }
 
 /* Above the card, which now covers the corner it sits in. */
-.today-session.is-window-gliding .today-session-esc {
+.today-session.is-window-gliding .today-session-corner {
   z-index: 2;
 }
 
@@ -1711,7 +1782,7 @@ textarea.today-session-edit.today-session-now-title {
   }
 
   /* Above the card, which now covers the corner it sits in. */
-  .today-session.is-window-fit .today-session-esc {
+  .today-session.is-window-fit .today-session-corner {
     z-index: 2;
   }
 

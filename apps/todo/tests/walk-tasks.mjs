@@ -58,10 +58,10 @@ export async function walkTasks(page) {
     await until(() => text().includes("Oil the hinges") && text().includes("Sort the screws")),
     text().slice(0, 200)
   );
-  if (page.flavor === "planner") {
-    // The planner keeps a copy of the board, to paint the tab at once next time.
-    const { PAGE_CACHE_KEYS, getPageSnapshot } = await import("@/lib/page-snapshot-cache");
-    const cached = () => getPageSnapshot(PAGE_CACHE_KEYS.todo)?.state?.tasks?.map((task) => task.text) ?? [];
+  if (page.keptBoard) {
+    // The planner keeps a copy of the board, to paint the tab at once next
+    // time. The page object gives it, so this walk names no planner file.
+    const cached = () => page.keptBoard()?.tasks?.map((task) => task.text) ?? [];
     check("the board is kept for the next paint", await until(() => cached().includes("Sort the screws")), cached().join());
   }
 

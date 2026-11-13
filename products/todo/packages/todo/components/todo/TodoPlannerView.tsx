@@ -39,7 +39,7 @@ import type {
   CalendarFeed,
   CalendarSource,
   PickableAccount,
-} from "@/lib/plan/calendar-board";
+} from "@/lib/todo/calendar-types";
 import type { TodoGroup, TodoList, TodoPerson, TodoTask } from "@/lib/todo/types";
 
 const ASSET_BASE = "/redd-do-calendar";
