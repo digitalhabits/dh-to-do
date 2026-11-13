@@ -4,7 +4,7 @@
  * page reads its board itself.
  *
  * A walk takes what this answers and does not care which flavour it has.
- * The planner's twin is page-host-planner.mjs.
+ * The planner has a twin for its To-Do tab, in its own tests.
  */
 
 import { installFakeBoard } from "./fake-board.mjs";

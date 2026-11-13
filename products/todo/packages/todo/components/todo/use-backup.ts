@@ -15,7 +15,7 @@ import {
   type BackupMedia,
 } from "@/lib/todo/backup-media";
 import { noteMediaSrc } from "@/lib/todo/basecamp-image";
-import { tauriInvoke } from "@/lib/native-shell";
+import { tauriInvoke } from "@/lib/todo/native-bridge";
 import { describeError } from "@/lib/todo/errors";
 import { fillText } from "@/lib/todo/i18n";
 import { todoMediaStore } from "@/lib/todo/media-store";

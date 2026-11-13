@@ -13,7 +13,7 @@ import {
   notifyFocusPanelTask,
   setFocusPopoutHeight,
   signalFocusPanelReady,
-} from "@/lib/native-shell";
+} from "@/lib/todo/native-bridge";
 import { pendingAttachments } from "@/lib/todo/basecamp-richtext";
 import { loadTrix, TrixNotesEditor } from "@/components/todo/TrixNotesEditor";
 import { resolveBasecampImage } from "@/lib/todo/basecamp-image";

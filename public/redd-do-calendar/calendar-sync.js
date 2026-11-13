@@ -125,6 +125,15 @@ const CalendarSync = (function () {
         return cleaned || 'Calendar Event';
     }
 
+    // What a click on the event shows besides its name: where, and the
+    // description without the marker. An event with no title already shows
+    // its description as its name, so it has no details beside it.
+    function eventDetails(event) {
+        const title = (event.summary || '').trim();
+        const desc = (event.description || '').trim().replace(/^(redd-do|dh-to-do)[\s:,-]*/i, '').trim();
+        return { location: (event.location || '').trim(), details: title ? desc : '' };
+    }
+
     // Convert event to internal note format
     function convertToNote(event) {
         const startDate = event.startDate;
@@ -147,6 +156,7 @@ const CalendarSync = (function () {
             endMinutes: event.isAllDay || !event.endDate
                 ? null
                 : event.endDate.getHours() * 60 + event.endDate.getMinutes(),
+            ...eventDetails(event),
         };
     }
 
@@ -189,7 +199,8 @@ const CalendarSync = (function () {
             color: '#4a90e2',  // ReDD brand blue for calendar events
             width: 8,
             isCalendarEvent: true,
-            calendarEventUid: event.uid
+            calendarEventUid: event.uid,
+            ...eventDetails(event),
         };
     }
 

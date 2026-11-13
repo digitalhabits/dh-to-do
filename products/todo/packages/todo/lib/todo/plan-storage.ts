@@ -14,7 +14,7 @@
 
 import * as React from "react";
 
-import type { CalendarFeed, CalendarSource, PickableAccount } from "@/lib/plan/calendar-board";
+import type { CalendarFeed, CalendarSource, PickableAccount } from "@/lib/todo/calendar-types";
 
 /** What a host adds to the calendar script's own options. */
 export type TodoPlanHostOptions = {

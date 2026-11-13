@@ -7,14 +7,30 @@ import { DeletedListsRow } from "@/components/todo/settings-deleted-lists";
 import { SettingsGithubRow } from "@/components/todo/settings-github-row";
 import { useClearWindowButtons } from "@/components/todo/use-clear-window-buttons";
 import { SECTION_TITLE, useSettingsPage } from "@/components/todo/use-settings-page";
-import { Activity, Columns4, FolderTree, Map as MapIcon, SquareKanban, Timer, User } from "lucide-react";
+import {
+  Activity,
+  Columns4,
+  FolderTree,
+  Map as MapIcon,
+  PanelLeft,
+  PanelRight,
+  SquareKanban,
+  Timer,
+  User,
+} from "lucide-react";
+import {
+  readSessionSide,
+  sessionSideApplies,
+  writeSessionSide,
+  type SessionSide,
+} from "@/components/todo/session-window-fit";
 import { toast } from "sonner";
 
 import {
   fetchRemindersLists,
   isNativeShell,
   openRemindersPrivacySettings,
-} from "@/lib/native-shell";
+} from "@/lib/todo/native-bridge";
 import {
   LANGUAGE_FLAG_SVG,
   LANGUAGE_NATIVE_LABELS,
@@ -178,6 +194,10 @@ export function TodoSettingsModal({
   onDeleteListForever?: (id: string) => Promise<void>;
 }) {
   const [langOpen, setLangOpen] = React.useState(false);
+  /** Which edge the Today view's slim window goes to. A setting of this
+      Mac's app alone, so it lives here and not in the page's state. */
+  const showSessionSide = React.useMemo(() => sessionSideApplies(), []);
+  const [sessionSide, setSessionSide] = React.useState<SessionSide>(() => readSessionSide());
   const langPickerRef = React.useRef<HTMLDivElement>(null);
   // The language list closes on a press anywhere else, and on Escape (which
   // then does not also close Settings). Before Settings was a page, a press
@@ -544,6 +564,46 @@ export function TodoSettingsModal({
                     checked={focusTimerAlways}
                     onChange={onFocusTimerAlwaysChange}
                   />
+                  {showSessionSide ? (
+                    <div className="settings-row has-icon" title={t("sessionSideInfo")}>
+                      <span className="settings-row-icon" aria-hidden="true">
+                        {sessionSide === "right" ? (
+                          <PanelRight size={16} strokeWidth={2} />
+                        ) : (
+                          <PanelLeft size={16} strokeWidth={2} />
+                        )}
+                      </span>
+                      <div className="settings-row-copy">
+                        <span className="settings-row-label" id="session-side-label">
+                          {t("sessionSide")}
+                        </span>
+                        <span className="settings-row-hint">{t("sessionSideDesc")}</span>
+                      </div>
+                      <div className="settings-row-control">
+                        <div
+                          className="board-people-scope"
+                          role="radiogroup"
+                          aria-labelledby="session-side-label"
+                        >
+                          {(["left", "right"] as const).map((side) => (
+                            <button
+                              key={side}
+                              type="button"
+                              role="radio"
+                              aria-checked={sessionSide === side}
+                              className={`board-people-scope-btn${sessionSide === side ? " active" : ""}`}
+                              onClick={() => {
+                                writeSessionSide(side);
+                                setSessionSide(side);
+                              }}
+                            >
+                              {t(side === "left" ? "sessionSideLeft" : "sessionSideRight")}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                   <SettingsToggle
                     icon={<SquareKanban size={16} strokeWidth={2} />}
                     label={t("enableKanbanView")}

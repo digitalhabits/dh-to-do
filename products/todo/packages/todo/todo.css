@@ -11047,8 +11047,10 @@ html.focus-note-room .focus-resize-edge {
 }
 
 /* Open: the fill is dark, so the text is the light colour it has under the
-   pointer. Teal or red on that fill could hardly be read. */
-.todo-shell .task-chip-due.is-on.is-set {
+   pointer. Teal or red on that fill could hardly be read. The Today
+   column's own rule above is more specific, so it is named here too. */
+.todo-shell .task-chip-due.is-on.is-set,
+.todo-shell .board-column-today .task-chip-due.is-on.is-set {
     color: var(--focus-btn-text);
 }
 
@@ -12136,4 +12138,19 @@ html.focus-note-room .focus-resize-edge {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* A board column's empty add-task box: 10px above and below its text, so
+   it is no bigger than it needs to be. Typing opens the full row. */
+.todo-shell .board-column-add .task-composer:not(.is-open) .composer-main {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.todo-shell .board-column-add .task-composer:not(.is-open) .task-composer-input {
+    padding: 10px 8px;
+}
+.todo-shell .board-column-add .task-composer:not(.is-open) .composer-idle-plus {
+    /* The plus just right of the cards' tick boxes' centre, and the words
+       starting where the cards' titles do. */
+    margin: 0 -3.5px 0 14.5px;
 }

@@ -5,8 +5,8 @@
  *
  * Beside the list: Back, the task's list (its icon, when it has one), its
  * More menu, and a button that widens details over the whole window. Full
- * screen: the same without Back, and the button puts details back beside
- * the list. Where details already take the whole window (a
+ * screen: the same, and the button puts details back beside the list. In a
+ * slim window Back is its arrow alone. Where details already take the whole window (a
  * narrow window, the Today session) there is nothing to widen, and no button.
  */
 
@@ -23,13 +23,16 @@ export function TaskDetailsBar({
   m,
   task,
   canExpand,
+  full,
 }: {
   m: TodoPageModel;
   task: TodoTask;
   /** False where details take the whole window anyway. */
   canExpand: boolean;
+  /** Laid out as a widened document. */
+  full: boolean;
 }) {
-  const full = canExpand && m.detailsFull;
+  const widened = canExpand && m.detailsFull;
   const barRef = React.useRef<HTMLDivElement>(null);
   useLineUpWithTabs(barRef, full);
   return (
@@ -45,11 +48,9 @@ export function TaskDetailsBar({
         beginNativeWindowDragOnMove(event);
       }}
     >
-      {full ? null : (
-        <button type="button" className="task-details-back" onClick={() => m.saveNotes(task.id)}>
-          <ArrowLeft size={16} aria-hidden />{m.t("backToTasks")}
-        </button>
-      )}
+      <button type="button" className="task-details-back" aria-label={m.t("backToTasks")} onClick={() => m.saveNotes(task.id)}>
+        <ArrowLeft size={16} aria-hidden /><span className="task-details-back-label">{m.t("backToTasks")}</span>
+      </button>
       <div className="task-details-bar-end">
         <TaskDetailsListButton m={m} task={task} iconOnly />
         <TaskDetailsMenu m={m} task={task} />
@@ -57,11 +58,11 @@ export function TaskDetailsBar({
           <button
             type="button"
             className="task-details-expand"
-            aria-label={m.t(full ? "detailsCollapse" : "detailsExpand")}
-            title={m.t(full ? "detailsCollapse" : "detailsExpand")}
-            onClick={() => m.setDetailsFull(!full)}
+            aria-label={m.t(widened ? "detailsCollapse" : "detailsExpand")}
+            title={m.t(widened ? "detailsCollapse" : "detailsExpand")}
+            onClick={() => m.setDetailsFull(!widened)}
           >
-            {full ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+            {widened ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
           </button>
         ) : null}
       </div>

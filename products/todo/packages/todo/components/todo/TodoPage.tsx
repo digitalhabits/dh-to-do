@@ -50,7 +50,8 @@ export type { TodoPageSnapshot } from "@/components/todo/use-board-reads";
  */
 function detailsLayout(m: ReturnType<typeof useTodoPage>, detailsOpen: boolean) {
   const detailsTakeWindow = m.shellWidth == null || m.shellWidth <= 1000 || Boolean(m.sessionIds);
-  const detailsFull = detailsOpen && !detailsTakeWindow && m.detailsFull;
+  // A window too narrow for details beside the list shows them as widened.
+  const detailsFull = detailsOpen && !m.sessionIds && (detailsTakeWindow || m.detailsFull);
   return { detailsTakeWindow, detailsFull, detailsReplaceList: detailsOpen && (detailsTakeWindow || detailsFull) };
 }
 
@@ -243,7 +244,7 @@ export function TodoPage(props: TodoPageProps) {
       <div inert={detailsReplaceList} aria-hidden={detailsReplaceList || undefined}>
         {renderCalendarCard(m)}
       </div>
-      {renderNotesOverlay(m, { canExpand: !detailsTakeWindow })}
+      {renderNotesOverlay(m, { canExpand: !detailsTakeWindow, full: detailsFull })}
 
       {renderListDialog(m)}
 

@@ -5,14 +5,14 @@ import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
 import type { TodoApi } from "@/components/todo/use-write-tracking";
-import { isOfflineNow } from "@/lib/offline/todo-offline";
+import { todoHost } from "@/lib/todo/host";
 import {
   createRemindersTask,
   deleteRemindersTask,
   updateRemindersDue,
   updateRemindersStatus,
   updateRemindersTitle,
-} from "@/lib/native-shell";
+} from "@/lib/todo/native-bridge";
 import { minutesFromTyped } from "@/lib/todo/duration-input";
 import { planManualOrder } from "@/lib/todo/board-drop";
 import { byPosition, type ColumnOrder, type ColumnSort } from "@/lib/todo/column-sort";
@@ -196,7 +196,7 @@ export function useTaskActions({
       if (
         existing.parentTaskId &&
         (patch.completed !== undefined || patch.assigneeIds !== undefined) &&
-        !isOfflineNow()
+        !todoHost().isOfflineNow()
       ) {
         void refresh();
       }
@@ -214,7 +214,7 @@ export function useTaskActions({
         patch.listId && task.remindersId == null
           ? listsRef.current.find((l) => l.id === patch.listId)
           : undefined;
-      if (movedOnto?.remindersListId && !isOfflineNow()) {
+      if (movedOnto?.remindersListId && !todoHost().isOfflineNow()) {
         const remindersListId = movedOnto.remindersListId;
         pushReminders(async () => {
           const reminder = await createRemindersTask(
@@ -232,7 +232,7 @@ export function useTaskActions({
         });
       }
       if (
-        !isOfflineNow() &&
+        !todoHost().isOfflineNow() &&
         task.remindersId &&
         listOfTask(task)?.remindersListId
       ) {
@@ -254,7 +254,7 @@ export function useTaskActions({
       }
     } catch (err) {
       toast.error(describeError(err, t("updateFailed")));
-      if (!isOfflineNow()) void refresh();
+      if (!todoHost().isOfflineNow()) void refresh();
     }
   }
 
@@ -794,7 +794,7 @@ export function useTaskActions({
           toast.error(describeError(err, t("addSubtaskFailed")));
         }
       }
-      if (targetList?.remindersListId && !isOfflineNow()) {
+      if (targetList?.remindersListId && !todoHost().isOfflineNow()) {
         pushReminders(async () => {
           const reminder = await createRemindersTask(
             targetList.remindersListId as string,

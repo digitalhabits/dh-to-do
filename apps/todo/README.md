@@ -30,7 +30,9 @@ pnpm --dir apps/todo app:build:mas         # macOS: for-distribution/Digital-Hab
 pnpm --dir apps/todo app:build:win-store   # Windows: for-distribution/*.msix
 ```
 
-Neither one uploads anything.
+Neither one uploads anything. The upload is a separate step:
+`fastlane/Fastfile` for the Mac App Store, and
+`scripts/submit-microsoft-store.ps1` for the Microsoft Store.
 
 **Mac App Store.** `scripts/build-mas-package.cjs` is the script that built
 2.x. It builds a universal app with `macOSPrivateApi` off, because the App
@@ -42,14 +44,13 @@ provisioning profile for `com.redd.do`. Give the path of the profile in
 `APPLE_PROVISIONING_PROFILE_PATH`, or let the script find the newest one that
 Xcode has. The head of the script lists every name it reads.
 
-A first local build passed on 2026-09-19: universal, sandboxed, the company
-team, profile inside. The package has not been sent to App Store Connect yet,
-and the app has not been run in the sandbox yet. The focus bar is the part to
-look at there, because it is drawn with private API in every other build.
+Version 3 is in the Mac App Store. The store build runs in the sandbox,
+and the focus bar works there with the private API off. The other builds
+still draw the focus bar with private API.
 
 **Microsoft Store.** `scripts/build-win-store.ps1` uses the packaging steps of
 Mail's script. The identity is the one 2.x has, `ReduceDigitalDistraction.ReDDTodo`.
-It has not run on Windows yet.
+Version 3 is in the Microsoft Store.
 
 ## Storage
 

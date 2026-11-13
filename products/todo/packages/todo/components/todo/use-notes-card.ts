@@ -179,7 +179,7 @@ export function useNotesCard({
       if ((event.target as HTMLElement | null)?.closest?.(".notes-overlay-title-input")) return;
       event.stopPropagation();
       // Full screen, Escape first puts details back beside the list.
-      if (notesCard.detailsFull && document.querySelector(".task-details-full")) {
+      if (notesCard.detailsFull && document.querySelector(".task-details-full .task-details-expand")) {
         notesCard.setDetailsFull(false);
         return;
       }

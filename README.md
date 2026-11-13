@@ -130,8 +130,8 @@ The directory layout is the monorepo's, so the build config is copied
 unmodified and this builds the way the released app builds.
 
 - `apps/todo` — the desktop app: the Tauri shell in `src-tauri` (SQLite,
-  Apple Reminders, the focus window, the Basecamp sign-in), and the stand-ins
-  in `src/seams` for the parts that only the planner has
+  Apple Reminders, the focus window, the Basecamp sign-in), and To-Do's host
+  for the desktop in `src/standalone-host.ts`
 - `products/todo/packages/todo` — the interface and the task logic
 - `packages/shared` — code that the monorepo also uses in other apps
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { isNativeShell } from "@/lib/native-shell";
+import { isNativeShell } from "@/lib/todo/native-bridge";
 import { describeError } from "@/lib/todo/errors";
 import { drainPendingFocusCompletes } from "@/lib/todo/focus-pending";
 import { openTodoFocusPopout } from "@/lib/todo/focus-popout";

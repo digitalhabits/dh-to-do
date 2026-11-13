@@ -8,6 +8,7 @@ import { todoHostApi } from "@/lib/todo/standalone-api";
 import { TODO_APP_VERSION } from "@/lib/todo/version";
 
 import { isDemoApp, seedDemoBoard } from "./demo/seed";
+import { installStandaloneTodoHost } from "./standalone-host";
 import { showUsagePingSwitchInDev, startUsagePing } from "./usage-ping";
 import { StoreReviewPrompt } from "./store-review";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -20,6 +21,8 @@ import "@/todo-shell.css";
 import "./standalone.css";
 
 window.__TODO_PRODUCT_FLAVOR__ = "standalone";
+// To-Do's host: local SQLite, no offline queue (lib/todo/host.ts).
+installStandaloneTodoHost();
 
 /**
  * One bundle, two windows. The main window mounts the board. The focus

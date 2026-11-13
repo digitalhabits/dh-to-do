@@ -11,7 +11,7 @@ import {
   createRemindersTask,
   fetchRemindersTasks,
   updateRemindersStatus,
-} from "@/lib/native-shell";
+} from "@/lib/todo/native-bridge";
 
 import type { TodoList, TodoTask } from "./types";
 

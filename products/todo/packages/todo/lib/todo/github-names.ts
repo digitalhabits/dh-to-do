@@ -3,7 +3,7 @@
  * GitHub calls here, only the shape GitHub gives each.
  */
 
-import { PlanError } from "@/lib/plan/errors";
+import { PlanError } from "@/lib/todo/plan-error";
 
 /** "owner/name", from that or from the repository's address. Null for none. */
 export function normalizeGithubRepo(value: string | null): string | null {

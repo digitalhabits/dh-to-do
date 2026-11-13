@@ -66,6 +66,13 @@
 }
 .todo-shell .task-details-back:hover,
 .todo-shell .task-details-actions button:hover { background: var(--hover-bg); }
+/* One line always. Where the bar has no room for the words beside the
+   list, More and full screen (the Danish is the longest), the arrow alone. */
+.todo-shell .task-details-navigation { container: task-details-bar / inline-size; }
+.todo-shell .task-details-back { white-space: nowrap; }
+@container task-details-bar (max-width: 310px) {
+  .todo-shell .task-details-back-label { display: none; }
+}
 .todo-shell .task-details-panel .notes-overlay-head { padding: 22px var(--overlay-side); }
 /* .task-overlay-card in each name: the desktop app loads todo.css after
    this file, and its full-screen sizes must not win here. */
@@ -246,6 +253,7 @@
   margin-left: auto;
 }
 .todo-shell .task-details-bar-end .task-overlay-list-wrap { min-width: 0; }
+.todo-shell .task-details-bar-end > :not(.task-overlay-list-wrap) { flex-shrink: 0; }
 /* The list as a ghost button: just its name, a tint on hover. */
 .todo-shell .task-details-list-btn {
   display: inline-flex;

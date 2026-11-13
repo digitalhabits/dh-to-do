@@ -288,6 +288,32 @@ const PlanModule = (function () {
     function pointerX(event) { return event.clientX / zoomInfo().zoom; }
     function pointerY(event) { return event.clientY / zoomInfo().zoom; }
 
+    /**
+     * A card or list put by what it belongs to: under it, or over it near
+     * the foot of the window, and inside the window.
+     *
+     * Measured in the screen's own pixels, and set by where the card truly
+     * landed, not by what the zoom is thought to be. A fixed card is placed
+     * from the nearest box with a transform, not always from the window:
+     * in the full-screen Roadmap that box was not at the window's top, and
+     * the card, put by sums, landed off the top of the screen.
+     * `fromX` is a screen x to start at instead of the anchor's left edge.
+     */
+    function placeCard(card, anchorEl, gap, fromX) {
+        const at = anchorEl.getBoundingClientRect();
+        card.style.left = '0px';
+        card.style.top = '0px';
+        const origin = card.getBoundingClientRect();
+        // Screen pixels to the card's own: the zoom, as the card has it.
+        const scale = card.offsetWidth > 0 ? origin.width / card.offsetWidth : 1;
+        const room = 8 * scale;
+        const below = at.bottom + gap * scale + origin.height <= window.innerHeight - room;
+        const x = Math.max(room, Math.min(Number.isFinite(fromX) ? fromX : at.left, window.innerWidth - origin.width - room));
+        const y = below ? at.bottom + gap * scale : Math.max(room, at.top - origin.height - gap * scale);
+        card.style.left = `${(x - origin.left) / scale}px`;
+        card.style.top = `${(y - origin.top) / scale}px`;
+    }
+
     function rectOf(el) {
         const r = el.getBoundingClientRect();
         const k = zoomInfo().rectScale;
@@ -896,14 +922,7 @@ const PlanModule = (function () {
         dayListFor = dateKey;
 
         // Under the task, at the left of its day; inside the window.
-        const at = rectOf(anchorEl);
-        const rect = rectOf(list);
-        const zoom = zoomInfo().zoom;
-        const winW = window.innerWidth / zoom;
-        const winH = window.innerHeight / zoom;
-        const below = at.bottom + 6 + rect.height <= winH - 8;
-        list.style.left = `${Math.max(8, Math.min(at.left - 8, winW - rect.width - 8))}px`;
-        list.style.top = `${below ? at.bottom + 6 : Math.max(8, at.top - rect.height - 6)}px`;
+        placeCard(list, anchorEl, 6, anchorEl.getBoundingClientRect().left - 8 * zoomInfo().zoom);
         document.addEventListener('keydown', onDayListKey, true);
         // Scrolled, it would stand away from its day.
         calendarContainer.addEventListener('scroll', closeWeekDayList);
@@ -1341,14 +1360,7 @@ const PlanModule = (function () {
         deadlineCardEl = card;
         deadlineCardFor = anchorEl;
         // Under the deadline, or over it near the bottom; inside the window.
-        const at = rectOf(anchorEl);
-        const rect = rectOf(card);
-        const zoom = zoomInfo().zoom;
-        const winW = window.innerWidth / zoom;
-        const winH = window.innerHeight / zoom;
-        const below = at.bottom + 8 + rect.height <= winH - 8;
-        card.style.left = `${Math.max(8, Math.min(at.left, winW - rect.width - 8))}px`;
-        card.style.top = `${below ? at.bottom + 8 : Math.max(8, at.top - rect.height - 8)}px`;
+        placeCard(card, anchorEl, 8);
         document.addEventListener('pointerdown', onDeadlineCardOutside, true);
         document.addEventListener('keydown', onDeadlineCardKey, true);
         calendarContainer.addEventListener('scroll', closeDeadlineCard);
@@ -1609,6 +1621,7 @@ const PlanModule = (function () {
         }
         // Its listeners are on the document, which outlives the calendar.
         closeRoadmapCard();
+        closeEventCard();
         closeWeekDayList();
         clearTimeout(redrawAfterWritingTimer);
         clearTimeout(scrollTimeout);
@@ -4648,6 +4661,8 @@ const PlanModule = (function () {
                 event.stopPropagation();
                 showLineEditor(line.id, bar);
             });
+        } else {
+            openableEvent(el, line);
         }
         return el;
     }
@@ -4659,9 +4674,18 @@ const PlanModule = (function () {
             (note.source === 'calendar' ? ' calendar-event' : ' user-event');
         el.textContent = noteDisplayText(note);
         if (note.source === 'calendar') {
-            el.title = `From calendar: ${note.calendarName || 'Unknown'}`;
+            tintWithCalendar(el, note);
+            openableEvent(el, note);
         }
         return el;
+    }
+
+    /**
+     * An event in its calendar's colour, the colour of the calendar's dot in
+     * the Calendars menu: plan.css mixes it into the fill and the edge.
+     */
+    function tintWithCalendar(el, note) {
+        if (note.fontColor) el.style.setProperty('--cal', note.fontColor);
     }
 
     /** An event's padding and border, and one line of its name: plan.css. */
@@ -4724,7 +4748,8 @@ const PlanModule = (function () {
         el.appendChild(timeEl);
 
         if (note.source === 'calendar') {
-            el.title = `From calendar: ${note.calendarName || 'Unknown'}`;
+            tintWithCalendar(el, note);
+            openableEvent(el, note);
         }
 
         return el;
@@ -4795,6 +4820,8 @@ const PlanModule = (function () {
                     (line.source === 'calendar' ? ' calendar-event' : ' user-event');
                 if (line.source === 'calendar') {
                     el.textContent = label;
+                    tintWithCalendar(el, line);
+                    openableEvent(el, line);
                 } else {
                     // The reader's own line, as the Months view has it: its
                     // name in the hand font over a bar of its colour. A click
@@ -5797,6 +5824,150 @@ const PlanModule = (function () {
         closeRoadmapCard();
     }
 
+    /*
+     * An event from a calendar, opened with a click: its name, when, which
+     * calendar, where, and its description. To read only; the event is
+     * changed in the calendar it comes from. Placed and closed as the
+     * Roadmap card is.
+     */
+    let eventCardEl = null;
+
+    function closeEventCard() {
+        eventCardEl?.remove();
+        eventCardEl = null;
+        document.removeEventListener('pointerdown', onEventCardOutside, true);
+        document.removeEventListener('keydown', onEventCardKey, true);
+        calendarContainer?.removeEventListener('scroll', closeEventCard);
+    }
+
+    function onEventCardOutside(event) {
+        if (!eventCardEl || eventCardEl.contains(event.target)) return;
+        closeEventCard();
+        // A press on another event opens that one; anywhere else only closes.
+        if (!(event.target.closest && event.target.closest('.calendar-event'))) swallowNextPress();
+    }
+
+    function onEventCardKey(event) {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        closeEventCard();
+    }
+
+    /** A description as plain text: Google's may be HTML. */
+    function eventDescriptionText(raw) {
+        const text = String(raw || '');
+        if (!/<[a-z][\s\S]*>/i.test(text)) return text.trim();
+        const doc = new DOMParser().parseFromString(
+            text.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n'),
+            'text/html'
+        );
+        return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    /** Text with its web addresses as links. */
+    function appendLinkedText(el, text) {
+        const parts = String(text).split(/(https?:\/\/[^\s<>"]+)/g);
+        parts.forEach((part, i) => {
+            if (i % 2 === 0) {
+                if (part) el.appendChild(document.createTextNode(part));
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = part;
+            link.target = '_blank';
+            link.rel = 'noreferrer';
+            link.textContent = part.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+            el.appendChild(link);
+        });
+    }
+
+    /** "Wed 11 Nov", or "13 – 15 Nov" for days in a row. */
+    function eventDateText(startKey, endKey) {
+        const locale = currentLanguage === 'da' ? 'da-DK' : 'en-GB';
+        const day = (key, options) => parseDateKey(key).toLocaleDateString(locale, options);
+        if (!endKey || endKey === startKey) return day(startKey, { weekday: 'short', day: 'numeric', month: 'short' });
+        return `${day(startKey, { day: 'numeric', month: 'short' })} – ${day(endKey, { day: 'numeric', month: 'short' })}`;
+    }
+
+    function openEventCard(item, anchorEl) {
+        closeEventCard();
+        closeRoadmapCard();
+        closeDeadlineCard();
+        closeDayMenu();
+        window.dispatchEvent(new CustomEvent(PLAN_CARD_OPEN_EVENT));
+        const da = currentLanguage === 'da';
+        const make = (tag, className, text) => {
+            const el = document.createElement(tag);
+            if (className) el.className = className;
+            if (text != null) el.textContent = text;
+            return el;
+        };
+        const name = item.text || item.label || '';
+        const card = make('div', 'plan-event-card');
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-label', name);
+        if (item.fontColor) card.style.setProperty('--cal', item.fontColor);
+
+        const head = make('div', 'plan-event-card-head');
+        head.appendChild(make('span', 'plan-event-card-swatch'));
+        head.appendChild(make('div', 'plan-event-card-title', name));
+        const close = make('button', 'plan-event-card-close', '×');
+        close.type = 'button';
+        close.setAttribute('aria-label', da ? 'Luk' : 'Close');
+        close.addEventListener('click', closeEventCard);
+        head.appendChild(close);
+        card.appendChild(head);
+
+        // When: the day (or days), then the time or "All day".
+        const isLine = item.startDate != null;
+        const when = isLine
+            ? eventDateText(item.startDate, item.endDate)
+            : eventDateText(item.dateKey);
+        const hours = !isLine && item.startMinutes != null
+            ? (item.endMinutes != null && item.endMinutes > item.startMinutes
+                ? `${formatMinutesAsTime(item.startMinutes)} – ${formatMinutesAsTime(item.endMinutes)}`
+                : formatMinutesAsTime(item.startMinutes))
+            : (da ? 'Hele dagen' : 'All day');
+        card.appendChild(make('div', 'plan-event-card-when', `${when} · ${hours}`));
+        if (item.calendarName) card.appendChild(make('div', 'plan-event-card-calendar', item.calendarName));
+
+        if (item.location) {
+            const where = make('div', 'plan-event-card-where');
+            appendLinkedText(where, item.location);
+            card.appendChild(where);
+        }
+        const description = eventDescriptionText(item.details);
+        if (description) {
+            const body = make('div', 'plan-event-card-details');
+            appendLinkedText(body, description);
+            card.appendChild(body);
+        }
+
+        // The calendar's own handlers must not take a press in the card.
+        ['mousedown', 'dblclick', 'click'].forEach(type =>
+            card.addEventListener(type, event => event.stopPropagation()));
+        container.appendChild(card);
+        eventCardEl = card;
+
+        // Under the event, or above it near the foot of the window.
+        placeCard(card, anchorEl, 8);
+        document.addEventListener('pointerdown', onEventCardOutside, true);
+        document.addEventListener('keydown', onEventCardKey, true);
+        calendarContainer.addEventListener('scroll', closeEventCard);
+        // Focus in the card, for Escape and the keys, with no ring on a button.
+        card.tabIndex = -1;
+        card.focus({ preventScroll: true });
+    }
+
+    /** A calendar event that opens its card when clicked. */
+    function openableEvent(el, item) {
+        el.addEventListener('mousedown', (event) => event.stopPropagation());
+        el.addEventListener('click', (event) => {
+            event.stopPropagation();
+            openEventCard(item, el);
+        });
+    }
+
     function roadmapDaysText(start, end) {
         const days = Math.max(1, roadmapDaysBetween(start, end) + 1);
         if (currentLanguage === 'da') return `${days} ${days === 1 ? 'dag' : 'dage'}`;
@@ -5960,15 +6131,8 @@ const PlanModule = (function () {
         roadmapCardFor = item.id;
 
         // Under the bar, from where it was pressed; inside the window.
-        const at = rectOf(anchorEl);
-        const rect = rectOf(card);
         const zoom = zoomInfo().zoom;
-        const winW = window.innerWidth / zoom;
-        const winH = window.innerHeight / zoom;
-        const below = at.bottom + 8 + rect.height <= winH - 8;
-        const left = Number.isFinite(atX) ? atX - 40 : at.left;
-        card.style.left = `${Math.max(8, Math.min(left, winW - rect.width - 8))}px`;
-        card.style.top = `${below ? at.bottom + 8 : Math.max(8, at.top - rect.height - 8)}px`;
+        placeCard(card, anchorEl, 8, Number.isFinite(atX) ? (atX - 40) * zoom : undefined);
         document.addEventListener('pointerdown', onRoadmapCardOutside, true);
         document.addEventListener('keydown', onRoadmapCardKey, true);
         calendarContainer.addEventListener('scroll', closeRoadmapCard);

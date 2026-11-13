@@ -659,8 +659,12 @@ function OverlayTitle({
 /**
  * Task details. `canExpand`: whether they can widen over the whole window
  * (false where they take it anyway: a narrow window, the Today session).
+ * `full`: they are laid out as a widened document.
  */
-export function renderNotesOverlay(m: TodoPageModel, { canExpand = false }: { canExpand?: boolean } = {}) {
+export function renderNotesOverlay(
+  m: TodoPageModel,
+  { canExpand = false, full = false }: { canExpand?: boolean; full?: boolean } = {}
+) {
   const {
     state,
     assignEnabled,
@@ -888,7 +892,7 @@ export function renderNotesOverlay(m: TodoPageModel, { canExpand = false }: { ca
         aria-label={task.text}
       >
         <DetailsResizer m={m} />
-        <TaskDetailsBar m={m} task={task} canExpand={canExpand} />
+        <TaskDetailsBar m={m} task={task} canExpand={canExpand} full={full} />
         <TaskOverlayHead
           m={m}
           task={task}
@@ -912,13 +916,13 @@ export function renderNotesOverlay(m: TodoPageModel, { canExpand = false }: { ca
         <div className="task-overlay-top">
           {/* Full screen, who made the task stands beside Focus, and the
               fields below go across in columns (task-details.css). */}
-          {canExpand && m.detailsFull ? (
+          {full ? (
             <div className="task-details-lead">
               <TaskDetailsActions m={m} task={task} />
               <TaskDetailsInfo m={m} task={task} />
             </div>
           ) : <TaskDetailsActions m={m} task={task} />}
-          <TaskOverlayChips m={m} task={task} withInfo={!(canExpand && m.detailsFull)} />
+          <TaskOverlayChips m={m} task={task} withInfo={!full} />
           <div className="task-overlay-subtasks" aria-label={t("subtasks")}>
               <h3 className="task-details-subtasks-heading">{t("subtasks")}</h3>
               <div className="task-subtask-list" ref={subtaskListRef}>

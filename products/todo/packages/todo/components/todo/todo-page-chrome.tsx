@@ -12,7 +12,7 @@ import { SearchInput } from "@/components/todo/search-input";
 import { Plus } from "lucide-react";
 
 import { HoverRow } from "@/components/todo/hover-row";
-import { TodoOfflineStatusPill } from "@/components/todo/TodoOfflineStatusPill";
+import { todoHost } from "@/lib/todo/host";
 import { TodoPersonAvatar } from "@/components/todo/TodoPeopleEditor";
 import { ViewSwitcher } from "@/components/todo/ViewSwitcher";
 import {
@@ -34,6 +34,7 @@ import { toggleId } from "@/lib/todo/task-helpers";
 import { firstNameOf } from "@/lib/todo/people";
 
 export function renderTitleBar(m: TodoPageModel) {
+  const { OfflineStatusPill } = todoHost();
   const {
     isOffline,
     pendingOpsCount,
@@ -93,7 +94,7 @@ export function renderTitleBar(m: TodoPageModel) {
             ]}
           />
         ) : null}
-        <TodoOfflineStatusPill
+        <OfflineStatusPill
           isOffline={isOffline}
           pendingOpsCount={pendingOpsCount}
           isSyncing={isSyncing}

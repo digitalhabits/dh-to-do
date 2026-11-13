@@ -5,7 +5,7 @@
  * Part of github.ts, which re-exports what the rest of the app uses.
  */
 
-import { PlanError } from "@/lib/plan/errors";
+import { PlanError } from "@/lib/todo/plan-error";
 
 const GITHUB_API = "https://api.github.com";
 const GITHUB_USER_AGENT = "Digital Habits: To-Do (team@digitalhabits.org)";

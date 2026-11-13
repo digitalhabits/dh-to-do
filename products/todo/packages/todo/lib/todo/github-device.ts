@@ -15,7 +15,7 @@
  * Part of github.ts, which re-exports what the rest of the app uses.
  */
 
-import { PlanError } from "@/lib/plan/errors";
+import { PlanError } from "@/lib/todo/plan-error";
 
 import { todoDb } from "./db-driver";
 import { githubApi, githubHeaders } from "./github-client";

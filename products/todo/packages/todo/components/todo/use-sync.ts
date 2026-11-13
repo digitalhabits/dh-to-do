@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import { GITHUB_PUBLISH_EVENT } from "@/components/todo/task-github-item";
 import { REMINDERS_CONNECTED_KEY } from "@/components/todo/TodoSettingsModal";
 import type { TodoApi } from "@/components/todo/use-write-tracking";
-import { isOfflineNow } from "@/lib/offline/todo-offline";
-import { isNativeShell } from "@/lib/native-shell";
+import { todoHost } from "@/lib/todo/host";
+import { isNativeShell } from "@/lib/todo/native-bridge";
 import { describeError } from "@/lib/todo/errors";
 import type { TodoView } from "@/lib/todo/list-scope";
 import { syncRemindersList } from "@/lib/todo/reminders-sync";
@@ -207,7 +207,7 @@ export function useSync({
       toastId?: string | number;
     }
   ): Promise<string[]> {
-    if (isOfflineNow()) {
+    if (todoHost().isOfflineNow()) {
       if (!opts?.silent) {
         toast.info(t("syncNeedsConnection"));
       }
@@ -345,7 +345,7 @@ export function useSync({
     }
     // Offline, nothing is synced: say so, and not "Syncing" and then "up
     // to date", which the empty answer below would read as.
-    if (isOfflineNow()) {
+    if (todoHost().isOfflineNow()) {
       toast.info(t("syncNeedsConnection"));
       return;
     }
@@ -422,7 +422,7 @@ export function useSync({
     const onPublish = (e: Event) => {
       const listId = (e as CustomEvent<{ listId?: string }>).detail?.listId;
       const list = listsRef.current.find((l) => l.id === listId);
-      if (!list?.githubRepo || isOfflineNow()) return;
+      if (!list?.githubRepo || todoHost().isOfflineNow()) return;
       void enqueueSync([list], { silent: true }).catch((err) => {
         toast.error(describeError(err, t("syncFailed")));
       });
@@ -452,7 +452,7 @@ export function useSync({
   const autoSyncAllRef = React.useRef<() => void>(() => {});
   React.useEffect(() => {
     autoSyncAllRef.current = () => {
-      if (isOfflineNow()) return;
+      if (todoHost().isOfflineNow()) return;
       const linked = listsRef.current.filter((l) => listHasSyncLink(l));
       if (!linked.length) return;
       void enqueueSync(linked, { silent: true }).catch(() => {
