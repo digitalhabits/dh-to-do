@@ -2,3 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
   - "products/*/packages/*"
+
+# pnpm does not run the install script of a dependency that is not named
+# here, and stops the install when it finds one. The build and the tests
+# pass without the scripts below, so each is `false`. Read the script of
+# a new dependency before you set it to `true`.
+allowBuilds:
+  esbuild: false

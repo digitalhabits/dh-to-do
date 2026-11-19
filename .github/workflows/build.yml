@@ -151,8 +151,9 @@ jobs:
 
       - name: Set up pnpm
         run: |
-          corepack enable
-          corepack prepare pnpm@9.14.4 --activate
+          # Not through corepack: a corepack older than 0.36 cannot start
+          # pnpm 12, and Node 22 can bring an older one.
+          npm install -g pnpm@12.21.0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -283,8 +284,9 @@ jobs:
 
       - name: Set up pnpm
         run: |
-          corepack enable
-          corepack prepare pnpm@9.14.4 --activate
+          # Not through corepack: a corepack older than 0.36 cannot start
+          # pnpm 12, and Node 22 can bring an older one.
+          npm install -g pnpm@12.21.0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -404,8 +406,9 @@ jobs:
 
       - name: Set up pnpm
         run: |
-          corepack enable
-          corepack prepare pnpm@9.14.4 --activate
+          # Not through corepack: a corepack older than 0.36 cannot start
+          # pnpm 12, and Node 22 can bring an older one.
+          npm install -g pnpm@12.21.0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
