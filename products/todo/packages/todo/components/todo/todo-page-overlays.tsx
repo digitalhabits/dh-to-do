@@ -23,18 +23,39 @@ import { taskCardChrome, stepParentLine } from "@/components/todo/todo-task-card
 import type { TodoPageModel } from "@/components/todo/use-todo-page";
 import { queueWithAdded, sessionTasksFromBoard } from "@/lib/todo/session-queue";
 import { COLOR_SWATCHES } from "@/lib/todo/tab-colours";
-import { FOCUS_SWITCH_REQUEST_MESSAGE, type TodoTask } from "@/lib/todo/types";
+import { FOCUS_SWITCH_REQUEST_MESSAGE, type TodoList, type TodoTask } from "@/lib/todo/types";
 
 /**
  * The rows of a Google or Microsoft list picker. With more than one
  * account, each row says which account the list is in.
  */
-function serviceListOptions(lists: { id: string; name: string; account: string }[]) {
+function serviceListOptions(
+  lists: { id: string; name: string; account: string }[],
+  taken: Set<string>
+) {
   const many = new Set(lists.map((l) => l.account)).size > 1;
-  return lists.map((l) => ({
-    value: l.id,
-    label: many ? `${l.name} (${l.account})` : l.name,
-  }));
+  return lists
+    .filter((l) => !taken.has(l.id))
+    .map((l) => ({
+      value: l.id,
+      label: many ? `${l.name} (${l.account})` : l.name,
+    }));
+}
+
+/**
+ * The Google or Microsoft lists that another list of the board is linked
+ * to. The picker leaves them out: one such list goes with one list here.
+ * With two, a new task from there shows in one of them only. The store
+ * refuses the second link too (google-link.ts, microsoft-link.ts).
+ */
+function takenServiceLists(
+  lists: TodoList[],
+  editedId: string | undefined,
+  key: "googleListId" | "microsoftListId"
+): Set<string> {
+  return new Set(
+    lists.filter((l) => l.id !== editedId && l[key]).map((l) => l[key] as string)
+  );
 }
 
 export function renderListDialog(m: TodoPageModel) {
@@ -65,6 +86,7 @@ export function renderListDialog(m: TodoPageModel) {
     modalMicrosoftListId,
     selectMicrosoftList,
     importingGroup,
+    state,
     bcConnected,
     remindersConnected,
     t,
@@ -78,6 +100,9 @@ export function renderListDialog(m: TodoPageModel) {
     removeList,
     removeGroup,
   } = m;
+  // The list that the dialog changes keeps its own link in the picker.
+  const editedListId =
+    listModal?.mode === "rename" && listModal.kind === "list" ? listModal.list.id : undefined;
   // The same delete as the tab's ×, where the tab has one.
   const remove =
     listModal?.mode !== "rename"
@@ -268,7 +293,7 @@ export function renderListDialog(m: TodoPageModel) {
                 value={modalGoogleListId}
                 // The first row is "none": choosing it unlinks the list.
                 placeholder={t("notLinked")}
-                options={serviceListOptions(googleLists)}
+                options={serviceListOptions(googleLists, takenServiceLists(state.lists, editedListId, "googleListId"))}
                 onChange={selectGoogleList}
               />
               {modalGoogleListId ? (
@@ -284,7 +309,7 @@ export function renderListDialog(m: TodoPageModel) {
                 value={modalMicrosoftListId}
                 // The first row is "none": choosing it unlinks the list.
                 placeholder={t("notLinked")}
-                options={serviceListOptions(microsoftLists)}
+                options={serviceListOptions(microsoftLists, takenServiceLists(state.lists, editedListId, "microsoftListId"))}
                 onChange={selectMicrosoftList}
               />
               {modalMicrosoftListId ? (

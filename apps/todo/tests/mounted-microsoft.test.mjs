@@ -183,9 +183,11 @@ suite(async () => {
   const second = () =>
     $$(".todo-select-option").find((o) => o.textContent === `Work (${SECOND})`);
   check("the picker has the second account's list, with its account", await until(() => Boolean(second())));
+  // "Errands" is linked to the first list of the board already. One
+  // Microsoft list goes with one list here, so the picker leaves it out.
   check(
-    "and the first account's list says its account too",
-    $$(".todo-select-option").some((o) => o.textContent === `Errands (${ACCOUNT})`)
+    "and the first account's list, which another list has, is not offered",
+    !$$(".todo-select-option").some((o) => o.textContent.startsWith("Errands"))
   );
   click(second());
   await until(() => $("#tab-name-modal input")?.value === "Work");

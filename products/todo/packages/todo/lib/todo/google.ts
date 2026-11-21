@@ -42,6 +42,7 @@ export { noteGoogleBoardWrite, onGoogleBoardWrite } from "./google-push";
 
 export {
   type GoogleListLink,
+  assertGoogleListFree,
   getGoogleLink,
   setGoogleLink,
   withGoogleLinks,

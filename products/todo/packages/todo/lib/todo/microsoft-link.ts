@@ -10,6 +10,8 @@
  * Part of microsoft.ts, which re-exports what the rest of the app uses.
  */
 
+import { PlanError } from "@/lib/todo/plan-error";
+
 import { todoDb } from "./db-driver";
 import type { TodoList } from "./types";
 
@@ -34,6 +36,29 @@ export async function getMicrosoftLink(listId: string): Promise<MicrosoftListLin
 }
 
 /**
+ * One Microsoft To Do list can be linked to one list of the board. With two, a new
+ * task from there goes into the list that syncs first and never shows in
+ * the other, and the person sees a sync that works in one direction only.
+ * Throws when another list of the board (not a deleted one) has the link.
+ */
+export async function assertMicrosoftListFree(
+  listId: string | null,
+  account: string,
+  remoteListId: string
+): Promise<void> {
+  const { rows } = await todoDb().query(
+    `SELECT l.name AS name FROM todo_microsoft_lists k JOIN todo_lists l ON l.id = k.list_id
+     WHERE k.account = $1 AND k.microsoft_list_id = $2 AND l.deleted_at IS NULL AND k.list_id <> $3`,
+    [account, remoteListId, listId ?? ""]
+  );
+  if (!rows[0]) return;
+  throw new PlanError(
+    `This Microsoft To Do list is already connected to your list "${rows[0].name as string}". Connect another Microsoft To Do list, or remove that connection first.`,
+    409
+  );
+}
+
+/**
  * Link a list to a Microsoft To Do list, or to none.
  *
  * Another Microsoft list, or none: the tasks' own links go too. They name
@@ -51,6 +76,7 @@ export async function setMicrosoftLink(
     (now?.microsoftListId ?? null) === (microsoftListId || null) &&
     (microsoftListId ? now?.account === account : true);
   if (same) return;
+  if (microsoftListId && account) await assertMicrosoftListFree(listId, account, microsoftListId);
   await todoDb().query("DELETE FROM todo_microsoft_tasks WHERE list_id = $1", [listId]);
   await todoDb().query("DELETE FROM todo_microsoft_lists WHERE list_id = $1", [listId]);
   if (!microsoftListId || !account) return;

@@ -291,6 +291,16 @@ async function handleLists(
 ): Promise<Record<string, unknown> | null> {
   if (upper === "POST") {
     const { googleAccount, googleListId, microsoftAccount, microsoftListId, ...input } = payload;
+    // Before the list is made: a refused link must not leave a list behind.
+    if (googleListId) {
+      await google.assertGoogleListFree(null, String(googleAccount ?? ""), String(googleListId));
+    } else if (microsoftListId) {
+      await microsoft.assertMicrosoftListFree(
+        null,
+        String(microsoftAccount ?? ""),
+        String(microsoftListId)
+      );
+    }
     const list = await store.createTodoList(
       input as Parameters<typeof store.createTodoList>[0]
     );

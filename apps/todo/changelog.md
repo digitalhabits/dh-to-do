@@ -21,6 +21,8 @@ under-the-hood improvements.
 - You can connect a list to Microsoft To Do in the same way.
 - You can connect more than one Google account and more than one Microsoft
   account.
+- One Google Tasks or Microsoft To Do list goes with one list in To-Do.
+  The list picker shows only the lists that are free.
 - A change that you make in Google Tasks or Microsoft To Do comes into
   To-Do soon after, while the app is open.
 - Your sign-in to Google and Microsoft is kept in the safe store of your

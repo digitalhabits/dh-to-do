@@ -34,6 +34,7 @@ export { type MicrosoftBase, dueFromMicrosoft, dueToMicrosoft } from "./microsof
 
 export {
   type MicrosoftListLink,
+  assertMicrosoftListFree,
   getMicrosoftLink,
   setMicrosoftLink,
   withMicrosoftLinks,
