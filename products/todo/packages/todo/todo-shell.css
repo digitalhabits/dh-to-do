@@ -229,8 +229,9 @@ html.todo-welcome-open .todo-shell #normal-mode .footer {
    TodoPage caps it to match. */
 .todo-shell .done-container {
   padding-top: 2px;
-  /* None under it: the footer, or focus mode's room, is space enough. */
-  padding-bottom: 0;
+  /* A little under it, so the DONE row does not sit on the window's
+     bottom edge (2026-11-14; it was 0). */
+  padding-bottom: 4px;
 }
 
 .todo-shell .done-heading-row {

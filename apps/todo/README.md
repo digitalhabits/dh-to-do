@@ -72,6 +72,27 @@ file shows as a broken image, and no typecheck or build reports it.
   `https://todo.digitalhabits.org` (same as Digitals Habits: To-Do / redd-do).
   The client secret stays in AWS Secrets Manager. Access tokens live in local
   SQLite. Deep-link fallback scheme: `reddtodo://`.
+- **Google Tasks**, in this app only. The sign-in is in
+  `src-tauri/src/google.rs`: a loopback redirect with PKCE, and no server.
+  The refresh token is kept in the system's credential store (a file that
+  only the user can read on Linux), never in SQLite and never in a backup.
+  The sync is `lib/todo/google-sync.ts`. Task data from Google stays on the
+  computer: that is what Google approved, so the planner has no such sync.
+  A build needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the
+  environment, or in `apps/todo/.env` (gitignored) for a local build.
+  Without them the app builds and shows no Google row. The app may ask
+  only for the scopes Google approved (`GOOGLE_SCOPE` in `google.rs`).
+- **Microsoft To Do**, in this app only, built as Google Tasks is. The
+  sign-in is in `src-tauri/src/microsoft.rs` (the parts it shares with
+  Google's are in `sign_in.rs`), and the sync is `lib/todo/microsoft-sync.ts`.
+  It reads changes with a Graph delta link, which the list's link row keeps.
+  A build needs `MICROSOFT_CLIENT_ID` in the environment, or in
+  `apps/todo/.env` for a local build. There is no client secret: a desktop
+  app is a public client at Microsoft. Without the id the app builds and
+  shows no Microsoft row. The app registration (Microsoft Entra) needs:
+  accounts in any organization and personal accounts; the platform "Mobile
+  and desktop applications" with the redirect `http://localhost`; and the
+  delegated Graph permission `Tasks.ReadWrite`.
 
 See [products/todo/README.md](../../products/todo/README.md) for the storage
 model and backup notes.

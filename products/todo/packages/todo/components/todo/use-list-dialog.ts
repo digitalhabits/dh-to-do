@@ -10,6 +10,7 @@ import { describeError } from "@/lib/todo/errors";
 import { countText, fillText } from "@/lib/todo/i18n";
 import { resolveListIconId } from "@/lib/todo/list-icons";
 import { isEverythingGroup } from "@/lib/todo/list-scope";
+import { isStandaloneTodo } from "@/lib/todo/product-flavor";
 import { newClientId } from "@/lib/todo/optimistic-task";
 import { syncRemindersList } from "@/lib/todo/reminders-sync";
 import { CURRENT_GROUP_KEY, persistPref } from "@/lib/todo/saved-prefs";
@@ -24,6 +25,50 @@ import {
 } from "@/lib/todo/types";
 
 /** The list or group dialog: making one, or changing its name and look. */
+/** A task list of Google or Microsoft, and the account it is in. */
+export type ServiceList = { id: string; name: string; account: string };
+
+/**
+ * The task lists of every connected account that may sync tasks. `account`
+ * is the first such account, or "" when there is none (the field then
+ * stays hidden). An account whose lists cannot be read gives none.
+ */
+async function readServiceLists(
+  api: TodoApi,
+  service: "google" | "microsoft"
+): Promise<{ account: string; lists: ServiceList[] }> {
+  const status = (await api(`/api/todo/${service}/status`, "GET")) as {
+    accounts?: { email: string; tasks: boolean }[];
+  };
+  const accounts = (status.accounts ?? []).filter((a) => a.tasks).map((a) => a.email);
+  const perAccount = await Promise.all(
+    accounts.map(async (account) => {
+      const json = await api(`/api/todo/${service}/lists`, "POST", { account }).catch(() => ({
+        lists: [],
+      }));
+      const lists = (json.lists as { id: string; name: string }[]) ?? [];
+      return lists.map((l) => ({ ...l, account }));
+    })
+  );
+  return { account: accounts[0] ?? "", lists: perAccount.flat() };
+}
+
+/**
+ * The account a picked list is in. A list that was linked before, and is
+ * not in what the accounts gave now, keeps the account it had.
+ */
+function accountOfPick(
+  lists: ServiceList[],
+  listId: string,
+  before: { account?: string | null; listId?: string | null } | null,
+  first: string
+): string {
+  const picked = lists.find((l) => l.id === listId);
+  if (picked) return picked.account;
+  if (before?.listId === listId && before.account) return before.account;
+  return first;
+}
+
 export type ListModalState =
   | { mode: "create"; kind: "list" }
   | { mode: "create"; kind: "group" }
@@ -37,6 +82,15 @@ type ListLinks = {
   basecampListId: string | null;
   remindersListId: string | null;
   githubRepo: string | null;
+  /**
+   * Only there when this app can sync Google Tasks (the desktop app, with
+   * an account connected). The planner's server never gets these keys.
+   */
+  googleAccount?: string | null;
+  googleListId?: string | null;
+  /** The same for Microsoft To Do. */
+  microsoftAccount?: string | null;
+  microsoftListId?: string | null;
 };
 
 /** How a list looks, as the dialog saves it. */
@@ -65,8 +119,30 @@ export function useListDialogState() {
   const [githubConfigured, setGithubConfigured] = React.useState(false);
   const [githubRepos, setGithubRepos] = React.useState<string[]>([]);
   const [modalGithubRepo, setModalGithubRepo] = React.useState("");
+  /* Google Tasks, in the desktop app: the first connected account that may
+     sync tasks ("" when there is none, and the field stays hidden), the
+     task lists of every such account, and the one picked. */
+  const [googleAccount, setGoogleAccount] = React.useState("");
+  const [googleLists, setGoogleLists] = React.useState<ServiceList[]>([]);
+  const [modalGoogleListId, setModalGoogleListId] = React.useState("");
+  /* Microsoft To Do, in the desktop app: the same three. */
+  const [microsoftAccount, setMicrosoftAccount] = React.useState("");
+  const [microsoftLists, setMicrosoftLists] = React.useState<ServiceList[]>([]);
+  const [modalMicrosoftListId, setModalMicrosoftListId] = React.useState("");
   const [importingGroup, setImportingGroup] = React.useState(false);
   return {
+    googleAccount,
+    setGoogleAccount,
+    googleLists,
+    setGoogleLists,
+    modalGoogleListId,
+    setModalGoogleListId,
+    microsoftAccount,
+    setMicrosoftAccount,
+    microsoftLists,
+    setMicrosoftLists,
+    modalMicrosoftListId,
+    setModalMicrosoftListId,
     githubConfigured,
     setGithubConfigured,
     githubRepos,
@@ -130,6 +206,14 @@ export function useListDialogLinks({
     setModalGithubRepo,
     setGithubConfigured,
     setGithubRepos,
+    googleLists,
+    setGoogleAccount,
+    setGoogleLists,
+    setModalGoogleListId,
+    microsoftLists,
+    setMicrosoftAccount,
+    setMicrosoftLists,
+    setModalMicrosoftListId,
   } = listDialog;
   // Load link options when list/group dialogs open with integrations connected.
   const needsBcProjects =
@@ -161,6 +245,21 @@ export function useListDialogLinks({
         })
         .catch(() => setGithubConfigured(false));
     }
+    // Google Tasks: the desktop app only. The planner has no such route.
+    if (listModalOpen && isStandaloneTodo()) {
+      void readServiceLists(api, "google")
+        .then(({ account, lists }) => {
+          setGoogleAccount(account);
+          setGoogleLists(lists);
+        })
+        .catch(() => setGoogleAccount(""));
+      void readServiceLists(api, "microsoft")
+        .then(({ account, lists }) => {
+          setMicrosoftAccount(account);
+          setMicrosoftLists(lists);
+        })
+        .catch(() => setMicrosoftAccount(""));
+    }
   }, [
     listModal,
     needsBcProjects,
@@ -171,6 +270,10 @@ export function useListDialogLinks({
     setRemindersLists,
     setGithubConfigured,
     setGithubRepos,
+    setGoogleAccount,
+    setGoogleLists,
+    setMicrosoftAccount,
+    setMicrosoftLists,
   ]);
 
   async function selectBcProject(projectId: string) {
@@ -199,6 +302,8 @@ export function useListDialogLinks({
 
   function selectBcList(listId: string) {
     setModalBcListId(listId);
+    // A list syncs with one service. See selectGoogleList.
+    if (listId) clearTaskServicePicks();
     if (!listId || modalName.trim()) return;
     const list = bcTodolists.find((l) => l.id === listId);
     if (!list) return;
@@ -209,6 +314,7 @@ export function useListDialogLinks({
 
   function selectRemindersList(listId: string) {
     setModalRemindersListId(listId);
+    if (listId) clearTaskServicePicks();
     if (!listId || modalName.trim()) return;
     const list = remindersLists.find((l) => l.id === listId);
     if (list) setModalName(list.name);
@@ -216,12 +322,58 @@ export function useListDialogLinks({
 
   function selectGithubRepo(repo: string) {
     setModalGithubRepo(repo);
+    if (repo) clearTaskServicePicks();
     if (!repo || modalName.trim()) return;
     // "owner/repo" gives the name "repo".
     setModalName(repo.split("/").pop() ?? repo);
   }
 
-  return { selectBcProject, selectBcList, selectRemindersList, selectGithubRepo };
+  function clearTaskServicePicks() {
+    setModalGoogleListId("");
+    setModalMicrosoftListId("");
+  }
+
+  function clearOtherPicks() {
+    setModalBcProjectId("");
+    setModalBcListId("");
+    setModalRemindersListId("");
+    setModalGithubRepo("");
+  }
+
+  /**
+   * A list syncs with one service. Two at once would each take the other's
+   * changes as the person's own, and a task removed in one would be
+   * removed in the other. So a Google or Microsoft pick clears the other
+   * links, and a pick of another service clears these two.
+   */
+  function selectGoogleList(listId: string) {
+    setModalGoogleListId(listId);
+    if (!listId) return;
+    clearOtherPicks();
+    setModalMicrosoftListId("");
+    if (modalName.trim()) return;
+    const list = googleLists.find((l) => l.id === listId);
+    if (list) setModalName(list.name);
+  }
+
+  function selectMicrosoftList(listId: string) {
+    setModalMicrosoftListId(listId);
+    if (!listId) return;
+    clearOtherPicks();
+    setModalGoogleListId("");
+    if (modalName.trim()) return;
+    const list = microsoftLists.find((l) => l.id === listId);
+    if (list) setModalName(list.name);
+  }
+
+  return {
+    selectBcProject,
+    selectBcList,
+    selectRemindersList,
+    selectGithubRepo,
+    selectGoogleList,
+    selectMicrosoftList,
+  };
 }
 
 /** Opening the dialog for a list or a group, and saving what it holds. */
@@ -273,6 +425,14 @@ export function useListDialogActions({
     setModalRemindersListId,
     modalGithubRepo,
     setModalGithubRepo,
+    googleAccount,
+    googleLists,
+    modalGoogleListId,
+    setModalGoogleListId,
+    microsoftAccount,
+    microsoftLists,
+    modalMicrosoftListId,
+    setModalMicrosoftListId,
     importingGroup,
     setImportingGroup,
   } = listDialog;
@@ -285,6 +445,8 @@ export function useListDialogActions({
     setBcTodolists([]);
     setModalRemindersListId("");
     setModalGithubRepo("");
+    setModalGoogleListId("");
+    setModalMicrosoftListId("");
     setListModal({ mode: "create", kind: "list" });
   }
 
@@ -302,6 +464,8 @@ export function useListDialogActions({
     setBcTodolists([]);
     setModalRemindersListId(list.remindersListId ?? "");
     setModalGithubRepo(list.githubRepo ?? "");
+    setModalGoogleListId(list.googleListId ?? "");
+    setModalMicrosoftListId(list.microsoftListId ?? "");
     if (list.basecampProjectId) void selectBcProjectKeepList(list);
     setListModal({ mode: "rename", kind: "list", list });
   }
@@ -357,7 +521,12 @@ export function useListDialogActions({
       (isBcGroupImport
         ? projectName || "New Group"
         : modal.kind === "list"
-          ? bcListName || remindersListName || modalGithubRepo.split("/").pop() || ""
+          ? bcListName ||
+            remindersListName ||
+            modalGithubRepo.split("/").pop() ||
+            googleLists.find((l) => l.id === modalGoogleListId)?.name ||
+            microsoftLists.find((l) => l.id === modalMicrosoftListId)?.name ||
+            ""
           : "")
     );
   }
@@ -530,6 +699,40 @@ export function useListDialogActions({
     void refresh();
   }
 
+  /**
+   * A list newly linked to Google Tasks or Microsoft To Do takes in the
+   * open tasks, and sends its own.
+   */
+  async function importListFromTaskService(list: TodoList, service: "google" | "microsoft") {
+    const names = {
+      google: { label: "Google Tasks", importing: "importingFromGoogle", failed: "importFromGoogleFailed" },
+      microsoft: {
+        label: "Microsoft To Do",
+        importing: "importingFromMicrosoft",
+        failed: "importFromMicrosoftFailed",
+      },
+    }[service];
+    suppressAutoSyncListIdsRef.current.add(list.id);
+    const toastId = toast.loading(fillText(t(names.importing), { name: list.name }));
+    try {
+      const json = await api(`/api/todo/${service}/sync`, "POST", { listId: list.id });
+      toast.success(fillText(t("syncedList"), { name: list.name }), {
+        id: toastId,
+        description: formatSyncCounts(
+          t,
+          names.label,
+          json.result as { pulled: number; pushed: number; updated: number; removed: number }
+        ),
+        duration: 5000,
+      });
+    } catch (err) {
+      toast.error(describeError(err, t(names.failed)), { id: toastId });
+    } finally {
+      suppressAutoSyncListIdsRef.current.delete(list.id);
+    }
+    void refresh();
+  }
+
   /** A list newly linked to GitHub takes in the repository's open issues. */
   async function importListFromGithub(list: TodoList) {
     suppressAutoSyncListIdsRef.current.add(list.id);
@@ -594,6 +797,12 @@ export function useListDialogActions({
       await importNewListFromBasecamp(list);
     }
     if (list.githubRepo && !todoHost().isOfflineNow()) await importListFromGithub(list);
+    if (list.googleListId && !todoHost().isOfflineNow()) {
+      await importListFromTaskService(list, "google");
+    }
+    if (list.microsoftListId && !todoHost().isOfflineNow()) {
+      await importListFromTaskService(list, "microsoft");
+    }
   }
 
   async function renameList(
@@ -622,6 +831,20 @@ export function useListDialogActions({
     if (links.githubRepo && links.githubRepo !== (list.githubRepo ?? null) && !todoHost().isOfflineNow()) {
       await importListFromGithub(json.list as TodoList);
     }
+    if (
+      links.googleListId &&
+      links.googleListId !== (list.googleListId ?? null) &&
+      !todoHost().isOfflineNow()
+    ) {
+      await importListFromTaskService(json.list as TodoList, "google");
+    }
+    if (
+      links.microsoftListId &&
+      links.microsoftListId !== (list.microsoftListId ?? null) &&
+      !todoHost().isOfflineNow()
+    ) {
+      await importListFromTaskService(json.list as TodoList, "microsoft");
+    }
   }
 
   async function submitListModal() {
@@ -648,11 +871,41 @@ export function useListDialogActions({
         }
         return;
       }
+      // The list as it was, when this is an edit: its links name their account.
+      const before = modal.mode === "rename" && modal.kind === "list" ? modal.list : null;
       const links: ListLinks = {
         basecampProjectId: modalBcListId ? modalBcProjectId || null : null,
         basecampListId: modalBcListId || null,
         remindersListId: modalRemindersListId || null,
         githubRepo: modalGithubRepo || null,
+        // With no account that may sync tasks, the keys stay out: a list
+        // linked before keeps its link, and the planner never sees them.
+        ...(googleAccount
+          ? {
+              googleAccount: modalGoogleListId
+                ? accountOfPick(
+                    googleLists,
+                    modalGoogleListId,
+                    before && { account: before.googleAccount, listId: before.googleListId },
+                    googleAccount
+                  )
+                : null,
+              googleListId: modalGoogleListId || null,
+            }
+          : {}),
+        ...(microsoftAccount
+          ? {
+              microsoftAccount: modalMicrosoftListId
+                ? accountOfPick(
+                    microsoftLists,
+                    modalMicrosoftListId,
+                    before && { account: before.microsoftAccount, listId: before.microsoftListId },
+                    microsoftAccount
+                  )
+                : null,
+              microsoftListId: modalMicrosoftListId || null,
+            }
+          : {}),
       };
       const appearance: ListAppearance = {
         colour: modalColour || null,

@@ -2,13 +2,17 @@ mod commands;
 mod db;
 mod demo;
 mod focus;
+mod google;
 #[cfg(target_os = "linux")]
 mod linux_update;
 #[cfg(target_os = "macos")]
 mod menu;
+mod microsoft;
 mod oauth;
 mod opener;
 mod reminders;
+mod review;
+mod sign_in;
 
 use tauri::Manager;
 
@@ -111,6 +115,15 @@ pub fn run() {
       focus::exit_fullscreen_focus_to_home,
       oauth::start_basecamp_auth,
       oauth::handle_oauth_callback,
+      google::google_status,
+      google::start_google_auth,
+      google::google_access_token,
+      google::google_disconnect,
+      microsoft::microsoft_status,
+      microsoft::start_microsoft_auth,
+      microsoft::microsoft_access_token,
+      microsoft::microsoft_disconnect,
+      review::request_store_review,
       reminders::fetch_reminders_lists,
       reminders::fetch_reminders_tasks,
       reminders::update_reminders_status,

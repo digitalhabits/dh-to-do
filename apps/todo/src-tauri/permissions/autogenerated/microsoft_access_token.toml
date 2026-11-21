@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-microsoft-access-token"
+description = "Enables the microsoft_access_token command without any pre-configured scope."
+commands.allow = ["microsoft_access_token"]
+
+[[permission]]
+identifier = "deny-microsoft-access-token"
+description = "Denies the microsoft_access_token command without any pre-configured scope."
+commands.deny = ["microsoft_access_token"]

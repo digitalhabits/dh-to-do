@@ -19,6 +19,10 @@
 #   linux         an AppImage and a .deb for x86_64 and for aarch64. The
 #                 AppImage is signed for the updater (not for the reader:
 #                 Linux has no such check). `pnpm --dir apps/todo app:build`.
+#   sbom          the software bill of materials: every third-party
+#                 component of this release with its exact version, in
+#                 CycloneDX form. One file for the JavaScript, one for the
+#                 Rust of each system.
 #   release       a DRAFT release "v<version>" with the packages, their
 #                 checksums, the notes from changelog.md, and latest.json for
 #                 the Linux updater. A person reads it and publishes it.
@@ -151,8 +155,9 @@ jobs:
 
       - name: Set up pnpm
         run: |
-          corepack enable
-          corepack prepare pnpm@9.14.4 --activate
+          # Not through corepack: a corepack older than 0.36 cannot start
+          # pnpm 12, and Node 22 can bring an older one.
+          npm install -g pnpm@12.21.0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -219,6 +224,13 @@ jobs:
         env:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
           MAS_BUILD_NUMBER: ${{ inputs.mas_build_number }}
+          # The Google sign-in for Google Tasks (src-tauri/src/google.rs). The
+          # two are read at compile time. With none, the app builds and has
+          # no Google row in Settings.
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # The Microsoft sign-in for Microsoft To Do (src-tauri/src/microsoft.rs).
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
         run: pnpm --dir apps/todo app:build:mas
 
       # The version in the name, and a checksum with the file name only, for
@@ -283,8 +295,9 @@ jobs:
 
       - name: Set up pnpm
         run: |
-          corepack enable
-          corepack prepare pnpm@9.14.4 --activate
+          # Not through corepack: a corepack older than 0.36 cannot start
+          # pnpm 12, and Node 22 can bring an older one.
+          npm install -g pnpm@12.21.0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -312,6 +325,14 @@ jobs:
       - name: Package
         working-directory: apps/todo
         shell: pwsh
+        env:
+          # The Google sign-in for Google Tasks (src-tauri/src/google.rs). The
+          # two are read at compile time. With none, the app builds and has
+          # no Google row in Settings.
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # The Microsoft sign-in for Microsoft To Do (src-tauri/src/microsoft.rs).
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
         run: |
           switch ('${{ inputs.windows_architecture }}') {
             'x64'   { pnpm app:build:win-store -x64Only }
@@ -404,8 +425,9 @@ jobs:
 
       - name: Set up pnpm
         run: |
-          corepack enable
-          corepack prepare pnpm@9.14.4 --activate
+          # Not through corepack: a corepack older than 0.36 cannot start
+          # pnpm 12, and Node 22 can bring an older one.
+          npm install -g pnpm@12.21.0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -461,6 +483,13 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # The Google sign-in for Google Tasks (src-tauri/src/google.rs). The
+          # two are read at compile time. With none, the app builds and has
+          # no Google row in Settings.
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # The Microsoft sign-in for Microsoft To Do (src-tauri/src/microsoft.rs).
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
         run: pnpm --dir apps/todo app:build
 
       - name: Name the packages
@@ -509,13 +538,86 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # The software bill of materials: every third-party component of this
+  # release with its exact version, in CycloneDX form. One file for the
+  # JavaScript in the window, and one for the Rust of each system's build.
+  # They are read from the lock files. Nothing is installed or built, and the
+  # job has no environment and no secrets. Each file gets a build provenance
+  # attestation, as the packages do.
+  sbom:
+    if: inputs.draft_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          # Not through corepack: a corepack older than 0.36 cannot start
+          # pnpm 12, and Node 22 can bring an older one.
+          npm install -g pnpm@12.21.0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      # The version is fixed, and --locked takes the versions its own lock
+      # file names, so the tool is the same on every run.
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx@0.5.9 --locked
+
+      - name: Write the bills of materials
+        run: |
+          version="$(node -p "require('./apps/todo/package.json').version")"
+          mkdir -p sbom
+          # The JavaScript the app ships: its production dependencies, from
+          # pnpm-lock.yaml.
+          pnpm --filter ./apps/todo sbom --sbom-format cyclonedx --sbom-type application \
+            --prod --lockfile-only --out "$PWD/sbom/Digital-Habits-To-Do_${version}_sbom-js.cdx.json"
+          # The Rust each system's build compiles, from Cargo.lock.
+          for pair in macos:aarch64-apple-darwin windows:x86_64-pc-windows-msvc linux:x86_64-unknown-linux-gnu; do
+            system="${pair%%:*}"
+            target="${pair#*:}"
+            cargo cyclonedx --manifest-path apps/todo/src-tauri/Cargo.toml \
+              --target "$target" --format json --spec-version 1.5 \
+              --override-filename "sbom-rust-$system"
+            mv "apps/todo/src-tauri/sbom-rust-$system.json" \
+              "sbom/Digital-Habits-To-Do_${version}_sbom-rust-$system.cdx.json"
+          done
+          # A missing or empty file must stop the run, not reach a release.
+          for file in sbom/*.cdx.json; do
+            node -e 'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); if(b.bomFormat!=="CycloneDX"||!(b.components||[]).length){console.error(process.argv[1]+": not a bill of materials");process.exit(1)} console.log(process.argv[1]+": "+b.components.length+" components")' "$file"
+          done
+
+      - name: Attest where the bills of materials came from
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: sbom/*.cdx.json
+
+      - name: Keep the bills of materials
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: todo-sbom
+          path: sbom/*.cdx.json
+          if-no-files-found: error
+          retention-days: 30
+
   # A draft, and only a draft. It has no public page until a person publishes
   # it. A run for the same version puts the new files over the old ones. The
   # store packages are not for installing by hand: they are here so the public
   # record holds the exact files that went to the stores. The Linux files ARE
   # for installing: the website links to them.
   release:
-    needs: [mac, windows, linux]
+    needs: [mac, windows, linux, sbom]
     if: ${{ !cancelled() && !failure() && inputs.draft_release }}
     runs-on: ubuntu-latest
     permissions:

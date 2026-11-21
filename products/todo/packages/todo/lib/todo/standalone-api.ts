@@ -11,11 +11,25 @@
 
 import * as basecamp from "./basecamp";
 import * as github from "./github";
+import * as google from "./google";
+import * as microsoft from "./microsoft";
 import { describeError } from "./errors";
 import { installSqliteTodoDriver } from "./sqlite-driver";
 import { installTauriMediaStore } from "./tauri-media";
 import { installStandaloneBasecampTransport } from "./standalone-basecamp";
 import { installStandaloneGithubTransport, nativeFetch } from "./standalone-github";
+import {
+  disconnectGoogle,
+  installStandaloneGoogleTransport,
+  readGoogleStatus,
+  startGoogleSignIn,
+} from "./standalone-google";
+import {
+  disconnectMicrosoft,
+  installStandaloneMicrosoftTransport,
+  readMicrosoftStatus,
+  startMicrosoftSignIn,
+} from "./standalone-microsoft";
 import { isStandaloneTodo } from "./product-flavor";
 import { savedLangT } from "./saved-prefs";
 import { THIS_DEVICE_MAKER } from "./people-scope";
@@ -31,6 +45,12 @@ function ensureDriver() {
   // A deleted task closes its issue at once (github-push.ts); every other
   // change waits for the sync, as Basecamp's does here.
   store.addTodoRemoteListener("github", github.pushGithubAction);
+  installStandaloneGoogleTransport();
+  // Each task write asks the page for a sync of its list soon
+  // (google-push.ts). Nothing goes to Google from the write itself.
+  store.addTodoRemoteListener("google", google.noteGoogleBoardWrite);
+  // Microsoft To Do hears the same word: it names lists, not a service.
+  installStandaloneMicrosoftTransport();
   installTauriMediaStore();
   driverReady = true;
 }
@@ -169,6 +189,169 @@ async function handleGithub(
 }
 
 /**
+ * Google Tasks, the person's own sign-in. This app alone has these routes:
+ * the planner must not sync Google Tasks on its server (google.ts).
+ */
+async function handleGoogle(
+  pathname: string,
+  upper: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  ensureDriver();
+  const route = `${upper} ${pathname.replace("/api/todo/google", "")}`;
+  switch (route) {
+    case "GET /status": {
+      const status = await readGoogleStatus();
+      return {
+        canConnect: status.configured,
+        accounts: status.accounts.map((account) => ({
+          email: account.email,
+          tasks: google.accountCanSyncTasks(account),
+        })),
+      };
+    }
+    case "POST /lists":
+      return { lists: await google.listGoogleTaskLists(String(payload.account ?? "")) };
+    case "POST /sync":
+      return {
+        result: await google.syncGoogleList(String(payload.listId), {
+          confirmRemovals: Boolean(payload.confirmRemovals),
+        }),
+      };
+    case "POST /connect":
+      await startGoogleSignIn();
+      return { ok: true, started: true };
+    case "POST /disconnect":
+      await disconnectGoogle(String(payload.email ?? ""));
+      return { ok: true };
+    default:
+      throw new Error(`Unsupported Google route: ${route}`);
+  }
+}
+
+/**
+ * Microsoft To Do, the person's own sign-in. As Google Tasks, this app
+ * alone has these routes (microsoft.ts).
+ */
+async function handleMicrosoft(
+  pathname: string,
+  upper: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  ensureDriver();
+  const route = `${upper} ${pathname.replace("/api/todo/microsoft", "")}`;
+  switch (route) {
+    case "GET /status": {
+      const status = await readMicrosoftStatus();
+      return {
+        canConnect: status.configured,
+        accounts: status.accounts.map((account) => ({
+          email: account.email,
+          tasks: microsoft.accountCanSyncTasks(account),
+        })),
+      };
+    }
+    case "POST /lists":
+      return { lists: await microsoft.listMicrosoftTaskLists(String(payload.account ?? "")) };
+    case "POST /sync":
+      return {
+        result: await microsoft.syncMicrosoftList(String(payload.listId), {
+          confirmRemovals: Boolean(payload.confirmRemovals),
+        }),
+      };
+    case "POST /connect":
+      await startMicrosoftSignIn();
+      return { ok: true, started: true };
+    case "POST /disconnect":
+      await disconnectMicrosoft(String(payload.email ?? ""));
+      return { ok: true };
+    default:
+      throw new Error(`Unsupported Microsoft route: ${route}`);
+  }
+}
+
+/** A list as the page gets it: with its Google or Microsoft link. */
+async function withLinks<T extends Parameters<typeof google.withGoogleLinks>[0][number]>(
+  lists: T[]
+): Promise<T[]> {
+  return microsoft.withMicrosoftLinks(await google.withGoogleLinks(lists));
+}
+
+/**
+ * The lists. The Google link and the Microsoft link are this app's own
+ * (google-link.ts, microsoft-link.ts): they are taken out of what the
+ * store gets, and added to the list that goes back. A list has one of the
+ * two at most: a new link of one kind ends the link of the other.
+ * Null for a method this route does not have.
+ */
+async function handleLists(
+  upper: string,
+  payload: Record<string, unknown>,
+  id: string | null
+): Promise<Record<string, unknown> | null> {
+  if (upper === "POST") {
+    const { googleAccount, googleListId, microsoftAccount, microsoftListId, ...input } = payload;
+    // Before the list is made: a refused link must not leave a list behind.
+    if (googleListId) {
+      await google.assertGoogleListFree(null, String(googleAccount ?? ""), String(googleListId));
+    } else if (microsoftListId) {
+      await microsoft.assertMicrosoftListFree(
+        null,
+        String(microsoftAccount ?? ""),
+        String(microsoftListId)
+      );
+    }
+    const list = await store.createTodoList(
+      input as Parameters<typeof store.createTodoList>[0]
+    );
+    if (googleListId) {
+      await google.setGoogleLink(list.id, String(googleAccount ?? ""), String(googleListId));
+    } else if (microsoftListId) {
+      await microsoft.setMicrosoftLink(
+        list.id,
+        String(microsoftAccount ?? ""),
+        String(microsoftListId)
+      );
+    }
+    return { list: (await withLinks([list]))[0] };
+  }
+  if (upper === "PATCH") {
+    const {
+      id: listId,
+      googleAccount,
+      googleListId,
+      microsoftAccount,
+      microsoftListId,
+      ...patch
+    } = payload;
+    if (googleListId !== undefined) {
+      await google.setGoogleLink(
+        String(listId),
+        googleListId ? String(googleAccount ?? "") : null,
+        googleListId ? String(googleListId) : null
+      );
+      if (googleListId) await microsoft.setMicrosoftLink(String(listId), null, null);
+    }
+    // After Google's: when both come, Google's wins and this is none.
+    if (microsoftListId !== undefined && !googleListId) {
+      await microsoft.setMicrosoftLink(
+        String(listId),
+        microsoftListId ? String(microsoftAccount ?? "") : null,
+        microsoftListId ? String(microsoftListId) : null
+      );
+      if (microsoftListId) await google.setGoogleLink(String(listId), null, null);
+    }
+    const list = await store.updateTodoList(String(listId), patch);
+    return { list: (await withLinks([list]))[0] };
+  }
+  if (upper === "DELETE" && id) {
+    await store.deleteTodoList(id);
+    return { ok: true };
+  }
+  return null;
+}
+
+/**
  * Standalone transport. Throws if invoke is unavailable or the route is not
  * supported locally.
  */
@@ -193,6 +376,12 @@ export async function standaloneTodoApi(
   if (pathname.startsWith("/api/todo/github")) {
     return handleGithub(pathname, upper, payload);
   }
+  if (pathname.startsWith("/api/todo/google")) {
+    return handleGoogle(pathname, upper, payload);
+  }
+  if (pathname.startsWith("/api/todo/microsoft")) {
+    return handleMicrosoft(pathname, upper, payload);
+  }
 
   ensureDriver();
 
@@ -200,7 +389,8 @@ export async function standaloneTodoApi(
     const today =
       new URL(path, "http://local.invalid").searchParams.get("today") ??
       undefined;
-    return { state: await store.getTodoState({ today }) };
+    const state = await store.getTodoState({ today });
+    return { state: { ...state, lists: await withLinks(state.lists) } };
   }
 
   if (pathname === "/api/todo/tasks") {
@@ -254,20 +444,8 @@ export async function standaloneTodoApi(
   }
 
   if (pathname === "/api/todo/lists") {
-    if (upper === "POST") {
-      const list = await store.createTodoList(
-        payload as Parameters<typeof store.createTodoList>[0]
-      );
-      return { list };
-    }
-    if (upper === "PATCH") {
-      const { id: listId, ...patch } = payload;
-      return { list: await store.updateTodoList(String(listId), patch) };
-    }
-    if (upper === "DELETE" && id) {
-      await store.deleteTodoList(id);
-      return { ok: true };
-    }
+    const answer = await handleLists(upper, payload, id);
+    if (answer) return answer;
   }
 
   if (pathname === "/api/todo/groups") {

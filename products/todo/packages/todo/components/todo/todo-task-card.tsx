@@ -880,11 +880,11 @@ function cardFocusButton(
 }
 
 /** Lists show existing information; the Today session retains its quick controls. */
-/** The people on a card's row: their chip, or, on a done task drawn as a
-    card, their faces with nothing to change. */
-function chromePeople(m: TodoPageModel, task: TodoTask, doneRow: boolean, assignees: TodoPerson[], assignOpen: boolean) {
+/** The people on a card's row: their chip, or, on a done task (in the
+    Done pile too), their faces with nothing to change. */
+function chromePeople(m: TodoPageModel, task: TodoTask, assignees: TodoPerson[], assignOpen: boolean) {
   if (!m.assignEnabled || !assignees.length) return null;
-  if (task.completed && !doneRow) {
+  if (task.completed) {
     return (
       <span className="task-summary-value">
         <TaskAssigneeStack people={assignees} size={22} />
@@ -894,13 +894,12 @@ function chromePeople(m: TodoPageModel, task: TodoTask, doneRow: boolean, assign
   return cardAssignChip(m, task, { assignOpen, assignees });
 }
 
-/** The day on a card's row: the Done pile's "Due: Oct 19", a done card's
-    day with nothing to change it with, or the open card's chip. */
-function chromeDue(m: TodoPageModel, task: TodoTask, doneRow: boolean, duePopoverOpen: boolean) {
+/** The day on a card's row: a done task's day (in the Done pile too) with
+    nothing to change it with, or the open card's chip. Drawn as the open
+    card draws it, the calendar and the day (2026-11-14; the pile said
+    "Due: Oct 19"). */
+function chromeDue(m: TodoPageModel, task: TodoTask, duePopoverOpen: boolean) {
   if (!task.dueOn) return null;
-  if (doneRow) {
-    return <span className="task-summary-value">{m.t("fieldDue")}: {formatDueOnShort(task.dueOn, m.lang, m.t)}</span>;
-  }
   if (task.completed) {
     return (
       <span className="task-summary-value">
@@ -990,12 +989,19 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
         <div className="task-meta-row task-summary-row">
           {/* The people, as avatars, the due date, how long, then the notes
              and steps: the order the add-task box asks in. */}
-          {chromePeople(m, task, doneRow, assignees, assignOpen)}
-          {chromeDue(m, task, doneRow, duePopoverOpen)}
-          {doneRow ? cardDurationMeta(m, task, {
-            hasDuration,
-            editingDur: m.editingDurationTaskId === task.id && !m.notesExpanded,
-          }).metaAlways : hasDuration ? (
+          {chromePeople(m, task, assignees, assignOpen)}
+          {chromeDue(m, task, duePopoverOpen)}
+          {doneRow && hasDuration ? (
+            // The time it took, with the clock the open card's time has.
+            // A click still changes it.
+            <span className="task-summary-value task-summary-spent">
+              <ClockIcon size={13} />
+              {cardDurationMeta(m, task, {
+                hasDuration,
+                editingDur: m.editingDurationTaskId === task.id && !m.notesExpanded,
+              }).metaAlways}
+            </span>
+          ) : doneRow ? null : hasDuration ? (
             <span className="task-summary-value">
               <ClockIcon size={13} />
               {formatDurationShort(task.expectedDurationMinutes!, t("minutes"), t("hoursShort"))}
@@ -1036,11 +1042,11 @@ export function taskCardChrome(m: TodoPageModel, task: TodoTask, where: "board" 
             {/* Whose step it is, when the Planner says it here: a client
                 or collaborator, by name, before its list's icon. */}
             {doneRow ? null : m.boardExtension?.renderListLabel?.(task) ?? null}
-            {/* The list's icon at the right. A done task shows it by its checkbox.
-                The task in hand names its list in words. */}
+            {/* The list's icon at the right, on a done task too (it was by
+                its checkbox). The task in hand names its list in words. */}
             {listName ? (
               <span className="task-summary-list">{listName}</span>
-            ) : isAllListsView && !doneRow
+            ) : isAllListsView
               ? task.parentTaskId
                 ? <StepListMark m={m} step={task} />
                 : cardOriginPicker(m, task, { unlisted, showListOrigin: true, listPickerOpen })
@@ -1095,7 +1101,6 @@ function renderTaskBody(m: TodoPageModel, task: TodoTask, asBoard = false) {
     showBoard, toggleTaskCompleted,
   } = m;
   const showListOrigin = isAllListsView;
-  const unlisted = isUnlistedTask(task);
   const listPickerOpen = m.openListPickerTaskId === task.id;
   const menuOpen = m.openMenuTaskId === task.id;
   const assignOpen = m.openAssignTaskId === task.id;
@@ -1106,9 +1111,9 @@ function renderTaskBody(m: TodoPageModel, task: TodoTask, asBoard = false) {
     animTargetKey(task.id, task.completed)
   );
 
-  /* The checkbox, and the list-origin picker, each once: the done row
-     keeps them stacked in a leading column, an open row shows the origin
-     in the meta row below the words. */
+  /* The checkbox. The list-origin picker is in the details row below the
+     words, on a done row too (it stood under the checkbox until
+     2026-11-14). */
   const checkboxEl = (
     <input
       type="checkbox"
@@ -1138,8 +1143,6 @@ function renderTaskBody(m: TodoPageModel, task: TodoTask, asBoard = false) {
       }}
     />
   );
-  const originPicker = cardOriginPicker(m, task, { unlisted, showListOrigin, listPickerOpen });
-
   const chrome = taskCardChrome(m, task, "board", asBoard);
 
   return (
@@ -1245,18 +1248,10 @@ function renderTaskBody(m: TodoPageModel, task: TodoTask, asBoard = false) {
       {m.boardExtension?.renderTaskHeader(task) ?? null}
       {task.parentTaskId ? stepParentLine(m, task) : null}
       <div
-        className={`task-main-row${
-          doneRow && showListOrigin ? " task-main-row-all" : ""
-        }`}
+        className="task-main-row"
       >
-        {doneRow && showListOrigin ? (
-          <div className="task-leading">
-            {checkboxEl}
-            {originPicker}
-          </div>
-        ) : (
-          checkboxEl
-        )}
+        {/* The list is at the right of the details row, as on an open card. */}
+        {checkboxEl}
           <span
             className={`task-text ${task.completed ? "completed" : ""}`}
             /* One entry point for details, on open and completed tasks. */

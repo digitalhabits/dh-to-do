@@ -10,7 +10,7 @@ import { TODO_APP_VERSION } from "@/lib/todo/version";
 import { isDemoApp, seedDemoBoard } from "./demo/seed";
 import { installStandaloneTodoHost } from "./standalone-host";
 import { showUsagePingSwitchInDev, startUsagePing } from "./usage-ping";
-import { StoreReviewPrompt } from "./store-review";
+import { installStoreReviewLink, StoreReviewPrompt } from "./store-review";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { WindowControls } from "./WindowControls";
 
@@ -80,6 +80,9 @@ if (!isFocusWindow && !demo) {
   // Dev shows the switch, so the page looks as users see it; it sends nothing.
   if (import.meta.env.DEV) showUsagePingSwitchInDev();
 }
+
+// A store build: Settings gets its "Write a review" link.
+if (!isFocusWindow && !demo) installStoreReviewLink();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

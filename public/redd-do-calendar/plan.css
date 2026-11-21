@@ -5492,3 +5492,30 @@ body.dark-mode #plan-mode .plan-modal-dialog {
     color: var(--plan-text-muted);
     font-size: 13px;
 }
+
+/* A phone: the whose-tasks switch and its faces wrap onto lines of their
+   own. In one row, the faces went past the right edge of the screen. */
+@media (max-width: 767px) {
+    #plan-mode .plan-calendar-toggles {
+        flex-wrap: wrap;
+        max-width: 100%;
+    }
+
+    #plan-mode .plan-people-scope-row {
+        flex-wrap: wrap;
+        max-width: 100%;
+        padding-right: 0;
+        margin-right: 0;
+        border-right: 0;
+    }
+
+    #plan-mode .plan-people-faces {
+        flex-wrap: wrap;
+    }
+}
+
+/* The week on a touch screen: a sideways slide is the days' own (plan.js,
+   onWeekTouchMove); an up-and-down one stays the page's scroll. */
+#plan-mode .plan-calendar-container.plan-week-mode {
+    touch-action: pan-y;
+}

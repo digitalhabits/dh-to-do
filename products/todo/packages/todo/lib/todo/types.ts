@@ -74,6 +74,19 @@ export type TodoList = {
    * Optional: a board read before migration 099 has no such column.
    */
   githubRepo?: string | null;
+  /**
+   * The Google Tasks list the list is linked to, and the Google account
+   * it belongs to. Desktop app only, and not columns of the list: the
+   * desktop app adds them from its own tables (lib/todo/google-link.ts).
+   */
+  googleAccount?: string | null;
+  googleListId?: string | null;
+  /**
+   * The same for Microsoft To Do (lib/todo/microsoft-link.ts). A list is
+   * linked to one of the two at most.
+   */
+  microsoftAccount?: string | null;
+  microsoftListId?: string | null;
 };
 
 /** Person on the shared board roster (assignable to tasks). */

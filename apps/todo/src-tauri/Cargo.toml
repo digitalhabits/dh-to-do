@@ -1,6 +1,6 @@
 [package]
 name = "digital-habits-todo"
-version = "3.3.2"
+version = "3.4.0"
 description = "Digital Habits: To-Do — standalone Mac, Windows and Linux app (SQLite via Tauri)"
 authors = ["Digital Habits"]
 license = ""
@@ -36,6 +36,9 @@ tiny_http = "0.12"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tauri-plugin-deep-link = "2"
+# The Google sign-in (google.rs): PKCE needs a hash and random bytes.
+sha2 = "0.11"
+getrandom = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
@@ -57,3 +60,14 @@ objc2 = { version = "0.6", features = ["exception"] }
 objc2-event-kit = { version = "0.3", features = ["EKEventStore", "EKReminder", "EKCalendar", "EKCalendarItem", "EKSource"] }
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSCalendar", "NSDate", "NSError", "NSObject", "NSString", "NSURL"] }
 objc2-app-kit = { version = "0.3", features = ["NSWorkspace"] }
+# The system rating sheet (review.rs).
+objc2-store-kit = { version = "0.3", default-features = false, features = ["std", "SKStoreReviewController"] }
+# To see if the sheet came: the list of windows on screen (review.rs).
+core-graphics = "0.25"
+core-foundation = "0.10"
+
+# The Google refresh token is kept in the system's credential store
+# (google.rs). Linux has no one store on every desktop, and keeps a file
+# that only its user can read.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
