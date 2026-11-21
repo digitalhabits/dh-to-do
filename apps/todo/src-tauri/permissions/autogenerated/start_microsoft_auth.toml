@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-microsoft-auth"
+description = "Enables the start_microsoft_auth command without any pre-configured scope."
+commands.allow = ["start_microsoft_auth"]
+
+[[permission]]
+identifier = "deny-start-microsoft-auth"
+description = "Denies the start_microsoft_auth command without any pre-configured scope."
+commands.deny = ["start_microsoft_auth"]

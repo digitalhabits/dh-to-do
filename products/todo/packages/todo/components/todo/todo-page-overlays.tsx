@@ -25,6 +25,18 @@ import { queueWithAdded, sessionTasksFromBoard } from "@/lib/todo/session-queue"
 import { COLOR_SWATCHES } from "@/lib/todo/tab-colours";
 import { FOCUS_SWITCH_REQUEST_MESSAGE, type TodoTask } from "@/lib/todo/types";
 
+/**
+ * The rows of a Google or Microsoft list picker. With more than one
+ * account, each row says which account the list is in.
+ */
+function serviceListOptions(lists: { id: string; name: string; account: string }[]) {
+  const many = new Set(lists.map((l) => l.account)).size > 1;
+  return lists.map((l) => ({
+    value: l.id,
+    label: many ? `${l.name} (${l.account})` : l.name,
+  }));
+}
+
 export function renderListDialog(m: TodoPageModel) {
   const {
     listModal,
@@ -44,6 +56,14 @@ export function renderListDialog(m: TodoPageModel) {
     githubConfigured,
     githubRepos,
     modalGithubRepo,
+    googleAccount,
+    googleLists,
+    modalGoogleListId,
+    selectGoogleList,
+    microsoftAccount,
+    microsoftLists,
+    modalMicrosoftListId,
+    selectMicrosoftList,
     importingGroup,
     bcConnected,
     remindersConnected,
@@ -237,6 +257,38 @@ export function renderListDialog(m: TodoPageModel) {
               />
               {modalGithubRepo ? (
                 <div className="bc-hint">{t("githubRepositoryHint")}</div>
+              ) : null}
+            </div>
+          ) : null}
+          {listModal.kind === "list" && googleAccount ? (
+            <div className="basecamp-selection">
+              <div className="bc-label">{t("googleTasksList")}</div>
+              <TodoSelect
+                aria-label={t("googleTasksList")}
+                value={modalGoogleListId}
+                // The first row is "none": choosing it unlinks the list.
+                placeholder={t("notLinked")}
+                options={serviceListOptions(googleLists)}
+                onChange={selectGoogleList}
+              />
+              {modalGoogleListId ? (
+                <div className="bc-hint">{t("googleTasksListHint")}</div>
+              ) : null}
+            </div>
+          ) : null}
+          {listModal.kind === "list" && microsoftAccount ? (
+            <div className="basecamp-selection">
+              <div className="bc-label">{t("microsoftTasksList")}</div>
+              <TodoSelect
+                aria-label={t("microsoftTasksList")}
+                value={modalMicrosoftListId}
+                // The first row is "none": choosing it unlinks the list.
+                placeholder={t("notLinked")}
+                options={serviceListOptions(microsoftLists)}
+                onChange={selectMicrosoftList}
+              />
+              {modalMicrosoftListId ? (
+                <div className="bc-hint">{t("microsoftTasksListHint")}</div>
               ) : null}
             </div>
           ) : null}

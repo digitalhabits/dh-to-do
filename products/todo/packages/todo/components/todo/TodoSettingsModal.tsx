@@ -5,6 +5,8 @@ import * as React from "react";
 
 import { DeletedListsRow } from "@/components/todo/settings-deleted-lists";
 import { SettingsGithubRow } from "@/components/todo/settings-github-row";
+import { SettingsGoogleRow } from "@/components/todo/settings-google-row";
+import { SettingsMicrosoftRow } from "@/components/todo/settings-microsoft-row";
 import { useClearWindowButtons } from "@/components/todo/use-clear-window-buttons";
 import { SECTION_TITLE, useSettingsPage } from "@/components/todo/use-settings-page";
 import {
@@ -47,6 +49,7 @@ import {
   startStandaloneBasecampAuth,
   todoHostApi,
 } from "@/lib/todo/standalone-api";
+import { storeReviewLink } from "@/lib/todo/store-review-link";
 
 export const REMINDERS_CONNECTED_KEY = "redd-plan-todo-reminders";
 
@@ -352,12 +355,19 @@ export function TodoSettingsModal({
     }
   }
 
+  // A store build of the desktop app only (lib/todo/store-review-link.ts).
+  const reviewLink = storeReviewLink();
   const feedback = (
     <div className="settings-page-foot">
       <p
         className="settings-page-feedback"
         dangerouslySetInnerHTML={{ __html: t("settingsFeedbackShort") }}
       />
+      {reviewLink ? (
+        <button type="button" className="settings-text-link settings-page-review" onClick={reviewLink}>
+          {t("writeReview")}
+        </button>
+      ) : null}
       {appVersion ? (
         <div className="settings-page-version">
           {t("yourVersion")} {appVersion}
@@ -766,6 +776,9 @@ export function TodoSettingsModal({
                   {/* A person's own sign-in in the desktop app; the team's
                       GitHub App in the planner. */}
                   <SettingsGithubRow t={t} />
+                  {/* The desktop app only: Google task data stays on the device. */}
+                  <SettingsGoogleRow t={t} />
+                  <SettingsMicrosoftRow t={t} />
                 </div>
               </div>
             </section>

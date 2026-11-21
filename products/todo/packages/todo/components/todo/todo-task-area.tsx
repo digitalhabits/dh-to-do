@@ -242,8 +242,15 @@ export function renderDonePile(m: TodoPageModel) {
   const syncGithub = isAllListsView
     ? lists.some((l) => Boolean(l.githubRepo))
     : Boolean(activeList?.githubRepo);
+  // The desktop app only: there alone a list carries a Google link.
+  const syncGoogle = isAllListsView
+    ? lists.some((l) => Boolean(l.googleListId))
+    : Boolean(activeList?.googleListId);
+  const syncMicrosoft = isAllListsView
+    ? lists.some((l) => Boolean(l.microsoftListId))
+    : Boolean(activeList?.microsoftListId);
   const canSync =
-    view === "lists" && (syncBasecamp || syncReminders || syncGithub);
+    view === "lists" && (syncBasecamp || syncReminders || syncGithub || syncGoogle || syncMicrosoft);
   // A search reaches the pile when it is open: its matching done tasks
   // show under the open ones. Folded, it stays out of the search's way.
   const doneShown = doneTasksShown(filteredDoneTasks, isSearching ? searchQueryOf(m.searchQuery) : "");
@@ -254,6 +261,8 @@ export function renderDonePile(m: TodoPageModel) {
         basecamp: syncBasecamp,
         reminders: syncReminders,
         github: syncGithub,
+        google: syncGoogle,
+        microsoft: syncMicrosoft,
         stopPropagation: true,
       })
     : null;

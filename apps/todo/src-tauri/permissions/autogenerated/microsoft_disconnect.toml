@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-microsoft-disconnect"
+description = "Enables the microsoft_disconnect command without any pre-configured scope."
+commands.allow = ["microsoft_disconnect"]
+
+[[permission]]
+identifier = "deny-microsoft-disconnect"
+description = "Denies the microsoft_disconnect command without any pre-configured scope."
+commands.deny = ["microsoft_disconnect"]

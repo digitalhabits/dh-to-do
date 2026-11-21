@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-request-store-review"
+description = "Enables the request_store_review command without any pre-configured scope."
+commands.allow = ["request_store_review"]
+
+[[permission]]
+identifier = "deny-request-store-review"
+description = "Denies the request_store_review command without any pre-configured scope."
+commands.deny = ["request_store_review"]

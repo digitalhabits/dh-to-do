@@ -604,7 +604,7 @@ export function useTodoPage({
   useIntegrationStatus({ settingsOpen, api, setRemindersConnected, setBcConnected });
   useWidenForBoardAfterSettings({ settingsOpen, kanbanEnabled, shellRef });
 
-  const { selectBcProject, selectBcList, selectRemindersList, selectGithubRepo } = useListDialogLinks({
+  const { selectBcProject, selectBcList, selectRemindersList, selectGithubRepo, selectGoogleList, selectMicrosoftList } = useListDialogLinks({
     listDialog,
     api,
     bcConnected,
@@ -1366,7 +1366,7 @@ export function useTodoPage({
     selectBcProject,
     selectBcList,
     selectRemindersList,
-    selectGithubRepo,
+    selectGithubRepo, selectGoogleList, selectMicrosoftList,
     listOfTask,
     toggleTaskFocusPopout,
     revealSearch,

@@ -27,6 +27,15 @@
     "allow-exit-fullscreen-focus-to-home",
     "allow-start-basecamp-auth",
     "allow-handle-oauth-callback",
+    "allow-google-status",
+    "allow-start-google-auth",
+    "allow-google-access-token",
+    "allow-google-disconnect",
+    "allow-microsoft-status",
+    "allow-start-microsoft-auth",
+    "allow-microsoft-access-token",
+    "allow-microsoft-disconnect",
+    "allow-request-store-review",
     "deep-link:default",
     "allow-fetch-reminders-lists",
     "allow-fetch-reminders-tasks",
@@ -48,6 +57,9 @@
         },
         {
           "url": "ms-windows-store://**"
+        },
+        {
+          "url": "macappstore://**"
         }
       ]
     },

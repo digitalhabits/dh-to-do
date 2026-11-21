@@ -8,3 +8,4 @@ src-tauri/entitlements.mas.temp.plist
 *.provisionprofile
 .env.local
 msix-build
+.env

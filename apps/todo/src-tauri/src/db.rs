@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 
-const SCHEMA_VERSION: i32 = 18;
+const SCHEMA_VERSION: i32 = 20;
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -554,6 +554,67 @@ impl TodoDb {
         ALTER TABLE todo_tasks ADD COLUMN github_kind TEXT;
         DELETE FROM schema_version;
         INSERT INTO schema_version (version) VALUES (18);
+        "#,
+      )?;
+    }
+
+    if version < 19 {
+      // A list can be linked to a Google Tasks list, and a task to one of
+      // its tasks (lib/todo/google-link.ts, google-sync.ts). In tables of
+      // their own, not columns: only the desktop app syncs Google Tasks,
+      // so the shared store and Postgres know nothing of it. A row of
+      // todo_google_tasks whose task is gone is a task deleted here: the
+      // next sync deletes it in Google. No foreign key, for that reason.
+      // The sign-in itself is not in this database (google.rs keeps it in
+      // the system's credential store).
+      conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS todo_google_lists (
+          list_id TEXT PRIMARY KEY,
+          account TEXT NOT NULL,
+          google_list_id TEXT NOT NULL,
+          cursor TEXT
+        );
+        CREATE TABLE IF NOT EXISTS todo_google_tasks (
+          task_id TEXT PRIMARY KEY,
+          list_id TEXT NOT NULL,
+          google_id TEXT NOT NULL UNIQUE,
+          base TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS todo_google_tasks_list_idx
+          ON todo_google_tasks (list_id);
+        DELETE FROM schema_version;
+        INSERT INTO schema_version (version) VALUES (19);
+        "#,
+      )?;
+    }
+
+    if version < 20 {
+      // The same for Microsoft To Do (lib/todo/microsoft-link.ts,
+      // microsoft-sync.ts): a list linked to a Microsoft list, a task to
+      // one of its tasks, in tables of their own. A row of
+      // todo_microsoft_tasks whose task is gone is a task deleted here.
+      // `cursor` holds Microsoft's delta link, the place the next read of
+      // changes starts. The sign-in is in the system's credential store
+      // (microsoft.rs).
+      conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS todo_microsoft_lists (
+          list_id TEXT PRIMARY KEY,
+          account TEXT NOT NULL,
+          microsoft_list_id TEXT NOT NULL,
+          cursor TEXT
+        );
+        CREATE TABLE IF NOT EXISTS todo_microsoft_tasks (
+          task_id TEXT PRIMARY KEY,
+          list_id TEXT NOT NULL,
+          microsoft_id TEXT NOT NULL UNIQUE,
+          base TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS todo_microsoft_tasks_list_idx
+          ON todo_microsoft_tasks (list_id);
+        DELETE FROM schema_version;
+        INSERT INTO schema_version (version) VALUES (20);
         "#,
       )?;
     }

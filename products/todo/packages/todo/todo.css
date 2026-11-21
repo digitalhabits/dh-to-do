@@ -4205,7 +4205,15 @@ html.redd-native-shell .todo-shell .title-bar {
        on a wide screen a fifth column only cuts the titles shorter. */
     grid-template-columns: repeat(auto-fill, minmax(max(320px, 24%), 1fr));
     align-content: start;
+    /* Cards in a row stretch to the tallest one (the grid's default); Ulrik
+       wants it so (2026-11-14). */
     column-gap: 20px;
+}
+
+/* A finished task's people, half grey: the faces say who did it without
+   drawing the eye as an open card's do (2026-11-14). */
+.todo-shell .done-tasks .assign-avatar-stack {
+    filter: grayscale(0.5);
 }
 
 .todo-shell .done-tasks > .done-day-heading {
@@ -7358,7 +7366,9 @@ html.focus-note-room .focus-resize-edge {
 }
 
 .todo-shell .reminders-icon,
-.todo-shell .github-icon {
+.todo-shell .github-icon,
+.todo-shell .google-tasks-icon,
+.todo-shell .microsoft-todo-icon {
     color: var(--text-tertiary);
 }
 
@@ -12008,6 +12018,14 @@ html.focus-note-room .focus-resize-edge {
 }
 
 .todo-shell #settings-modal.settings-page .settings-page-feedback a {
+    color: var(--focus-btn-bg);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+/* "Write a review", in a store build: a link as the two above it. */
+.todo-shell #settings-modal.settings-page .settings-page-review {
+    align-self: flex-start;
     color: var(--focus-btn-bg);
     text-decoration: underline;
     text-underline-offset: 2px;

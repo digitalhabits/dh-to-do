@@ -216,6 +216,27 @@ const PlanModule = (function () {
         return d;
     }
 
+    /*
+     * A phone's week. Seven days in a phone's width left each day about
+     * 40px: the tasks were icons and the events thin lines. There three
+     * days show, the first of them today, and a finger slides the days
+     * (onWeekTouch). The arrows go three days at a time.
+     */
+    const PHONE_WEEK_QUERY = '(max-width: 767px)';
+    function phoneWeek() {
+        return typeof window !== 'undefined' && !!window.matchMedia &&
+            window.matchMedia(PHONE_WEEK_QUERY).matches;
+    }
+    function weekVisibleDays() {
+        return phoneWeek() ? 3 : 7;
+    }
+    /** Where the week view opens for `date`: its Monday, or on a phone the day itself. */
+    function weekStartFor(date) {
+        return phoneWeek()
+            ? new Date(date.getFullYear(), date.getMonth(), date.getDate())
+            : getMondayOfWeek(date);
+    }
+
     function formatDateKey(date) {
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     }
@@ -1869,7 +1890,7 @@ const PlanModule = (function () {
                 calendarViewMode = storedViewMode;
             }
             if (calendarViewMode === 'week') {
-                weekStartDate = getMondayOfWeek(new Date());
+                weekStartDate = weekStartFor(new Date());
             }
 
             loadWeekGoals();
@@ -3885,7 +3906,7 @@ const PlanModule = (function () {
 
         calendarViewMode = mode;
         if (mode === 'week') {
-            weekStartDate = getMondayOfWeek(new Date());
+            weekStartDate = weekStartFor(new Date());
         }
         try {
             localStorage.setItem(VIEW_MODE_KEY, mode);
@@ -3917,7 +3938,7 @@ const PlanModule = (function () {
         if (calendarViewMode === 'week') {
             // While the days slide, the week that is mostly in view.
             const weekStartDate_ = addDays(weekStartDate, dayOffset);
-            const weekEnd = addDays(weekStartDate_, 6);
+            const weekEnd = addDays(weekStartDate_, weekVisibleDays() - 1);
             const months = currentLanguage === 'da' ? MONTHS_DA : MONTHS_EN;
             const month = date => months[date.getMonth()].slice(0, 3);
             const startYear = weekStartDate_.getFullYear();
@@ -4068,9 +4089,11 @@ const PlanModule = (function () {
         // and the goals' bridges are moved left by that many (plan.css).
         grid.style.setProperty('--week-buffer', String(-first));
         weekStepCache = 0;
-        // Seven days fill the width. The hidden days are as wide, outside it.
+        // Seven days fill the width (three on a phone, see phoneWeek). The
+        // hidden days are as wide, outside it. 12px of gap after each day.
+        const shown = weekVisibleDays();
         grid.style.gridTemplateColumns = carousel
-            ? `${WEEK_GUTTER}px repeat(${last - first + 1}, calc((100% - ${WEEK_GUTTER}px - 84px) / 7))`
+            ? `${WEEK_GUTTER}px repeat(${last - first + 1}, calc((100% - ${WEEK_GUTTER}px - ${shown * 12}px) / ${shown}))`
             : `${WEEK_GUTTER}px repeat(7, minmax(0, 1fr))`;
         grid.appendChild(createWeekTimeGutter());
 
@@ -4376,6 +4399,72 @@ const PlanModule = (function () {
             // Let go with no flick: the nearest day.
             glideWeekTo(weekRestFor(weekShiftPx, step), 0);
         }, 90);
+    }
+
+    /*
+     * A finger slides the days, as the trackpad does (onWeekWheel): they
+     * follow it, and when it lets go they glide on at its speed and rest on
+     * a whole day. Only a sideways move is taken: an up-and-down one is the
+     * page's scroll (plan.css gives the week touch-action: pan-y).
+     */
+    const weekTouch = { id: null, x: 0, y: 0, from: 0, axis: '', lastX: 0, lastAt: 0, velocity: 0 };
+
+    function onWeekTouchStart(event) {
+        if (event.pointerType !== 'touch' || calendarViewMode !== 'week' || !weekCarouselOn()) return;
+        if (isWeekGoalDragInProgress || weekTouch.id !== null) return;
+        weekTouch.id = event.pointerId;
+        weekTouch.x = weekTouch.lastX = event.clientX;
+        weekTouch.y = event.clientY;
+        weekTouch.from = weekShiftPx;
+        weekTouch.axis = '';
+        weekTouch.lastAt = performance.now();
+        weekTouch.velocity = 0;
+    }
+
+    function onWeekTouchMove(event) {
+        if (event.pointerId !== weekTouch.id) return;
+        const dx = event.clientX - weekTouch.x;
+        const dy = event.clientY - weekTouch.y;
+        if (!weekTouch.axis) {
+            if (Math.hypot(dx, dy) < 8) return;
+            weekTouch.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+            if (weekTouch.axis === 'x') {
+                stopWeekScroll();
+                weekTouch.from = weekShiftPx + dx;
+            }
+        }
+        if (weekTouch.axis !== 'x') return;
+        const step = weekColumnStep();
+        if (!step) return;
+        const now = performance.now();
+        const gap = Math.max(now - weekTouch.lastAt, 8);
+        // The days go the other way to the finger: a slide to the left
+        // brings later days.
+        const instant = -(event.clientX - weekTouch.lastX) / gap;
+        weekTouch.velocity = weekTouch.velocity * 0.6 + instant * 0.4;
+        weekTouch.lastX = event.clientX;
+        weekTouch.lastAt = now;
+        weekShiftPx = weekTouch.from - dx;
+        // Near the last day drawn at a side: draw the week again there.
+        const limit = weekShiftLimit(step) - step / 2;
+        if (Math.abs(weekShiftPx) >= limit) {
+            const days = Math.round(weekShiftPx / step);
+            shiftWeekByDays(days);
+            weekTouch.from += days * step;
+        }
+        scheduleWeekShift();
+    }
+
+    function onWeekTouchEnd(event) {
+        if (event.pointerId !== weekTouch.id) return;
+        weekTouch.id = null;
+        if (weekTouch.axis !== 'x') return;
+        const step = weekColumnStep();
+        if (!step) return;
+        // A finger held still before it let go threw nothing.
+        const velocity = performance.now() - weekTouch.lastAt > 80 ? 0 : weekTouch.velocity;
+        const projected = weekShiftPx + velocity * 250;
+        glideWeekTo(weekRestFor(projected, step, Math.sign(velocity)), velocity);
     }
 
     function createWeekTimeGutter() {
@@ -8227,7 +8316,7 @@ const PlanModule = (function () {
         container.querySelector('.plan-prev-period-btn').addEventListener('click', () => {
             if (calendarViewMode === 'week') {
                 hideWeekGoalForm();
-                weekStartDate = addDays(weekStartDate, -7);
+                weekStartDate = addDays(weekStartDate, -weekVisibleDays());
                 renderCalendar();
                 renderFreeformElements();
                 updatePeriodDisplay();
@@ -8244,7 +8333,7 @@ const PlanModule = (function () {
         container.querySelector('.plan-next-period-btn').addEventListener('click', () => {
             if (calendarViewMode === 'week') {
                 hideWeekGoalForm();
-                weekStartDate = addDays(weekStartDate, 7);
+                weekStartDate = addDays(weekStartDate, weekVisibleDays());
                 renderCalendar();
                 renderFreeformElements();
                 updatePeriodDisplay();
@@ -8263,7 +8352,7 @@ const PlanModule = (function () {
 
             if (calendarViewMode === 'week') {
                 hideWeekGoalForm();
-                weekStartDate = getMondayOfWeek(today);
+                weekStartDate = weekStartFor(today);
                 renderCalendar();
                 renderFreeformElements();
                 updatePeriodDisplay();
@@ -8297,6 +8386,10 @@ const PlanModule = (function () {
 
         // Not passive: the week view takes the sideways scroll for itself.
         calendarContainer.addEventListener('wheel', onWeekWheel, { passive: false });
+        calendarContainer.addEventListener('pointerdown', onWeekTouchStart, { passive: true });
+        calendarContainer.addEventListener('pointermove', onWeekTouchMove, { passive: true });
+        calendarContainer.addEventListener('pointerup', onWeekTouchEnd);
+        calendarContainer.addEventListener('pointercancel', onWeekTouchEnd);
         setupDayDoubleClick();
         setupDayMenu();
         setupWeekPress();

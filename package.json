@@ -1,9 +1,9 @@
 {
   "name": "digital-habits-to-do",
-  "version": "3.3.2",
+  "version": "3.4.0",
   "private": true,
   "license": "CC-BY-NC-ND-3.0",
-  "packageManager": "pnpm@9.14.4",
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
     "dev": "pnpm --dir apps/todo app:dev",
     "build": "pnpm --dir apps/todo app:build",
@@ -26,11 +26,11 @@
     "@types/node": "^20",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.3.0",
     "esbuild": "^0.25.0",
     "happy-dom": "^21.0.4",
     "sql.js": "^1.14.2",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7"
+    "vite": "^8.3.8"
   }
 }
